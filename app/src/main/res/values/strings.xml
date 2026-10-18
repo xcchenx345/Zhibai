@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">知白</string>
+    <string name="accessibility_service_description">知白 Agent 使用无障碍服务来自动执行手机操作，如点击、滑动、输入文字等。此服务仅在您主动使用 Agent 功能时才会执行操作。</string>
+</resources>
