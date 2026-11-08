@@ -132,9 +132,9 @@ class RootfsInstaller(
                     continue
                 }
                 val target = targetDir.safeResolve(header.name)
-                target.parentFile?.mkdirs()
+                target.parentFile?.let { mkdirsOrThrow(it) }
                 when (header.type) {
-                    TarEntryType.DIRECTORY -> target.mkdirs()
+                    TarEntryType.DIRECTORY -> mkdirsOrThrow(target)
                     TarEntryType.SYMLINK -> createSymlink(targetDir, target, header.linkName)
                     TarEntryType.HARDLINK -> createHardLink(targetDir, target, header.linkName)
                     TarEntryType.FILE -> {
@@ -168,6 +168,23 @@ class RootfsInstaller(
             }
         }
     }
+    /**
+     * mkdirs that surfaces the real failure reason — plain File.mkdirs() returns
+     * false silently, so extraction later died with a bare path and no errno.
+     */
+    private fun mkdirsOrThrow(dir: File) {
+        if (dir.isDirectory) return
+        try {
+            Files.createDirectories(dir.toPath())
+        } catch (e: Exception) {
+            throw IOException("mkdir ${dir.path} failed: ${errnoReason(e)}")
+        }
+    }
+
+    /** Real error cause: FileSystemException.reason is the strerror text (e.g. EPERM). */
+    private fun errnoReason(e: Exception): String =
+        (e as? java.nio.file.FileSystemException)?.reason ?: e.message ?: e.javaClass.simpleName
+
     private fun createSymlink(root: File, target: File, linkName: String) {
         if (linkName.isBlank()) return
         val linkTarget = if (File(linkName).isAbsolute) {
@@ -182,7 +199,13 @@ class RootfsInstaller(
             (target.parentFile ?: root).toPath().relativize(resolved.toPath()).toFile()
         }
         target.delete()
-        Files.createSymbolicLink(target.toPath(), linkTarget.toPath())
+        try {
+            Files.createSymbolicLink(target.toPath(), linkTarget.toPath())
+        } catch (e: Exception) {
+            // FUSE shared storage (/storage/emulated/0) rejects links with EPERM —
+            // name the entry, the target and the strerror so the failure is actionable.
+            throw IOException("symlink ${target.path} -> $linkTarget failed: ${errnoReason(e)}")
+        }
     }
     private fun createHardLink(root: File, target: File, linkName: String) {
         if (linkName.isBlank()) return

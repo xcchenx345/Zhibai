@@ -3212,6 +3212,10 @@ For any multi-step work, FIRST add all tasks with add_task, then work through th
 - update_task: {"id":1,"status":"done"} — mark a task as done when finished
 - strike_task: {"id":1} — remove a task that cannot be completed (counts as failure)
 
+SHELL TOOL SELECTION:
+- For ANY ordinary shell command (ls, cat, ps, df, apt, grep, tar, ...), call run_shell — it executes in the built-in Linux rootfs.
+- Do NOT reach for run_adb as the first shell tool. Use run_adb ONLY when you specifically need ADB-level access (adb debugging, adb-only operations). The device being connected via ADB does not make run_adb the default shell.
+
 IMPORTANT - Tool arguments:
 ${phoneToolDoc}- read_file: {"path":"file path"}
 - write_file: {"path":"file path","content":"file content"}

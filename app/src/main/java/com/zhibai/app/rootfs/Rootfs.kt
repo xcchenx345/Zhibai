@@ -12,7 +12,9 @@ import java.nio.file.Files
  * can run a real Linux userland — apt/apk, python3, tar, full coreutils — WITHOUT
  * the Termux app (which may be blocked from installing on this device).
  *
- * Layout: <externalFilesDir>/rootfs/{linux,tmp}
+ * Layout: <filesDir>/rootfs/{linux,tmp}  (INTERNAL storage — must NOT be external:
+ *   shared storage is FUSE-backed and rejects symlink/link creation with EPERM,
+ *   while every rootfs tar contains symlinks, so extraction there always fails)
  *   linux/  the extracted rootfs (Ubuntu base by default)
  *   tmp/    PRoot scratch space
  * The agent workspace dir is bind-mounted into the rootfs at [/workspace].
@@ -31,8 +33,7 @@ object Rootfs {
     private const val LINUX_DIR = "linux"
     private const val TMP_DIR = "tmp"
 
-    fun baseDir(context: Context): File =
-        File(context.getExternalFilesDir(null) ?: context.filesDir, BASE_DIR)
+    fun baseDir(context: Context): File = File(context.filesDir, BASE_DIR)
 
     fun linuxDir(context: Context): File = File(baseDir(context), LINUX_DIR)
 
@@ -41,6 +42,14 @@ object Rootfs {
     fun ensureDirs(context: Context) {
         linuxDir(context).mkdirs()
         tempDir(context).mkdirs()
+        // Legacy path cleanup: installs before the internal-storage fix extracted
+        // onto FUSE shared storage (symlinks → EPERM, always broken). Remove the
+        // debris; a working rootfs can never have lived there.
+        val ext = context.getExternalFilesDir(null)
+        if (ext != null) {
+            val legacy = File(ext, BASE_DIR)
+            if (legacy.absolutePath != baseDir(context).absolutePath) legacy.deleteRecursively()
+        }
     }
 
     /** Rootfs 是否可用, 以 /bin/sh 存在为准 (Alpine 的 /bin/sh 是宿主机上解析不到的软链, 软链本身存在即算) */

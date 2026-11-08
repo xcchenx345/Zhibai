@@ -18,6 +18,36 @@ import java.net.URLConnection
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 
+/**
+ * Pre-rootfs default of the generated TOOLS.md. Existing workspaces still carry
+ * this byte-identical text (the file is only written when missing); matching it
+ * lets initAgentFiles regenerate the file so run_shell/run_rootfs show up, while
+ * any user or agent edits to TOOLS.md are left untouched.
+ */
+private val LEGACY_TOOLS_MD = """# Available Tools
+- read_file: Read file content (risk: 1)
+- write_file: Write to file (risk: 3)
+- list_files: List directory contents (risk: 1)
+- delete_file: Delete file/folder (risk: 4)
+- move_file: Move/rename file (risk: 3)
+- copy_file: Copy file (risk: 2)
+- search_files: Search files by name pattern (risk: 1)
+- get_file_info: Get file metadata (risk: 1)
+- grep: Search inside file contents, regex (risk: 1)
+- edit_file: Replace exact string in a file (risk: 3)
+- current_time: Current date/time (risk: 1)
+- download_file: Download URL into workspace (risk: 3)
+- view_media: View/analyze an image, audio, or video file and get a description/transcript (risk: 1)
+- request_permission: Ask user to grant system permission (risk: 1)
+- open_app: Launch Android app (risk: 2)
+- list_apps: List installed apps (risk: 1)
+- run_adb: Execute shell command (risk: 5)
+- get_device_info: Device information (risk: 1)
+- fetch_url: Fetch web page content (risk: 2)
+- save_skill: Save reusable workflow (risk: 2)
+- read_skill: Read saved skill (risk: 1)
+- list_skills: List all skills (risk: 1)""".trimIndent()
+
 data class AgentTool(
     val name: String,
     val description: String,
@@ -250,7 +280,9 @@ Your workspace is at ${workspaceDir.absolutePath}.""".trimIndent(),
 - request_permission: Ask user to grant system permission (risk: 1)
 - open_app: Launch Android app (risk: 2)
 - list_apps: List installed apps (risk: 1)
-- run_adb: Execute shell command (risk: 5)
+- run_shell: Execute a shell command — FIRST choice for any shell work; runs in the built-in Linux rootfs (apt/python3 available after install_rootfs) (risk: 3)
+- install_rootfs: One-time install of the built-in Linux rootfs (enables apt/python3 in run_shell) (risk: 3)
+- run_adb: Shell command via wireless ADB (real shell privileges). Use ONLY for ADB-specific access (adb debugging, adb-only operations) — prefer run_shell for ordinary commands (risk: 5)
 - get_device_info: Device information (risk: 1)
 - fetch_url: Fetch web page content (risk: 2)
 - save_skill: Save reusable workflow (risk: 2)
@@ -279,7 +311,9 @@ Skills: ${skillsDir.listFiles()?.size ?: 0}"""
 
         files.forEach { (name, content) ->
             val file = File(workspaceDir, name)
-            if (!file.exists()) file.writeText(content)
+            val staleLegacy = name == "TOOLS.md" && file.exists() &&
+                file.readText().trim() == LEGACY_TOOLS_MD
+            if (!file.exists() || staleLegacy) file.writeText(content)
         }
     }
 
@@ -1316,7 +1350,7 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
 
         // run_adb — 优先走无线调试真 ADB（shell 权限），未配对回退 App 沙箱 sh
         tools.add(AgentTool(
-            name = "run_adb", description = "Execute a shell command via wireless-debugging ADB (real shell privileges). Falls back to app-sandbox shell if ADB is not connected", riskLevel = 5, category = "system"
+            name = "run_adb", description = "Execute a shell command via wireless-debugging ADB (real shell privileges). Use ONLY for ADB-specific access — prefer run_shell for ordinary commands. Falls back to app-sandbox shell if ADB is not connected", riskLevel = 5, category = "system"
         ) { args, _ ->
             val command = args["command"] as? String ?: return@AgentTool "Error: no command"
             try {
