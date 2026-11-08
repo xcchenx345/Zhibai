@@ -1,0 +1,168 @@
+{
+  "i18n-01": {
+    "file": "ui/screens/SettingsScreen.kt",
+    "strings": [
+      "API Key",
+      "Configure MiMo API access",
+      "Default Read Aloud Voice",
+      "Voice for long-press read aloud in chat",
+      "Font Size",
+      "Adjust chat text size",
+      "About",
+      "App info and version",
+      "MiMo API Key",
+      "sk-xxxxx",
+      "Save",
+      "How to get API Key",
+      "1. Visit platform.xiaomimimo.com\\n2. Create an account or log in\\n3. Go to API Keys section\\n4. Create a new API Key\\n5. Copy and paste it here",
+      "Current Voice",
+      "Preview",
+      "Size: ${sliderValue.toInt()}sp",
+      "Small",
+      "Normal (15)",
+      "Big",
+      "Reset to Default (15)",
+      "MiMo App",
+      "Powered by Xiaomi MiMo API",
+      "Unofficial client for MiMo AI",
+      "Force New Session on Model Switch",
+      "Strict Faithfulness",
+      "Unlimited Attachments",
+      "AI Agent",
+      "Permission Mode",
+      "How tool calls are approved",
+      "Tool Permissions",
+      "Enable/disable individual tools",
+      "Agent API Key",
+      "tp-xxxxx (leave empty to use main key)",
+      "Agent Base URL",
+      "https://token-plan-cn.xiaomimimo.com/v1",
+      "Workspace Path",
+      "/sdcard/MiMoApp/ or relative e.g. MiMoApp",
+      "Save Agent Config",
+      "Export Logs",
+      "Export app logs to file",
+      "Clear All Data",
+      "Delete all conversations and settings",
+      "Clear All Data?",
+      "This will delete all conversations, settings, and API keys. This cannot be undone.",
+      "Delete Everything",
+      "Cancel",
+      "Logs exported to app external files directory",
+      "Forbidden Fruit",
+      "Append custom system prompt (3 confirmations required)",
+      "Warning Level 1/3",
+      "You are about to access a dangerous feature. Adding custom system prompts may cause unexpected behavior. Continue?",
+      "I Understand",
+      "Warning Level 2/3",
+      "Custom prompts are APPENDED to the existing system prompt. You CANNOT view or modify the original prompt. Continue?",
+      "I Accept",
+      "Final Confirmation",
+      "Enter additional system prompt text:",
+      "e.g. Always respond in Chinese...",
+      "Apply"
+    ]
+  },
+  "i18n-02": {
+    "file": "ui/screens/ChatScreen.kt",
+    "strings": [
+      "New Chat",
+      "Search conversations...",
+      "Settings",
+      "message",
+      "Tool Call",
+      "Risk $riskLevel",
+      "Deny",
+      "Think",
+      "Search",
+      "Editing message (will replace original)",
+      "Agent 需要「${viewModel.permissionLabel(perm.type)}」权限才能继续：\\n\\n${perm.reason}\\n\\n是否前往系统设置授权？授权后回来告诉 Agent 继续即可。",
+      "Rename Chat",
+      "Enter new title",
+      "Save",
+      "Cancel",
+      "How can I help you?",
+      "Powered by Xiaomi MiMo",
+      "max %.0f/s"
+    ]
+  },
+  "i18n-03": {
+    "file": "ui/screens/TTSScreen.kt",
+    "strings": [
+      "Mode",
+      "Voice",
+      "Voice Sample",
+      "Upload",
+      "Voice Description",
+      "e.g. Young female, warm and gentle, slightly breathy...",
+      "Role",
+      "Character identity, personality, voice quality...",
+      "Scene",
+      "What's happening, who they're talking to, emotional state...",
+      "Direction",
+      "Speech rate, breathing, pauses, emphasis, emotional arc...",
+      "Generating...",
+      "Generate",
+      "Audio Ready",
+      "${data.size / 1024} KB · ${(data.size / 2.0 / 24000).toInt()}s"
+    ]
+  },
+  "i18n-04": {
+    "file": "ui/screens/PhoneAgentScreen.kt",
+    "strings": [
+      "Phone Agent",
+      "AutoGLM API Key",
+      "输入智谱 API Key",
+      "Save",
+      "Instruction",
+      "Execute",
+      "Stop",
+      "Continue (User Action Done)",
+      "Steps (${state.currentStep}/${state.totalSteps})"
+    ]
+  },
+  "i18n-05": {
+    "file": "ui/components/MessageBubble.kt",
+    "strings": [
+      "Copy",
+      "Select Text",
+      "Edit",
+      "Raw Text",
+      "Copy All",
+      "Close",
+      "Search Results (${annotations.size})",
+      "${index + 1}."
+    ]
+  },
+  "i18n-06": {
+    "file": "ui/screens/ToolPermissionScreen.kt",
+    "strings": [
+      "Agent not initialized",
+      "Tool Permissions",
+      "Risk: ${tool.riskLevel}/5",
+      "Require confirmation",
+      "Reset All to Defaults"
+    ]
+  },
+  "i18n-07": {
+    "file": "ui/components/RichRenderer.kt",
+    "strings": [
+      "svg",
+      "SVG",
+      "code",
+      "Code"
+    ]
+  },
+  "i18n-08": {
+    "file": "ui/screens/ASRScreen.kt",
+    "strings": [
+      "asr"
+    ]
+  },
+  "i18n-09": {
+    "file": "ui/editor/MediaEditorScreen.kt",
+    "strings": [
+      "无法加载图片: $loadError"
+    ]
+  }
+}

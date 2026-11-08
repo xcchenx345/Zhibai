@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>知白·雪 v2.6</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;500;600;700;900&display=swap');
+
+  :root {
+    --bg: #0c0c0e;
+    --bg2: #141418;
+    --ink: #e8e4dc;
+    --ink-dim: #8a8578;
+    --ink-faint: #4a4640;
+    --blue: #5a9fd4;
+    --blue-dim: #3a6ea5;
+    --seal: #c73e3e;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 1920px;
+    height: 1080px;
+    font-family: 'Noto Serif SC', serif;
+    background: var(--bg);
+    color: var(--ink);
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* subtle grain */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 20;
+  }
+
+  /* large background snowflake */
+  .bg-snow {
+    position: absolute;
+    right: -80px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 800px;
+    height: 800px;
+    opacity: 0.03;
+    z-index: 0;
+  }
+
+  /* falling snow */
+  .snow-layer {
+    position: absolute; inset: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .sf {
+    position: absolute;
+    top: -20px;
+    color: var(--ink);
+    animation: fall linear infinite;
+    opacity: 0;
+  }
+  @keyframes fall {
+    0%   { transform: translateY(-20px) rotate(0deg) translateX(0); opacity: 0; }
+    8%   { opacity: 0.08; }
+    50%  { transform: translateY(540px) rotate(180deg) translateX(30px); }
+    92%  { opacity: 0.05; }
+    100% { transform: translateY(1100px) rotate(360deg) translateX(-10px); opacity: 0; }
+  }
+
+  /* main layout */
+  .wrap {
+    position: relative; z-index: 2;
+    width: 100%; height: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+
+  /* ─── LEFT ─── */
+  .left {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 80px 100px 80px 120px;
+    position: relative;
+  }
+
+  .tag {
+    font-size: 13px;
+    letter-spacing: 6px;
+    color: var(--blue);
+    margin-bottom: 28px;
+    text-transform: uppercase;
+  }
+
+  .big-char {
+    font-size: 280px;
+    font-weight: 900;
+    line-height: 0.9;
+    color: var(--ink);
+    position: relative;
+    margin-bottom: 10px;
+    user-select: none;
+  }
+  .big-char::after {
+    content: '雪';
+    position: absolute;
+    top: 4px; left: 4px;
+    color: var(--blue);
+    opacity: 0.12;
+    z-index: -1;
+  }
+
+  .title {
+    font-size: 48px;
+    font-weight: 700;
+    letter-spacing: 12px;
+    margin-bottom: 16px;
+  }
+
+  .subtitle {
+    font-size: 18px;
+    color: var(--ink-dim);
+    letter-spacing: 5px;
+    margin-bottom: 48px;
+    line-height: 1.8;
+  }
+
+  /* seal */
+  .seal {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px; height: 56px;
+    border: 2.5px solid var(--seal);
+    border-radius: 4px;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--seal);
+    transform: rotate(-8deg);
+    margin-bottom: 48px;
+    position: relative;
+  }
+  .seal::before {
+    content: '';
+    position: absolute; inset: 3px;
+    border: 1px solid var(--seal);
+    border-radius: 2px;
+    opacity: 0.4;
+  }
+
+  .divider {
+    width: 60px; height: 1px;
+    background: var(--ink-faint);
+    margin-bottom: 48px;
+  }
+
+  .meta {
+    font-size: 13px;
+    color: var(--ink-faint);
+    letter-spacing: 2px;
+    line-height: 2.2;
+  }
+  .meta span { color: var(--ink-dim); }
+
+  /* ─── RIGHT ─── */
+  .right {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 80px 120px 80px 80px;
+    gap: 20px;
+  }
+
+  .feature {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    padding: 22px 28px;
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 6px;
+    transition: background 0.3s;
+  }
+  .feature:hover { background: rgba(255,255,255,0.045); }
+
+  .f-icon {
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--ink-faint);
+    border-radius: 8px;
+    font-size: 18px;
+    color: var(--blue);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .f-text h3 {
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+  }
+  .f-text p {
+    font-size: 13px;
+    color: var(--ink-dim);
+    line-height: 1.7;
+    letter-spacing: 0.5px;
+  }
+
+  /* bottom bar */
+  .bottom-bar {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+    font-size: 12px;
+    color: var(--ink-faint);
+    letter-spacing: 3px;
+    border-top: 1px solid rgba(255,255,255,0.04);
+    z-index: 3;
+  }
+
+  /* center vertical rule */
+  .center-rule {
+    position: absolute;
+    left: 50%;
+    top: 80px;
+    bottom: 80px;
+    width: 1px;
+    background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.06) 30%, rgba(255,255,255,0.06) 70%, transparent);
+    z-index: 2;
+  }
+</style>
+</head>
+<body>
+
+<!-- big bg snowflake -->
+<svg class="bg-snow" viewBox="0 0 200 200" fill="none" stroke="#e8e4dc" stroke-width="0.4">
+  <line x1="100" y1="10" x2="100" y2="190"/>
+  <line x1="10" y1="100" x2="190" y2="100"/>
+  <line x1="36" y1="36" x2="164" y2="164"/>
+  <line x1="164" y1="36" x2="36" y2="164"/>
+  <line x1="100" y1="30" x2="88" y2="20"/><line x1="100" y1="30" x2="112" y2="20"/>
+  <line x1="100" y1="170" x2="88" y2="180"/><line x1="100" y1="170" x2="112" y2="180"/>
+  <line x1="30" y1="100" x2="20" y2="88"/><line x1="30" y1="100" x2="20" y2="112"/>
+  <line x1="170" y1="100" x2="180" y2="88"/><line x1="170" y1="100" x2="180" y2="112"/>
+  <circle cx="100" cy="100" r="40" stroke-width="0.3"/>
+  <circle cx="100" cy="100" r="70" stroke-width="0.2"/>
+</svg>
+
+<!-- falling snow -->
+<div class="snow-layer">
+  <div class="sf" style="left:3%;font-size:11px;animation-duration:20s;animation-delay:0s;">❄</div>
+  <div class="sf" style="left:12%;font-size:8px;animation-duration:25s;animation-delay:3s;">❅</div>
+  <div class="sf" style="left:22%;font-size:14px;animation-duration:18s;animation-delay:1s;">❆</div>
+  <div class="sf" style="left:34%;font-size:9px;animation-duration:28s;animation-delay:5s;">❄</div>
+  <div class="sf" style="left:45%;font-size:12px;animation-duration:22s;animation-delay:2s;">❅</div>
+  <div class="sf" style="left:56%;font-size:7px;animation-duration:26s;animation-delay:7s;">❆</div>
+  <div class="sf" style="left:67%;font-size:15px;animation-duration:19s;animation-delay:0.5s;">❄</div>
+  <div class="sf" style="left:76%;font-size:10px;animation-duration:24s;animation-delay:4s;">❅</div>
+  <div class="sf" style="left:85%;font-size:13px;animation-duration:21s;animation-delay:6s;">❆</div>
+  <div class="sf" style="left:94%;font-size:8px;animation-duration:27s;animation-delay:1.5s;">❄</div>
+</div>
+
+<!-- center rule -->
+<div class="center-rule"></div>
+
+<div class="wrap">
+  <!-- LEFT -->
+  <div class="left">
+    <div class="tag">ZhiBai · v2.6 · Snow Edition</div>
+    <div class="big-char">雪</div>
+    <div class="title">知白 · 雪</div>
+    <div class="subtitle">纯净如雪 · 以墨为骨 · 以智为魂</div>
+    <div class="seal">雪</div>
+    <div class="divider"></div>
+    <div class="meta">
+      <span>Powered by</span> Xiaomi MiMo API<br>
+      <span>第三方 Android 客户端 · 非官方</span>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="right">
+    <div class="feature">
+      <div class="f-icon">◈</div>
+      <div class="f-text">
+        <h3>磨砂玻璃输入框</h3>
+        <p>半透明悬浮设计，输入时自动变不透明，支持颜色、圆角、磨砂度自定义，200万模式超椭圆可选</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="f-icon">❄</div>
+      <div class="f-text">
+        <h3>Agent 任务雪花</h3>
+        <p>T1~T999 任务清单系统，执行时雪花旋转，完成降雪庆祝，失败红色抖动警示</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="f-icon">⚙</div>
+      <div class="f-text">
+        <h3>思考等级 Off ~ MAX</h3>
+        <p>五档推理深度可选：关闭 / 低 1K / 中 4K / 高 8K / MAX 16K tokens，精确控制</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="f-icon">∞</div>
+      <div class="f-text">
+        <h3>无限制长回复</h3>
+        <p>单次输出 32K tokens 上限，思考模式 65K，长文不再截断</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="f-icon">▤</div>
+      <div class="f-text">
+        <h3>富文本渲染优化</h3>
+        <p>代码块保存/复制/查看，表格左右滑动，LaTeX 溢出修复，SVG 导出</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- bottom bar -->
+<div class="bottom-bar">
+  <span>所见，皆可问</span>
+  <span>·</span>
+  <span>ZhiBai v2.6 Snow</span>
+  <span>·</span>
+  <span>MiMo API</span>
+</div>
+
+</body>
+</html>

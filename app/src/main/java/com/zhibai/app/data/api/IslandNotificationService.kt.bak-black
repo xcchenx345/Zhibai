@@ -1,0 +1,294 @@
+package com.zhibai.app.data.api
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.graphics.drawable.Icon
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
+import android.util.Log
+import com.zhibai.app.MainActivity
+
+class IslandNotificationService(private val context: Context) {
+
+    companion object {
+        private const val TAG = "IslandNotification"
+        private const val CHANNEL_ID = "live_activity"
+        private const val CHANNEL_NAME = "Live Activity"
+        private const val NOTIFICATION_ID = 10001
+
+        fun isIslandSupported(): Boolean {
+            return try {
+                val clazz = Class.forName("android.os.SystemProperties")
+                val method = clazz.getDeclaredMethod("getBoolean", String::class.java, Boolean::class.javaPrimitiveType)
+                val result = method.invoke(null, "persist.sys.feature.island", false) as? Boolean ?: false
+                result
+            } catch (e: Exception) {
+                false
+            }
+        }
+
+        fun getFocusProtocolVersion(context: Context): Int {
+            return try {
+                Settings.System.getInt(context.contentResolver, "notification_focus_protocol", 0)
+            } catch (e: Exception) {
+                0
+            }
+        }
+
+        fun hasFocusPermission(context: Context): Boolean {
+            return try {
+                val uri = android.net.Uri.parse("content://miui.statusbar.notification.public")
+                val extras = Bundle().apply {
+                    putString("package", context.packageName)
+                }
+                val bundle = context.contentResolver.call(uri, "canShowFocus", null, extras)
+                bundle?.getBoolean("canShowFocus", false) ?: false
+            } catch (e: Exception) {
+                false
+            }
+        }
+
+        /** Jump to the HyperOS notification-promotion (超级岛实时动态) toggle for this app. */
+        fun openPromotionSettings(context: Context) {
+            try {
+                val action = if (Build.VERSION.SDK_INT >= 36) {
+                    "android.settings.APP_NOTIFICATION_PROMOTION_SETTINGS"
+                } else {
+                    "android.settings.APP_NOTIFICATION_SETTINGS"
+                }
+                val intent = Intent(action).apply {
+                    putExtra("android.provider.extra.APP_PACKAGE", context.packageName)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                Log.w(TAG, "openPromotionSettings failed", e)
+                try {
+                    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                } catch (_: Exception) {}
+            }
+        }
+
+        /** Android 16+ (SDK 36): check whether promoted (island-capable) notifications are allowed. */
+        fun canPostPromoted(context: Context): Boolean {
+            return try {
+                val nm = context.getSystemService(NotificationManager::class.java)
+                val r = nm.javaClass.getMethod("canPostPromotedNotifications").invoke(nm)
+                r as? Boolean ?: false
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
+
+    private val notificationManager =
+        context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var completeRunnable: Runnable? = null
+
+    /** Completion state rides the same ongoing capsule, then retracts after a few seconds. */
+    private fun scheduleIslandRetract(delayMs: Long = 20000) {
+        completeRunnable?.let { mainHandler.removeCallbacks(it) }
+        val r = Runnable {
+            notificationManager.cancel(NOTIFICATION_ID)
+            completeRunnable = null
+        }
+        completeRunnable = r
+        mainHandler.postDelayed(r, delayMs)
+    }
+
+    private fun cancelIslandRetract() {
+        completeRunnable?.let { mainHandler.removeCallbacks(it) }
+        completeRunnable = null
+    }
+
+    fun ensureChannel() {
+        notificationManager.deleteNotificationChannel(CHANNEL_ID)
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            CHANNEL_NAME,
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "MiMo Agent task notifications"
+            setShowBadge(false)
+            enableVibration(false)
+            enableLights(false)
+            setSound(null, null)
+        }
+        notificationManager.createNotificationChannel(channel)
+    }
+
+    private fun actionPendingIntent(approve: Boolean): PendingIntent {
+        val intent = Intent(context, AgentNotificationActionReceiver::class.java).apply {
+            action = if (approve) AgentNotificationActionReceiver.ACTION_APPROVE
+                     else AgentNotificationActionReceiver.ACTION_DENY
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            if (approve) AgentNotificationActionReceiver.REQ_APPROVE else AgentNotificationActionReceiver.REQ_DENY,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    /** Custom card shown as the Super Island expanded (pull-down) view. */
+    private fun buildRemoteViews(
+        taskTitle: String,
+        taskStatus: String,
+        progress: Int,
+        isIndeterminate: Boolean,
+        showConfirmActions: Boolean
+    ): android.widget.RemoteViews {
+        val rv = android.widget.RemoteViews(context.packageName, com.zhibai.app.R.layout.island_notification)
+        rv.setTextViewText(com.zhibai.app.R.id.island_title, taskTitle.take(24))
+        rv.setTextViewText(com.zhibai.app.R.id.island_body, taskStatus.take(80))
+        try {
+            rv.setImageViewResource(com.zhibai.app.R.id.island_icon, context.applicationInfo.icon)
+        } catch (_: Exception) {}
+        if (progress in 0..100) {
+            rv.setViewVisibility(com.zhibai.app.R.id.island_progress, android.view.View.VISIBLE)
+            rv.setProgressBar(com.zhibai.app.R.id.island_progress, 100, progress, isIndeterminate)
+        } else {
+            rv.setViewVisibility(com.zhibai.app.R.id.island_progress, android.view.View.GONE)
+        }
+        if (showConfirmActions) {
+            rv.setViewVisibility(com.zhibai.app.R.id.island_actions, android.view.View.VISIBLE)
+            rv.setOnClickPendingIntent(com.zhibai.app.R.id.island_btn_approve, actionPendingIntent(approve = true))
+            rv.setOnClickPendingIntent(com.zhibai.app.R.id.island_btn_deny, actionPendingIntent(approve = false))
+        } else {
+            rv.setViewVisibility(com.zhibai.app.R.id.island_actions, android.view.View.GONE)
+        }
+        return rv
+    }
+
+    fun showAgentTaskNotification(
+        taskTitle: String,
+        taskStatus: String,
+        progress: Int = -1,
+        isIndeterminate: Boolean = true,
+        actions: List<Pair<String, PendingIntent>> = emptyList(),
+        showConfirmActions: Boolean = false,
+        livePhase: Boolean = false
+    ) {
+        ensureChannel()
+        cancelIslandRetract()
+
+        val focusEnabled = hasFocusPermission(context)
+        val islandSupported = isIslandSupported()
+        val protocolVersion = getFocusProtocolVersion(context)
+        Log.d(TAG, "focus=$focusEnabled, island=$islandSupported, protocol=$protocolVersion")
+
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val openPendingIntent = PendingIntent.getActivity(
+            context, 0, openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = Notification.Builder(context, CHANNEL_ID)
+            .setContentTitle(taskTitle)
+            .setContentText(taskStatus)
+            .setStyle(Notification.BigTextStyle().bigText(taskStatus))
+            .setSmallIcon(android.R.drawable.ic_menu_info_details)
+            .setContentIntent(openPendingIntent)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+            .setCategory(Notification.CATEGORY_SERVICE)
+
+        if (livePhase) {
+            // System-driven "live" feel: elapsed counter + indeterminate bar animate on
+            // their own — zero re-posts while the model streams, so the capsule never flickers.
+            builder.setWhen(System.currentTimeMillis())
+            builder.setUsesChronometer(true)
+            builder.setProgress(0, 0, true)
+        } else if (progress in 0..100) {
+            builder.setProgress(100, progress, isIndeterminate)
+        }
+
+        if (showConfirmActions) {
+            // Standard actions — these survive island promotion and render on pull-down.
+            builder.addAction(
+                Notification.Action.Builder(
+                    Icon.createWithResource(context, android.R.drawable.ic_menu_revert),
+                    "拒绝",
+                    actionPendingIntent(approve = false)
+                ).build()
+            )
+            builder.addAction(
+                Notification.Action.Builder(
+                    Icon.createWithResource(context, android.R.drawable.ic_menu_send),
+                    "允许",
+                    actionPendingIntent(approve = true)
+                ).build()
+            )
+        }
+
+        for ((label, pendingIntent) in actions) {
+            val action = Notification.Action.Builder(
+                Icon.createWithResource(context, android.R.drawable.ic_media_pause),
+                label,
+                pendingIntent
+            ).build()
+            builder.addAction(action)
+        }
+
+        // Android 16 (SDK 36): short capsule text + promoted-ongoing request —
+        // the combination HyperOS turns into a Super Island capsule. (Copied from 玄戒工具箱.)
+        if (Build.VERSION.SDK_INT >= 36) {
+            try {
+                builder.javaClass
+                    .getMethod("setShortCriticalText", String::class.java)
+                    .invoke(builder, taskTitle.take(16))
+            } catch (e: Exception) {
+                Log.w(TAG, "setShortCriticalText unavailable")
+            }
+            builder.addExtras(Bundle().apply {
+                putBoolean("android.requestPromotedOngoing", true)
+            })
+            val promoted = canPostPromoted(context)
+            Log.d(TAG, "canPostPromotedNotifications=$promoted")
+        } else {
+            builder.addExtras(Bundle().apply {
+                putBoolean("android.requestPromotedOngoing", true)
+            })
+        }
+
+        val notification = builder.build()
+        if (Build.VERSION.SDK_INT >= 36) {
+            try {
+                val promotable = notification.javaClass.getMethod("hasPromotableCharacteristics").invoke(notification)
+                Log.d(TAG, "hasPromotableCharacteristics=$promotable")
+            } catch (e: Exception) {
+                Log.d(TAG, "hasPromotableCharacteristics call failed: $e")
+            }
+        }
+        notificationManager.notify(NOTIFICATION_ID, notification)
+    }
+
+    fun showAgentTaskComplete(taskTitle: String, result: String) {
+        // Reuse the ongoing capsule so the completion state also lands on the island,
+        // then auto-retract after a few seconds (big-vendor behavior).
+        showAgentTaskNotification(
+            taskTitle = taskTitle,
+            taskStatus = result,
+            progress = -1
+        )
+        scheduleIslandRetract()
+    }
+
+    fun cancelNotification() {
+        notificationManager.cancel(NOTIFICATION_ID)
+    }
+}

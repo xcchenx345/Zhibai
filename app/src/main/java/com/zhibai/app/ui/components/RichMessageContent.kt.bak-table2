@@ -1,0 +1,284 @@
+package com.zhibai.app.ui.components
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+private val RICH_TYPES = setOf(
+    "mermaid", "plotly", "vega", "vega-lite",
+    "dot", "graphviz", "latex", "tex",
+    "mathml", "asciimath", "katex"
+)
+
+data class ContentPart(
+    val type: String,
+    val language: String = "",
+    val content: String
+)
+
+fun parseContent(text: String): List<ContentPart> {
+    val parts = mutableListOf<ContentPart>()
+    val lines = text.lines()
+    var i = 0
+    var textBuffer = StringBuilder()
+
+    fun flushText() {
+        val t = textBuffer.toString().trim()
+        if (t.isNotBlank()) parts.add(ContentPart("text", content = t))
+        textBuffer = StringBuilder()
+    }
+
+    while (i < lines.size) {
+        val line = lines[i]
+
+        // Code block
+        if (line.trimStart().startsWith("```")) {
+            flushText()
+            val lang = line.trimStart().removePrefix("```").trim().lowercase()
+            val codeLines = mutableListOf<String>()
+            i++
+            while (i < lines.size && !lines[i].trimStart().startsWith("```")) {
+                codeLines.add(lines[i])
+                i++
+            }
+            if (i < lines.size) i++
+            val code = codeLines.joinToString("\n").trimEnd('\n')
+            when {
+                lang in RICH_TYPES -> parts.add(ContentPart(lang, lang, code))
+                lang.isNotBlank() -> parts.add(ContentPart("code", lang, code))
+                else -> parts.add(ContentPart("code", "", code))
+            }
+            continue
+        }
+
+        // Horizontal rule
+        if (line.trim() == "---" || line.trim() == "***" || line.trim() == "___") {
+            flushText()
+                parts.add(ContentPart("divider", content = ""))
+            i++
+            continue
+        }
+
+        // Table: header contains | and next line is a separator — accepts BOTH
+        // pipe-wrapped (|a|b|) and bare (a | b) styles so tables never fall
+        // through to the text/MathRenderer path and vanish.
+        if (line.contains("|") && i + 1 < lines.size) {
+            val sep = lines[i + 1].trim()
+            val isSeparator = sep.contains("-") && sep.matches(Regex("^\\|?[\\s:|-]+\\|?$"))
+            if (isSeparator) {
+                flushText()
+                val tableLines = mutableListOf<String>()
+                tableLines.add(line)
+                i++
+                while (i < lines.size && lines[i].trim().isNotBlank() &&
+                    lines[i].contains("|") && !lines[i].trimStart().startsWith("```")
+                ) {
+                    tableLines.add(lines[i])
+                    i++
+                }
+                parts.add(ContentPart("table", content = tableLines.joinToString("\n")))
+                continue
+            }
+        }
+
+        textBuffer.appendLine(line)
+        i++
+    }
+    flushText()
+
+    if (parts.isEmpty() && text.isNotBlank()) {
+        parts.add(ContentPart("text", content = text))
+    }
+
+    return parts
+}
+
+fun parseTextWithMath(text: String): List<ContentPart> {
+    val parts = mutableListOf<ContentPart>()
+    // Match $$...$$ (display math) and $...$ (inline math), but not escaped \$
+    val regex = Regex("\\$\\$([\\s\\S]*?)\\$\\$|(?<!\\\\)\\$([^\\$]+?)\\$")
+    var lastIndex = 0
+
+    for (match in regex.findAll(text)) {
+        if (match.range.first > lastIndex) {
+            val before = text.substring(lastIndex, match.range.first)
+            if (before.isNotBlank()) parts.add(ContentPart("text", content = before))
+        }
+
+        val displayMath = match.groupValues[1]
+        val inlineMath = match.groupValues[2]
+        val mathContent = if (displayMath.isNotBlank()) displayMath else inlineMath
+        if (mathContent.isNotBlank()) {
+            parts.add(ContentPart("katex", "katex", mathContent.trim()))
+        }
+
+        lastIndex = match.range.last + 1
+    }
+
+    if (lastIndex < text.length) {
+        val remaining = text.substring(lastIndex)
+        if (remaining.isNotBlank()) parts.add(ContentPart("text", content = remaining))
+    }
+
+    if (parts.isEmpty() && text.isNotBlank()) {
+        parts.add(ContentPart("text", content = text))
+    }
+
+    return parts
+}
+
+@Composable
+fun RichMessageContent(
+    content: String,
+    color: Color,
+    isDarkTheme: Boolean,
+    fontSize: Int = 15,
+    modifier: Modifier = Modifier,
+    studyMode: Boolean = false
+) {
+    // Cache parsed parts — only re-parse when content actually changes
+    val parts = remember(content) { parseContent(content) }
+
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for ((index, part) in parts.withIndex()) {
+            // key() lets Compose skip recomposing parts that didn't change
+            key(index, part.type) {
+                when (part.type) {
+                    "text" -> {
+                        if (containsMath(part.content)) {
+                            MathRenderer(content = part.content, studyMode = studyMode)
+                        } else {
+                            MarkdownText(
+                                markdown = part.content,
+                                color = color,
+                                fontSize = fontSize,
+                                lineHeight = fontSize + 7,
+                                studyMode = studyMode
+                            )
+                        }
+                    }
+                    "code" -> CodeBlock(code = part.content, language = part.language, isDarkTheme = isDarkTheme)
+                    "table" -> MarkdownTable(tableText = part.content, isDarkTheme = isDarkTheme)
+                    "divider" -> HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                    "katex", "latex", "tex", "mathml", "asciimath" -> MathRenderer(content = part.content, studyMode = studyMode)
+                    else -> RichRenderer(content = part.content, type = part.type, studyMode = studyMode)
+                }
+            }
+        }
+    }
+}
+
+private fun containsMath(text: String): Boolean {
+    return text.contains(Regex("(?<!\\\\)\\$[^\\$]+\\$")) || text.contains("$$")
+}
+
+@Composable
+fun MarkdownTable(tableText: String, isDarkTheme: Boolean) {
+    val lines = tableText.lines().filter { it.trim().isNotBlank() }
+    if (lines.size < 2) {
+        // Never render "air" — degrade to monospace text so content stays visible.
+        Text(
+            text = tableText,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 12.sp,
+            color = if (isDarkTheme) Color(0xFFE0E0E0) else Color(0xFF1A1A1A)
+        )
+        return
+    }
+
+    val headerCells = parseTableRow(lines[0])
+    val dataLines = lines.drop(2)
+    val allRows = listOf(headerCells) + dataLines.map { parseTableRow(it) }
+    val colCount = allRows.maxOf { it.size }
+
+    val borderColor = if (isDarkTheme) Color(0xFF555555) else Color(0xFFCCCCCC)
+    val headerBg = if (isDarkTheme) Color(0xFF3A3A3A) else Color(0xFFE8E8E8)
+    val rowBg = if (isDarkTheme) Color(0xFF2A2A2A) else Color(0xFFFFFFFF)
+    val altRowBg = if (isDarkTheme) Color(0xFF333333) else Color(0xFFF5F5F5)
+    val textColor = if (isDarkTheme) Color(0xFFE0E0E0) else Color(0xFF1A1A1A)
+
+    // Minimum column width for readability
+    val minColWidth = 80.dp
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(rowBg)
+            .border(0.5.dp, borderColor, RoundedCornerShape(8.dp))
+    ) {
+        // Scrollable table content
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState())
+        ) {
+            Column {
+                // Header
+                Row(modifier = Modifier.background(headerBg)) {
+                    for (col in 0 until colCount) {
+                        val cellText = headerCells.getOrElse(col) { "" }.trim()
+                        Box(
+                            modifier = Modifier
+                                .widthIn(min = minColWidth)
+                                .weight(1f, fill = false)
+                                .border(0.5.dp, borderColor)
+                        ) {
+                            Text(
+                                text = cellText,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = textColor,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
+                }
+                // Data rows
+                dataLines.forEachIndexed { rowIdx, line ->
+                    val cells = parseTableRow(line)
+                    val bg = if (rowIdx % 2 == 0) rowBg else altRowBg
+                    Row(modifier = Modifier.background(bg)) {
+                        for (col in 0 until colCount) {
+                            val cellText = cells.getOrElse(col) { "" }.trim()
+                            Box(
+                                modifier = Modifier
+                                    .widthIn(min = minColWidth)
+                                    .weight(1f, fill = false)
+                                    .border(0.5.dp, borderColor)
+                            ) {
+                                Text(
+                                    text = cellText,
+                                    fontSize = 13.sp,
+                                    color = textColor,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun parseTableRow(line: String): List<String> {
+    return line.trim()
+        .removePrefix("|")
+        .removeSuffix("|")
+        .split("|")
+}
