@@ -3,6 +3,9 @@ package com.zhibai.app.agent
 import android.content.Context
 import android.os.Environment
 import com.zhibai.app.data.api.MiMoApiService
+import com.zhibai.app.rootfs.ProotShell
+import com.zhibai.app.rootfs.Rootfs
+import com.zhibai.app.rootfs.RootfsInstaller
 import com.google.gson.Gson
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.Dispatchers
@@ -160,6 +163,19 @@ class AgentEngine(
         val canonical = file.canonicalPath
         if (sensitivePrefixes.any { canonical.startsWith(it) }) return false
         return true
+    }
+
+    /** Map a host path to the path seen inside the rootfs (bind mounts); null = unreachable. */
+    private fun toGuestPath(file: File): String? {
+        val abs = file.canonicalPath
+        val ws = workspaceDir.canonicalPath
+        return when {
+            abs == ws -> Rootfs.MOUNT_WORKSPACE
+            abs.startsWith("$ws/") -> Rootfs.MOUNT_WORKSPACE + abs.substring(ws.length)
+            abs == "/sdcard" || abs.startsWith("/sdcard/") -> abs
+            abs == "/storage" || abs.startsWith("/storage/") -> abs
+            else -> null
+        }
     }
 
     /** True if the app holds "All files access" (required to see non-app files on shared storage). */
@@ -1447,11 +1463,21 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
 
         // run_shell
         tools.add(AgentTool(
-            name = "run_shell", description = "Execute a shell command (root/Rootfs when su is available, else Termux, else app shell). Args: command, timeout (optional seconds, default 30)", riskLevel = 3, category = "system"
+            name = "run_shell", description = "Execute a shell command (built-in proot rootfs when installed, else root, Termux, or app shell). Args: command, timeout (optional seconds, default 30)", riskLevel = 3, category = "system"
         ) { args, ctx ->
             val cmd = args["command"] as? String ?: return@AgentTool "Error: no command"
             val timeout = (args["timeout"] as? Number)?.toLong() ?: 30L
             try {
+                // 0) Built-in proot rootfs (no Termux/root needed).
+                //    null = rootfs unusable/not packaged → fall through;
+                //    a real run result (even timeout/non-zero exit) is returned as-is.
+                val linux = Rootfs.linuxDir(ctx)
+                if (Rootfs.isUsable(linux)) {
+                    ProotShell.execute(
+                        Rootfs.prootLibDir(ctx), linux, workspaceDir,
+                        Rootfs.tempDir(ctx), cmd, timeout
+                    )?.let { return@AgentTool it }
+                }
                 // 1) Root shell (Rootfs): full filesystem access.
                 //    null = su binary missing/denied at exec → fall through;
                 //    a real run result (even non-zero exit) is returned as-is.
@@ -1468,21 +1494,48 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
             } catch (e: Exception) { "Error: ${e.message}" }
         })
 
-        // run_python — uses Termux if available
+        // install_rootfs — one-time download+install of the built-in Linux rootfs
         tools.add(AgentTool(
-            name = "run_python", description = "Run a Python script. Args: code (Python source) or path (path to .py file). Requires Termux with Python installed.", riskLevel = 3, category = "system"
+            name = "install_rootfs",
+            description = "One-time: download and install the built-in Linux rootfs (Ubuntu base, ~30MB). Args: url (optional, .tar.gz URL; default Ubuntu base for this ABI). Enables apt/full userland in run_shell; /workspace = agent workspace dir.",
+            riskLevel = 3, category = "system"
+        ) { args, ctx ->
+            if (!Rootfs.hasProotLibs(ctx)) {
+                val abi = android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"
+                return@AgentTool "Error: proot binaries not packaged for ABI $abi"
+            }
+            val url = (args["url"] as? String)?.takeIf { it.isNotBlank() }
+                ?: Rootfs.defaultUrl().ifBlank {
+                    return@AgentTool "Error: proot binaries not packaged for this ABI"
+                }
+            val path = url.substringBefore('?').substringBefore('#')
+            if (!path.endsWith(".tar.gz")) return@AgentTool "Error: only .tar.gz rootfs images are supported"
+            Rootfs.ensureDirs(ctx)
+            try {
+                RootfsInstaller().install(Rootfs.linuxDir(ctx), Rootfs.tempDir(ctx), url)
+            } catch (e: InterruptedException) {
+                return@AgentTool "Error: rootfs install cancelled"
+            } catch (e: Exception) {
+                return@AgentTool "Error: rootfs install failed: ${e.message}"
+            }
+            if (!Rootfs.isUsable(Rootfs.linuxDir(ctx))) {
+                return@AgentTool "Error: install finished but rootfs is not usable"
+            }
+            "Rootfs installed. Verify with run_shell {\"command\":\"cat /etc/os-release\"} (shows Ubuntu). " +
+                "Enable Python via run_shell {\"command\":\"apt update && apt install -y python3\"}. " +
+                "/workspace is the agent workspace dir."
+        })
+
+        // run_python — built-in rootfs first, then Termux
+        tools.add(AgentTool(
+            name = "run_python", description = "Run a Python script. Args: code (Python source) or path (path to .py file). Uses built-in rootfs (install_rootfs first, then apt install python3) or Termux with Python installed.", riskLevel = 3, category = "system"
         ) { args, ctx ->
             val code = args["code"] as? String
             val path = args["path"] as? String
             if (code.isNullOrBlank() && path.isNullOrBlank()) return@AgentTool "Error: provide code or path"
 
-            // Check if Termux is installed
-            val termuxPkg = "com.termux"
-            val hasTermux = try { ctx.packageManager.getPackageInfo(termuxPkg, 0); true } catch (_: Exception) { false }
-            if (!hasTermux) return@AgentTool "Error: Termux not installed. Install Termux from F-Droid, then: pkg install python. Alternatively use run_shell for shell commands."
-
             try {
-                // Write code to a temp file in workspace
+                // Write code to a temp file in workspace (shared by rootfs and Termux paths)
                 val scriptFile = if (path != null) resolvePath(path) else {
                     val f = java.io.File(workspaceDir, "_agent_script.py")
                     f.writeText(code!!)
@@ -1490,6 +1543,25 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
                 }
                 if (!validatePath(scriptFile)) return@AgentTool "Error: access denied"
                 if (!scriptFile.exists()) return@AgentTool "Error: script not found"
+
+                // 0) Built-in rootfs with python3 installed
+                val linux = Rootfs.linuxDir(ctx)
+                if (Rootfs.isUsable(linux) && Rootfs.hasEntry(linux, "usr/bin/python3")) {
+                    val guest = toGuestPath(scriptFile)
+                        ?: return@AgentTool "Error: script path not reachable from rootfs (use workspace or /sdcard): ${scriptFile.absolutePath}"
+                    ProotShell.execute(
+                        Rootfs.prootLibDir(ctx), linux, workspaceDir,
+                        Rootfs.tempDir(ctx), "python3 '${guest.replace("'", "'\"'\"'")}'", 60
+                    )?.let { return@AgentTool it }
+                    // null = proot unavailable → fall through to Termux chain
+                }
+
+                // Check if Termux is installed
+                val termuxPkg = "com.termux"
+                val hasTermux = try { ctx.packageManager.getPackageInfo(termuxPkg, 0); true } catch (_: Exception) { false }
+                if (!hasTermux) {
+                    return@AgentTool "Error: no Python runtime available. Run install_rootfs, then run_shell {\"command\":\"apt update && apt install -y python3\"}; or install Termux from F-Droid and: pkg install python."
+                }
 
                 // Try Termux first (full PATH with pip-installed packages)
                 if (hasTermuxPermission(ctx)) {
