@@ -1886,6 +1886,10 @@ AI：$assistantReply
                 }
             } finally {
                 _isGenerating.value = false
+                // Always close the agent session: early returns inside executeAgentFlow
+                // (final structured answer, parse fallbacks) and thrown/cancelled runs
+                // skip its endSession call, which left the snowflake indicator stuck.
+                agentTaskManager.endSession()
                 // On normal completion the capsule must stay in its「输出完成」state
                 // (auto-retracts itself); only cancel on error/abort.
                 if (!lastStreamCompleted) {
@@ -2046,6 +2050,9 @@ AI：$assistantReply
         }
 
         var round = 0
+        // Broken-JSON recovery: resend nudges allowed for this run (bounded so a
+        // persistently malformed model can't loop forever inside maxRounds).
+        var malformedRecovery = 0
         while (round < maxRounds) {
             round++
             // Streaming structured round: MiMo accepts stream + response_format
@@ -2078,6 +2085,7 @@ AI：$assistantReply
             var respOut = ""
             var toolCardCount = 0
             var narrationNotified = false
+            var sawLengthTruncation = false
 
             // Collect one streamed structured round. Returns the failure (balance errors
             // are retried on the fallback key by the caller) or null on success.
@@ -2087,10 +2095,12 @@ AI：$assistantReply
                 respOut = ""
                 toolCardCount = 0
                 narrationNotified = false
+                sawLengthTruncation = false
                 var failure: Exception? = null
                 try {
                     api.chatCompletion(request).collect { chunk ->
                         if (chunk !is StreamChunk.Data) return@collect
+                        if (chunk.finishReason == "length") sawLengthTruncation = true
                         if (chunk.reasoning.isNotBlank()) thinkOut += chunk.reasoning
                         if (chunk.content.isNotEmpty()) {
                             streamBuf.append(chunk.content)
@@ -2169,9 +2179,9 @@ AI：$assistantReply
             if (rawText.isBlank()) break // stream delivered nothing → fall to final answer
             // json_schema output is pure JSON → try direct parse first (immune to any
             // brace-in-string confusion); fall back to the string-aware extractor for
-            // wrapped output. Two tiers because a failed parse used to dump the raw
-            // JSON on the user as "garbage + <br>" and killed the run.
-            val structured = try {
+            // wrapped output. A third tier repairs JSON the stream cut at a structural
+            // boundary (finish_reason=length / dropped connection mid-reply).
+            var structured: com.zhibai.app.agent.StructuredToolCallResponse? = try {
                 gson.fromJson(rawText, com.zhibai.app.agent.StructuredToolCallResponse::class.java)
             } catch (e: Exception) {
                 try {
@@ -2179,12 +2189,62 @@ AI：$assistantReply
                 } catch (e2: Exception) { null }
             }
             if (structured == null) {
-                // Never dump raw JSON on the user: salvage the `response` field if the
-                // schema shape is there (works even on truncated streams), else fall back
-                // to the raw text (only reached when the model ignored the schema and
-                // wrote prose — in which case the prose IS the answer).
-                val salvaged = extractPartialField(rawText, "response")?.takeIf { it.isNotBlank() }
-                val shown = sanitizeHighRisk(salvaged ?: rawText)
+                val fixed = repairTruncatedJson(rawText)
+                if (fixed != null) {
+                    structured = try {
+                        gson.fromJson(fixed, com.zhibai.app.agent.StructuredToolCallResponse::class.java)
+                    } catch (e: Exception) { null }
+                }
+            }
+            if (structured == null) {
+                // Broken schema JSON vs plain prose the model wrote instead of the schema.
+                val looksJson = rawText.trimStart().startsWith("{") || rawText.contains("\"tool_calls\"")
+                if (looksJson && malformedRecovery < 2) {
+                    // Never dump raw JSON on the user and never end the run over a bad
+                    // parse: show the model its own broken reply and ask for a resend.
+                    malformedRecovery++
+                    updateSessionById(session.id) { s ->
+                        s.copy(messages = s.messages.filterNot { it.id.startsWith("stream-tc-$round-") })
+                    }
+                    apiMessages.add(Message(role = "assistant", content = rawText))
+                    apiMessages.add(Message(
+                        role = "user",
+                        content = if (sawLengthTruncation)
+                            "Your previous reply was cut off by the output token limit, so its JSON is incomplete. Resend the complete JSON object now (thinking, tool_calls, response). Keep thinking SHORT so the whole reply fits."
+                        else
+                            "Your previous reply was not valid JSON (incomplete or malformed). Resend the complete JSON object: thinking, tool_calls, response."
+                    ))
+                    continue
+                }
+                if (looksJson) {
+                    // Recovery exhausted: park the raw JSON in reasoningContent (collapsible,
+                    // still diagnosable on-device) and show a short human message instead.
+                    val salvaged = extractPartialField(rawText, "response")?.takeIf { it.isNotBlank() }
+                        ?: if (sawLengthTruncation) "回复被输出长度上限截断，本轮中止。"
+                        else "模型输出的 JSON 无法解析，本轮中止。"
+                    updateSessionById(session.id) { s ->
+                        val msgs = s.messages
+                            .filterNot { it.id.startsWith("stream-tc-$round-") }
+                            .toMutableList()
+                        val i = msgs.indexOfFirst { it.id == placeholderId }
+                        if (i >= 0) {
+                            msgs[i] = msgs[i].copy(
+                                content = sanitizeHighRisk(salvaged),
+                                reasoningContent = rawText,
+                                isStreaming = false
+                            )
+                        }
+                        s.copy(messages = msgs)
+                    }
+                    lastStreamCompleted = true
+                    islandService.showAgentTaskComplete(
+                        taskTitle = "输出异常",
+                        result = salvaged.takeLast(80)
+                    )
+                    return
+                }
+                // Model ignored the schema and wrote prose — the prose IS the answer.
+                val shown = sanitizeHighRisk(rawText)
                 updateSessionById(session.id) { s ->
                     val msgs = s.messages
                         .filterNot { it.id.startsWith("stream-tc-$round-") }
@@ -2218,10 +2278,7 @@ AI：$assistantReply
                 }
                 val finalText = responseText.ifBlank {
                     structured.thinking?.trim()?.takeIf { it.isNotBlank() }
-                        // Surface the raw model JSON rather than a dead-end placeholder,
-                        // so an empty-field response stays diagnosable on-device.
-                        ?: rawText.trim().takeIf { it.isNotBlank() }
-                        ?: "No response"
+                        ?: "模型未输出 response 字段。"
                 }
                 val current = _sessions.value.find { it.id == session.id }
                 if (current != null) {
@@ -2400,7 +2457,13 @@ AI：$assistantReply
             // Continue loop for next round of tool calls
         }
 
-        // All tool rounds done, stream final response
+        // All tool rounds done, stream final response.
+        // This pass has NO json_schema — a model still mid-task would dump its
+        // {"thinking","tool_calls"...} JSON as plain text. Tell it to answer in prose.
+        apiMessages.add(Message(
+            role = "user",
+            content = "Tool execution rounds are exhausted. Do NOT emit another tool_calls JSON object. Give your final answer to the user now as plain prose."
+        ))
         val finalRequest = activeApi.buildRequest(
             messages = apiMessages,
             model = getApiModel(),
@@ -2417,7 +2480,7 @@ AI：$assistantReply
             }
         }
 
-        streamResponse(activeApi, finalRequest, isFirstMessage, session.id, text, searchAnnotations.toList())
+        streamResponse(activeApi, finalRequest, isFirstMessage, session.id, text, searchAnnotations.toList(), expectSchemaLeak = true)
         agentTaskManager.endSession()
         islandService.cancelNotification()
         // Notify user: agent output finished
@@ -2476,7 +2539,10 @@ AI：$assistantReply
     private suspend fun streamResponse(
         activeApi: MiMoApiService, request: ChatRequest,
         isFirstMessage: Boolean, sessionId: String, userText: String,
-        extraAnnotations: List<com.zhibai.app.data.model.Annotation> = emptyList()
+        extraAnnotations: List<com.zhibai.app.data.model.Annotation> = emptyList(),
+        // True for the plain final pass after agent tool rounds: if the model dumps
+        // its structured tool JSON here, salvage the `response` field instead.
+        expectSchemaLeak: Boolean = false
     ) {
         var fullContent = ""
         var fullReasoning = ""
@@ -2630,8 +2696,16 @@ AI：$assistantReply
                             val msgs = s.messages.toMutableList()
                             val lastIdx = msgs.indexOfLast { it.isStreaming }
                             if (lastIdx >= 0) {
+                                val display = when {
+                                    highRiskFalsePositive -> fullContent
+                                    // Plain agent pass + JSON starting to stream → show only
+                                    // the `response` field (blank until it arrives), never the blob.
+                                    expectSchemaLeak && fullContent.trimStart().startsWith("{") ->
+                                        extractPartialField(fullContent, "response")?.let { sanitizeHighRisk(it) } ?: ""
+                                    else -> sanitizeHighRisk(fullContent)
+                                }
                                 msgs[lastIdx] = msgs[lastIdx].copy(
-                                    content = if (highRiskFalsePositive) fullContent else sanitizeHighRisk(fullContent),
+                                    content = display,
                                     reasoningContent = fullReasoning,
                                     annotations = if (allAnnotations.isNotEmpty()) allAnnotations.toList() else null
                                 )
@@ -2643,9 +2717,18 @@ AI：$assistantReply
                         _isGenerating.value = false
                         watchdogJob.cancel()
                         lastStreamCompleted = true
+                        // Schema JSON leaked through this plain pass → salvage the prose
+                        // answer once; null = normal content (unchanged behavior).
+                        val leakFinal: String? = if (expectSchemaLeak && fullContent.contains("\"tool_calls\"")) {
+                            (try {
+                                gson.fromJson(extractJson(fullContent), com.zhibai.app.agent.StructuredToolCallResponse::class.java)
+                                    ?.response?.trim()
+                            } catch (e: Exception) { null })?.takeIf { it.isNotBlank() }?.let { sanitizeHighRisk(it) }
+                                ?: "工具调用轮次已用尽，模型未给出最终回答。"
+                        } else null
                         islandService.showAgentTaskComplete(
                             taskTitle = "输出完成",
-                            result = fullContent.takeLast(80).ifBlank { "回复已完成，点击查看" }
+                            result = (leakFinal ?: fullContent).takeLast(80).ifBlank { "回复已完成，点击查看" }
                         )
                         if (trackSpeed) {
                             sampleSpeed(force = true)
@@ -2668,9 +2751,18 @@ AI：$assistantReply
                                 else -> 0L
                             }
                             val anns = if (allAnnotations.isNotEmpty()) allAnnotations.toList() else null
+                            val displayed = updatedMessages[lastIdx].content
+                            // leakFinal wins; else a blanked JSON stream (no tool_calls marker
+                            // → model answered WITH json) is restored as-is.
+                            val baseContent = when {
+                                leakFinal != null -> leakFinal
+                                expectSchemaLeak && displayed.isBlank() && fullContent.isNotBlank() ->
+                                    sanitizeHighRisk(fullContent)
+                                else -> displayed
+                            }
                             updatedMessages[lastIdx] = updatedMessages[lastIdx].copy(
                                 isStreaming = false,
-                                content = withReferenceFallback(updatedMessages[lastIdx].content, anns),
+                                content = withReferenceFallback(baseContent, anns),
                                 annotations = anns,
                                 reasoningDurationMs = duration
                             )
@@ -2679,23 +2771,25 @@ AI：$assistantReply
                         recalcTokens()
                         // Rejected round (not a false positive): neither the reply NOR the
                         // user's prompt may feed the memory writer.
-                        if (highRiskFalsePositive || !isHighRiskRejection(fullContent)) {
-                            maybeAutoWriteMemory(userText, fullContent)
+                        if (highRiskFalsePositive || !isHighRiskRejection(leakFinal ?: fullContent)) {
+                            maybeAutoWriteMemory(userText, leakFinal ?: fullContent)
                         }
                         // Auto read-aloud: only clean prose, skip agent/tool content
-                        if (_autoReadAloud.value && fullContent.isNotBlank()) {
+                        val ttsSource = leakFinal ?: (if (highRiskFalsePositive) fullContent else sanitizeHighRisk(fullContent))
+                        if (_autoReadAloud.value && ttsSource.isNotBlank()) {
                             val isAgentRun = _currentModel.value.contains("agent")
-                            val ttsText = filterForTTS(if (highRiskFalsePositive) fullContent else sanitizeHighRisk(fullContent))
+                            val ttsText = filterForTTS(ttsSource)
                             if (ttsText.isNotBlank() && ttsText.length > 2) {
                                 // In agent mode, skip if content looks like tool output
-                                val skipAgent = isAgentRun && (fullContent.startsWith("{") || fullContent.contains("\"tool_calls\""))
+                                val skipAgent = leakFinal == null && isAgentRun &&
+                                    (fullContent.startsWith("{") || fullContent.contains("\"tool_calls\""))
                                 if (!skipAgent) {
                                     readAloud(ttsText)
                                 }
                             }
                         }
-                        if (isFirstMessage && fullContent.isNotBlank()) {
-                            generateTitle(sessionId, userText, fullContent)
+                        if (isFirstMessage && (leakFinal ?: fullContent).isNotBlank()) {
+                            generateTitle(sessionId, userText, leakFinal ?: fullContent)
                         }
                         // Plan→Build phase switch: model signals with [SWITCH_TO_BUILD] marker
                         if (fullContent.contains(SWITCH_MARKER) && _currentModel.value.contains("agent")) {
@@ -3322,6 +3416,46 @@ sources inline as [reference:N]."""
             }
         }
         return text.substring(start)
+    }
+
+    /**
+     * Repair a JSON object whose stream was cut at a structural boundary (right
+     * after a complete `}`/`]`, only padding after it). Returns null when the cut
+     * landed mid-token or mid-string — closing those would fabricate values (e.g.
+     * a half-written shell command) that must never be executed.
+     */
+    private fun repairTruncatedJson(raw: String): String? {
+        val start = raw.indexOf('{')
+        if (start < 0) return null
+        val closers = ArrayDeque<Char>()
+        var inString = false
+        var escaped = false
+        var lastBoundary = start // index right after the last complete }/] outside strings
+        for (i in start until raw.length) {
+            val c = raw[i]
+            if (escaped) { escaped = false; continue }
+            when (c) {
+                '\\' -> escaped = true
+                '"' -> inString = !inString
+                '{' -> if (!inString) closers.addLast('}')
+                '[' -> if (!inString) closers.addLast(']')
+                '}' -> if (!inString) {
+                    if (closers.removeLastOrNull() != '}') return null
+                    lastBoundary = i + 1
+                }
+                ']' -> if (!inString) {
+                    if (closers.removeLastOrNull() != ']') return null
+                    lastBoundary = i + 1
+                }
+            }
+        }
+        // Mid-string cut or balanced already (nothing to repair).
+        if (inString || escaped || closers.isEmpty()) return null
+        // Everything after the last complete container must be padding; a partial
+        // key/value there means the cut landed mid-token.
+        if (!raw.substring(lastBoundary).matches(Regex("[\\s,]*"))) return null
+        val body = raw.substring(start).trimEnd().removeSuffix(",").trimEnd()
+        return body + closers.joinToString("")
     }
 
     /**

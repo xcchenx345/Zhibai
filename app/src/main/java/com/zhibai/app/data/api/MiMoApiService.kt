@@ -133,6 +133,7 @@ class MiMoApiService(
                                 content = choice.delta.content ?: "",
                                 reasoning = choice.delta.reasoningContent ?: "",
                                 finished = choice.finishReason != null,
+                                finishReason = choice.finishReason,
                                 annotations = choice.delta.annotations
                             ))
                             // No early exit on finish_reason — usage/[DONE] arrive after it
@@ -350,6 +351,7 @@ sealed class StreamChunk {
         val content: String,
         val reasoning: String = "",
         val finished: Boolean = false,
+        val finishReason: String? = null,
         val annotations: List<com.zhibai.app.data.model.Annotation>? = null
     ) : StreamChunk()
     data class Done(val usage: Usage? = null) : StreamChunk()
