@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
  * WorkspaceShellRunner (readResult/StreamCollector), ProotTermination (terminateProot).
  *
  * execute() returns null ONLY when proot cannot be used (rootfs missing, .so missing,
- * process failed to start) so callers can fall through to su/Termux/sh; any real run
+ * process failed to start) so callers can fall through to su/sh; any real run
  * result — including non-zero exit and timeout — comes back as a formatted string.
  */
 object ProotShell {

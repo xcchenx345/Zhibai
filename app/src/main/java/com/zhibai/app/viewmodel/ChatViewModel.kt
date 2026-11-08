@@ -3166,12 +3166,12 @@ ${phoneToolDoc}- read_file: {"path":"file path"}
 - install_apk: {"path":"/sdcard/Download/app.apk"} — Install APK (user confirms)
 - uninstall_app: {"package":"com.example.app"} — Uninstall app (user confirms)
 - download_and_install: {"url":"https://example.com/app.apk"} — Download APK + install (user confirms)
-- run_shell: {"command":"ls -la","timeout":30} — Execute shell command (built-in rootfs proot when installed, else root/Termux/app shell)
+- run_shell: {"command":"ls -la","timeout":30} — Execute shell command (built-in rootfs proot when installed, else root or app shell)
 - install_rootfs: {"url":"...tar.gz"} — One-time: download+install Linux rootfs (~30MB Ubuntu default). Enables apt/python3 in run_shell; /workspace = workspace dir.
-- run_python: {"code":"print('hello')"} — Run Python via built-in rootfs (install_rootfs first, then apt install python3) or Termux
-- run_python: {"path":"/sdcard/知白/script.py"} — Run Python file via built-in rootfs or Termux
-- run_node: {"code":"console.log('hi')"} — Run Node.js via Termux (must have Termux+nodejs installed)
-- run_java: {"code":"public class Main { public static void main(String[] a){ System.out.println(\"hi\"); }}"} — Compile & run Java via Termux (must have Termux+openjdk installed)
+- run_python: {"code":"print('hello')"} — Run Python via built-in rootfs (install_rootfs first, then apt install python3)
+- run_python: {"path":"/sdcard/知白/script.py"} — Run Python file via built-in rootfs
+- run_node: {"code":"console.log('hi')"} — Run Node.js via built-in rootfs (install_rootfs first, then apt install nodejs)
+- run_java: {"code":"public class Main { public static void main(String[] a){ System.out.println(\"hi\"); }}"} — Compile & run Java via built-in rootfs (install_rootfs first, then apt install openjdk-17-jdk)
 - extract_archive: {"path":"/sdcard/知白/a.zip","dest":"folder (optional)"} — Unzip a zip/jar/apk archive into a folder (no root needed)
 - create_questionnaire: {"questions":[{"id":"q1","type":"single","question":"问题文本","options":["选项A","选项B"],"required":true}]}
   types: single(单选,需要options) / multi(多选,需要options) / text(填空) / rating(1到maxRating,默认5).

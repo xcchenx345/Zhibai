@@ -1463,7 +1463,7 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
 
         // run_shell
         tools.add(AgentTool(
-            name = "run_shell", description = "Execute a shell command (built-in proot rootfs when installed, else root, Termux, or app shell). Args: command, timeout (optional seconds, default 30)", riskLevel = 3, category = "system"
+            name = "run_shell", description = "Execute a shell command (built-in proot rootfs when installed, else root or app shell). Args: command, timeout (optional seconds, default 30)", riskLevel = 3, category = "system"
         ) { args, ctx ->
             val cmd = args["command"] as? String ?: return@AgentTool "Error: no command"
             val timeout = (args["timeout"] as? Number)?.toLong() ?: 30L
@@ -1482,13 +1482,7 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
                 //    null = su binary missing/denied at exec → fall through;
                 //    a real run result (even non-zero exit) is returned as-is.
                 execCapture(arrayOf("su", "-c", cmd), timeout)?.let { return@AgentTool it }
-                // 2) Prefer Termux (full PATH) if installed AND permission granted
-                val hasTermux = try { ctx.packageManager.getPackageInfo("com.termux", 0); true } catch (_: Exception) { false }
-                if (hasTermux && hasTermuxPermission(ctx)) {
-                    val result = runViaTermux(ctx, "/data/data/com.termux/files/usr/bin/bash", arrayOf("-c", cmd), timeout)
-                    if (result != null) return@AgentTool result
-                }
-                // 3) Fallback: Android system shell (limited PATH)
+                // 2) Fallback: Android system shell (limited PATH)
                 execCapture(arrayOf("sh", "-c", cmd), timeout)?.let { return@AgentTool it }
                 "Error: no shell available"
             } catch (e: Exception) { "Error: ${e.message}" }
@@ -1526,16 +1520,16 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
                 "/workspace is the agent workspace dir."
         })
 
-        // run_python — built-in rootfs first, then Termux
+        // run_python — built-in rootfs
         tools.add(AgentTool(
-            name = "run_python", description = "Run a Python script. Args: code (Python source) or path (path to .py file). Uses built-in rootfs (install_rootfs first, then apt install python3) or Termux with Python installed.", riskLevel = 3, category = "system"
+            name = "run_python", description = "Run a Python script. Args: code (Python source) or path (path to .py file). Uses built-in rootfs (install_rootfs first, then apt install python3).", riskLevel = 3, category = "system"
         ) { args, ctx ->
             val code = args["code"] as? String
             val path = args["path"] as? String
             if (code.isNullOrBlank() && path.isNullOrBlank()) return@AgentTool "Error: provide code or path"
 
             try {
-                // Write code to a temp file in workspace (shared by rootfs and Termux paths)
+                // Write code to a temp file in workspace (shared by rootfs paths)
                 val scriptFile = if (path != null) resolvePath(path) else {
                     val f = java.io.File(workspaceDir, "_agent_script.py")
                     f.writeText(code!!)
@@ -1544,7 +1538,7 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
                 if (!validatePath(scriptFile)) return@AgentTool "Error: access denied"
                 if (!scriptFile.exists()) return@AgentTool "Error: script not found"
 
-                // 0) Built-in rootfs with python3 installed
+                // Built-in rootfs with python3 installed
                 val linux = Rootfs.linuxDir(ctx)
                 if (Rootfs.isUsable(linux) && Rootfs.hasEntry(linux, "usr/bin/python3")) {
                     val guest = toGuestPath(scriptFile)
@@ -1553,47 +1547,20 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
                         Rootfs.prootLibDir(ctx), linux, workspaceDir,
                         Rootfs.tempDir(ctx), "python3 '${guest.replace("'", "'\"'\"'")}'", 60
                     )?.let { return@AgentTool it }
-                    // null = proot unavailable → fall through to Termux chain
+                    // null = proot unavailable → error below
                 }
 
-                // Check if Termux is installed
-                val termuxPkg = "com.termux"
-                val hasTermux = try { ctx.packageManager.getPackageInfo(termuxPkg, 0); true } catch (_: Exception) { false }
-                if (!hasTermux) {
-                    return@AgentTool "Error: no Python runtime available. Run install_rootfs, then run_shell {\"command\":\"apt update && apt install -y python3\"}; or install Termux from F-Droid and: pkg install python."
-                }
-
-                // Try Termux first (full PATH with pip-installed packages)
-                if (hasTermuxPermission(ctx)) {
-                    val result = runViaTermux(ctx,
-                        "/data/data/com.termux/files/usr/bin/python3",
-                        arrayOf(scriptFile.absolutePath), 60)
-                    if (result != null) return@AgentTool result
-                }
-                // Fallback: system python3 (rarely available on Android)
-                val process = ProcessBuilder("python3", scriptFile.absolutePath)
-                    .redirectErrorStream(true)
-                    .start()
-                val output = StringBuilder()
-                val reader = Thread { process.inputStream.bufferedReader().use { r -> r.forEachLine { output.appendLine(it) } } }
-                reader.start()
-                val finished = process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)
-                if (!finished) { process.destroyForcibly(); return@AgentTool "Error: Python timeout after 60s" }
-                reader.join(2000)
-                "Exit: ${process.exitValue()}\n${output.toString().trimEnd().take(8000)}"
+                "Error: no Python runtime available. Run install_rootfs, then run_shell {\"command\":\"apt update && apt install -y python3\"}."
             } catch (e: Exception) { "Error: ${e.message}" }
         })
 
-        // run_node — uses Termux Node.js if available
+        // run_node — built-in rootfs Node.js (apt install nodejs)
         tools.add(AgentTool(
-            name = "run_node", description = "Run a Node.js script. Args: code or path. Requires Termux with Node installed.", riskLevel = 3, category = "system"
+            name = "run_node", description = "Run a Node.js script. Args: code or path. Uses built-in rootfs (install_rootfs first, then apt install nodejs).", riskLevel = 3, category = "system"
         ) { args, ctx ->
             val code = args["code"] as? String
             val path = args["path"] as? String
             if (code.isNullOrBlank() && path.isNullOrBlank()) return@AgentTool "Error: provide code or path"
-
-            val hasTermux = try { ctx.packageManager.getPackageInfo("com.termux", 0); true } catch (_: Exception) { false }
-            if (!hasTermux) return@AgentTool "Error: Termux not installed. Install Termux, then: pkg install nodejs"
 
             try {
                 val scriptFile = if (path != null) resolvePath(path) else {
@@ -1603,37 +1570,29 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
                 }
                 if (!validatePath(scriptFile)) return@AgentTool "Error: access denied"
 
-                // Try Termux first
-                if (hasTermuxPermission(ctx)) {
-                    val result = runViaTermux(ctx,
-                        "/data/data/com.termux/files/usr/bin/node",
-                        arrayOf(scriptFile.absolutePath), 60)
-                    if (result != null) return@AgentTool result
+                // Built-in rootfs with node installed
+                val linux = Rootfs.linuxDir(ctx)
+                if (Rootfs.isUsable(linux) && Rootfs.hasEntry(linux, "usr/bin/node")) {
+                    val guest = toGuestPath(scriptFile)
+                        ?: return@AgentTool "Error: script path not reachable from rootfs (use workspace or /sdcard): ${scriptFile.absolutePath}"
+                    ProotShell.execute(
+                        Rootfs.prootLibDir(ctx), linux, workspaceDir,
+                        Rootfs.tempDir(ctx), "node '${guest.replace("'", "'\"'\"'")}'", 60
+                    )?.let { return@AgentTool it }
+                    // null = proot unavailable → error below
                 }
-                // Fallback: system node
-                val process = ProcessBuilder("node", scriptFile.absolutePath)
-                    .redirectErrorStream(true)
-                    .start()
-                val output = StringBuilder()
-                val reader = Thread { process.inputStream.bufferedReader().use { r -> r.forEachLine { output.appendLine(it) } } }
-                reader.start()
-                val finished = process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)
-                if (!finished) { process.destroyForcibly(); return@AgentTool "Error: Node timeout after 60s" }
-                reader.join(2000)
-                "Exit: ${process.exitValue()}\n${output.toString().trimEnd().take(8000)}"
+
+                "Error: no Node.js runtime available. Run install_rootfs, then run_shell {\"command\":\"apt update && apt install -y nodejs\"}."
             } catch (e: Exception) { "Error: ${e.message}" }
         })
 
-        // run_java — compile & run Java via Termux (pkg install openjdk-17)
+        // run_java — compile & run via built-in rootfs (apt install openjdk-17-jdk)
         tools.add(AgentTool(
-            name = "run_java", description = "Compile and run a Java source file. Args: code (Java source) or path (path to .java file). Requires Termux with openjdk installed (pkg install openjdk-17).", riskLevel = 3, category = "system"
+            name = "run_java", description = "Compile and run a Java source file. Args: code (Java source) or path (path to .java file). Uses built-in rootfs (install_rootfs first, then apt install openjdk-17-jdk).", riskLevel = 3, category = "system"
         ) { args, ctx ->
             val code = args["code"] as? String
             val path = args["path"] as? String
             if (code.isNullOrBlank() && path.isNullOrBlank()) return@AgentTool "Error: provide code or path"
-
-            val hasTermux = try { ctx.packageManager.getPackageInfo("com.termux", 0); true } catch (_: Exception) { false }
-            if (!hasTermux) return@AgentTool "Error: Termux not installed. Install Termux, then: pkg install openjdk-17"
 
             try {
                 val srcFile = if (path != null) resolvePath(path) else {
@@ -1646,25 +1605,23 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
 
                 // Determine class name from file name (public class must match)
                 val className = srcFile.nameWithoutExtension
-                val workDir = srcFile.parentFile?.absolutePath ?: workspaceDir.absolutePath
 
-                if (hasTermuxPermission(ctx)) {
-                    // javac then java — combined via bash -c
-                    val bashCmd = "cd \"$workDir\" && /data/data/com.termux/files/usr/bin/javac \"$className.java\" && /data/data/com.termux/files/usr/bin/java \"$className\""
-                    val result = runViaTermux(ctx, "/data/data/com.termux/files/usr/bin/bash", arrayOf("-c", bashCmd), 60)
-                    if (result != null) return@AgentTool result
+                // Built-in rootfs with javac installed
+                val linux = Rootfs.linuxDir(ctx)
+                if (Rootfs.isUsable(linux) && Rootfs.hasEntry(linux, "usr/bin/javac")) {
+                    val guestFile = toGuestPath(srcFile)
+                        ?: return@AgentTool "Error: source path not reachable from rootfs (use workspace or /sdcard): ${srcFile.absolutePath}"
+                    val guestDir = guestFile.substringBeforeLast('/', Rootfs.MOUNT_WORKSPACE)
+                    val q = { s: String -> "'" + s.replace("'", "'\"'\"'") + "'" }
+                    val bashCmd = "cd ${q(guestDir)} && javac ${q("$className.java")} && java ${q(className)}"
+                    ProotShell.execute(
+                        Rootfs.prootLibDir(ctx), linux, workspaceDir,
+                        Rootfs.tempDir(ctx), bashCmd, 120
+                    )?.let { return@AgentTool it }
+                    // null = proot unavailable → error below
                 }
-                // Fallback: system javac/java (rarely available)
-                val process = ProcessBuilder("sh", "-c", "cd \"$workDir\" && javac \"$className.java\" && java \"$className\"")
-                    .redirectErrorStream(true)
-                    .start()
-                val output = StringBuilder()
-                val reader = Thread { process.inputStream.bufferedReader().use { r -> r.forEachLine { output.appendLine(it) } } }
-                reader.start()
-                val finished = process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)
-                if (!finished) { process.destroyForcibly(); return@AgentTool "Error: Java timeout after 60s" }
-                reader.join(2000)
-                "Exit: ${process.exitValue()}\n${output.toString().trimEnd().take(8000)}"
+
+                "Error: no Java runtime available. Run install_rootfs, then run_shell {\"command\":\"apt update && apt install -y openjdk-17-jdk\"}."
             } catch (e: Exception) { "Error: ${e.message}" }
         })
 
@@ -1864,62 +1821,6 @@ Reply with EXACTLY one word: APPROVE or DENY."""
     private fun getBatteryLevel(ctx: Context): Int {
         val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
         return bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
-    }
-
-    /**
-     * Execute a command via Termux RunCommandService Intent.
-     * Requires com.termux.permission.RUN_COMMAND (declared in manifest + granted by user)
-     * and allow-external-apps=true in Termux's termux.properties.
-     * Returns output string, or null on failure.
-     */
-    private fun runViaTermux(ctx: Context, executable: String, args: Array<String>, timeoutSec: Long): String? {
-        return try {
-            val intent = android.content.Intent().apply {
-                component = android.content.ComponentName("com.termux", "com.termux.app.RunCommandService")
-                action = "com.termux.RUN_COMMAND"
-                putExtra("com.termux.RUN_COMMAND_PATH", executable)
-                putExtra("com.termux.RUN_COMMAND_ARGUMENTS", args)
-                putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
-                putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
-            }
-            // RunCommandService is async — result arrives via broadcast.
-            // For synchronous use we write output to a temp file and poll it.
-            val outFile = java.io.File.createTempFile("termux_out_", ".txt", ctx.cacheDir)
-            outFile.deleteOnExit()
-            val errFile = java.io.File.createTempFile("termux_err_", ".txt", ctx.cacheDir)
-            errFile.deleteOnExit()
-            intent.putExtra("com.termux.RUN_COMMAND_REDIRECT_STDERR", errFile.absolutePath)
-            // Some Termux versions support redirecting stdout too
-            try { intent.putExtra("com.termux.RUN_COMMAND_REDIRECT_STDOUT", outFile.absolutePath) } catch (_: Exception) {}
-
-            ctx.startForegroundService(intent)
-
-            // Poll for output (max timeoutSec)
-            val deadline = System.currentTimeMillis() + timeoutSec * 1000
-            while (System.currentTimeMillis() < deadline) {
-                Thread.sleep(200)
-                if (outFile.length() > 0 || errFile.length() > 0) {
-                    // Wait a bit more for write to finish
-                    Thread.sleep(300)
-                    val out = outFile.readText().trimEnd()
-                    val err = errFile.readText().trimEnd()
-                    outFile.delete(); errFile.delete()
-                    return buildString {
-                        if (out.isNotBlank()) appendLine(out)
-                        if (err.isNotBlank()) appendLine("STDERR: $err")
-                        if (out.isBlank() && err.isBlank()) appendLine("(no output)")
-                    }.take(8000)
-                }
-            }
-            outFile.delete(); errFile.delete()
-            null // timeout — fall back to system shell
-        } catch (_: Exception) { null }
-    }
-
-    /** Check if Termux RUN_COMMAND permission is granted. */
-    private fun hasTermuxPermission(ctx: Context): Boolean {
-        return ctx.packageManager.checkPermission("com.termux.permission.RUN_COMMAND", ctx.packageName) ==
-            android.content.pm.PackageManager.PERMISSION_GRANTED
     }
 
     /**

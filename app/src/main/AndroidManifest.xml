@@ -42,8 +42,6 @@
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <!-- NFC -->
     <uses-permission android:name="android.permission.NFC" />
-    <!-- Termux RUN_COMMAND -->
-    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
     <!-- install_apk / download_and_install: "install unknown apps" toggle -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
