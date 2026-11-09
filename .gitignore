@@ -36,3 +36,6 @@ desktop.ini
 
 # 日志
 *.log
+
+# subagent scratch files
+.tmp_*
