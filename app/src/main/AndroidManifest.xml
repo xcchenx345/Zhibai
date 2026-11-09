@@ -44,6 +44,8 @@
     <uses-permission android:name="android.permission.NFC" />
     <!-- install_apk / download_and_install: "install unknown apps" toggle -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Local AI: ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS gate before model install -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <queries>
         <intent>

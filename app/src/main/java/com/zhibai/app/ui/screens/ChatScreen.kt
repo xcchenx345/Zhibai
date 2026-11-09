@@ -2547,6 +2547,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
             unlimitedAttachments = viewModel.unlimitedAttachments.collectAsState().value,
             agentEngine = viewModel.agentEngine,
             onApiKeyChange = { viewModel.setApiKey(it) },
+            localAiSection = { com.zhibai.app.ui.components.LocalAiSettingsSection(viewModel) },
             onTtsVoiceChange = { viewModel.setTtsVoice(it) },
             onFontSizeChange = { viewModel.setFontSize(it) },
             onForceNewSessionChange = { viewModel.setForceNewSessionOnModelSwitch(it) },

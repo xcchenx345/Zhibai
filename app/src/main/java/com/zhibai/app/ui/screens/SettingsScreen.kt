@@ -101,6 +101,7 @@ fun SettingsScreen(
     prefIslandStreaming: Boolean = true,
     onPrefIslandStreamingChange: (Boolean) -> Unit = {},
     onApiKeyChange: (String) -> Unit,
+    localAiSection: @Composable () -> Unit = {},
     onTtsVoiceChange: (String) -> Unit,
     onFontSizeChange: (Int) -> Unit,
     onForceNewSessionChange: (Boolean) -> Unit,
@@ -163,6 +164,7 @@ fun SettingsScreen(
             SettingsPage.API_KEY -> ApiKeyPage(
                 apiKey = apiKey,
                 onSave = onApiKeyChange,
+                localAiSection = localAiSection,
                 modifier = Modifier.padding(paddingValues)
             )
             SettingsPage.VOICE -> VoicePage(
@@ -188,6 +190,7 @@ fun SettingsScreen(
                 onWorkspacePathChange = onWorkspacePathChange,
                 onNavigateToToolPermissions = { currentPage = SettingsPage.TOOL_PERMISSIONS; pageTitle = "工具权限" },
                 onNavigateToWirelessAdb = { currentPage = SettingsPage.WIRELESS_ADB; pageTitle = "无线调试 ADB" },
+                localAiSection = localAiSection,
                 modifier = Modifier.padding(paddingValues)
             )
             SettingsPage.ABOUT -> AboutPage(
@@ -483,6 +486,7 @@ private fun IslandSettingsPage(
 private fun ApiKeyPage(
     apiKey: String,
     onSave: (String) -> Unit,
+    localAiSection: @Composable () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showApiKey by rememberSaveable { mutableStateOf(false) }
@@ -524,6 +528,8 @@ private fun ApiKeyPage(
         ) {
             Text("保存")
         }
+
+        localAiSection()
 
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -732,6 +738,7 @@ private fun AgentSettingsPage(
     onWorkspacePathChange: (String) -> Unit = {},
     onNavigateToToolPermissions: () -> Unit = {},
     onNavigateToWirelessAdb: () -> Unit = {},
+    localAiSection: @Composable () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var agentKeyInput by remember(agentApiKey) { mutableStateOf(agentApiKey) }
@@ -843,6 +850,8 @@ private fun AgentSettingsPage(
                 shape = RoundedCornerShape(12.dp)
             )
             Spacer(modifier = Modifier.height(8.dp))
+
+            localAiSection()
 
             ListItem(
                 headlineContent = { Text("工作区路径") },

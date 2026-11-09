@@ -23,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -183,6 +184,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _apiKeyConfigured = MutableStateFlow(false)
     val apiKeyConfigured: StateFlow<Boolean> = _apiKeyConfigured.asStateFlow()
+
+    // Local AI (built-in MNN engine served on 127.0.0.1)
+    private val LOCAL_AI_ENABLED_KEY = stringPreferencesKey("local_ai_enabled")
+    private val LOCAL_AI_MODEL_KEY = stringPreferencesKey("local_ai_model")
+    private val _localAiEnabled = MutableStateFlow(false)
+    val localAiEnabled: StateFlow<Boolean> = _localAiEnabled.asStateFlow()
+    private val _localAiModel = MutableStateFlow("")
+    val localAiModel: StateFlow<String> = _localAiModel.asStateFlow()
+    private val _localAiInstalling = MutableStateFlow(false)
+    val localAiInstalling: StateFlow<Boolean> = _localAiInstalling.asStateFlow()
 
     /** null = still loading prefs; false = show first-run onboarding. */
     private val _onboardingDone = MutableStateFlow<Boolean?>(null)
@@ -717,9 +728,22 @@ $convoText
                     _thinkingLevel.value = level
                     _enableThinking.value = level > 0
                 }
+                // Local AI prefs — read BEFORE the agent block so its key/url
+                // selection can prefer the local endpoint.
+                prefs[LOCAL_AI_ENABLED_KEY]?.let { _localAiEnabled.value = it == "true" }
+                prefs[LOCAL_AI_MODEL_KEY]?.let { _localAiModel.value = it }
                 if (_agentEnabled.value) {
-                    val key = if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
-                    val url = if (_agentApiKey.value.isNotBlank()) _agentBaseUrl.value else "https://api.xiaomimimo.com/v1"
+                    val local = _localAiEnabled.value && _localAiModel.value.isNotBlank()
+                    val key = when {
+                        local -> com.zhibai.app.localai.LocalAiManager.LOCAL_API_KEY
+                        _agentApiKey.value.isNotBlank() -> _agentApiKey.value
+                        else -> _apiKey.value
+                    }
+                    val url = when {
+                        local -> com.zhibai.app.localai.LocalAiManager.LOCAL_BASE_URL
+                        _agentApiKey.value.isNotBlank() -> _agentBaseUrl.value
+                        else -> "https://api.xiaomimimo.com/v1"
+                    }
                     agentChatService.updateApiKey(key)
                     agentChatService.updateBaseUrl(url)
                     val agentToolService = MiMoApiService()
@@ -728,6 +752,10 @@ $convoText
                     agentEngine = createAgentEngine(agentToolService)
                     // Create / auto-repair config.json at workspace root
                     loadAgentConfig()
+                }
+                // Route the main service to the local engine last, so it wins.
+                if (_localAiEnabled.value && _localAiModel.value.isNotBlank()) {
+                    applyLocalAiRouting(startEngine = true)
                 }
                 // Load saved sessions into the drawer, but always start on a fresh chat
                 val savedSessions = loadSessions()
@@ -748,10 +776,13 @@ $convoText
     fun refreshModelList() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val ids = apiService.listModels()
-                    .filter { it.startsWith("mimo-v") }
+                val raw = apiService.listModels()
                     .filterNot { it.contains("tts") || it.contains("asr") }
                     .distinct()
+                // Local mode: /v1/models is our own server listing the installed
+                // model — no mimo-v* prefix to match, keep the list as-is.
+                val ids = if (_localAiEnabled.value) raw
+                    else raw.filter { it.startsWith("mimo-v") }
                 if (ids.isNotEmpty()) {
                     // Single TTS entry; sub-modes live inside TTSScreen
                     _modelIds.value = ids + listOf("tts")
@@ -817,6 +848,139 @@ $convoText
         viewModelScope.launch {
             context.dataStore.edit { prefs ->
                 prefs[API_KEY] = key
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ local AI
+
+    /** Device support check (internal tier list). */
+    fun localAiSupport(): com.zhibai.app.localai.LocalAiSupport.Support =
+        com.zhibai.app.localai.LocalAiSupport.check(context)
+
+    /** Battery strategy must be "unrestricted" before install/enable. */
+    fun localAiBatteryOk(): Boolean =
+        com.zhibai.app.data.api.IslandNotificationService.isBatteryUnrestricted(context)
+
+    fun openLocalAiBatterySettings() =
+        com.zhibai.app.data.api.IslandNotificationService.openBatterySettings(context)
+
+    fun isLocalAiInstalled(model: com.zhibai.app.localai.LocalModel): Boolean =
+        com.zhibai.app.localai.ModelDownloader.isInstalled(
+            model, com.zhibai.app.localai.LocalAiManager.modelDir(context, model.displayName)
+        )
+
+    /**
+     * Download + install an MNN model. Progress rides the island notification
+     * ("安装的时候可以上岛"), completion/failure posts an island alert.
+     */
+    fun installLocalModel(
+        model: com.zhibai.app.localai.LocalModel,
+        onDone: (Boolean, String) -> Unit,
+    ) {
+        if (_localAiInstalling.value) {
+            onDone(false, "已有安装任务进行中")
+            return
+        }
+        _localAiInstalling.value = true
+        viewModelScope.launch {
+            try {
+                islandService.showAgentTaskNotification(
+                    taskTitle = "下载本地模型",
+                    taskStatus = "准备 ${model.displayName} ...",
+                    phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_RUN
+                )
+                val dest = com.zhibai.app.localai.LocalAiManager.modelDir(context, model.displayName)
+                withContext(Dispatchers.IO) {
+                    com.zhibai.app.localai.ModelDownloader.install(model, dest) { p ->
+                        val pct = when {
+                            p.bytesTotal != null && p.bytesTotal!! > 0 ->
+                                ((p.bytesDone * 100) / p.bytesTotal!!).toInt()
+                            p.filesTotal > 0 -> p.filesDone * 100 / p.filesTotal
+                            else -> -1
+                        }
+                        islandService.showAgentTaskNotification(
+                            taskTitle = "下载本地模型",
+                            taskStatus = "${model.displayName} ${p.filesDone}/${p.filesTotal} · ${p.currentFile.substringAfterLast('/')}",
+                            progress = pct,
+                            isIndeterminate = false,
+                            phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_RUN
+                        )
+                    }
+                }
+                islandService.showAgentTaskComplete(
+                    taskTitle = "本地模型安装完成",
+                    result = "${model.displayName} 已就绪"
+                )
+                onDone(true, "ok")
+            } catch (e: Exception) {
+                islandService.showAgentTaskComplete(
+                    taskTitle = "本地模型安装失败",
+                    result = e.message ?: "未知错误"
+                )
+                onDone(false, e.message ?: "未知错误")
+            } finally {
+                _localAiInstalling.value = false
+            }
+        }
+    }
+
+    /**
+     * Enable/disable local AI. Caller has already run the warning dialog,
+     * device-tier check and battery gate. When enabling, the model must be
+     * installed ([isLocalAiInstalled]).
+     */
+    fun setLocalAiEnabled(enabled: Boolean, displayName: String = _localAiModel.value) {
+        viewModelScope.launch {
+            if (enabled && displayName.isNotBlank()) {
+                _localAiEnabled.value = true
+                _localAiModel.value = displayName
+                context.dataStore.edit { prefs ->
+                    prefs[LOCAL_AI_ENABLED_KEY] = "true"
+                    prefs[LOCAL_AI_MODEL_KEY] = displayName
+                }
+                applyLocalAiRouting(startEngine = true)
+                refreshModelList()
+            } else {
+                _localAiEnabled.value = false
+                context.dataStore.edit { prefs ->
+                    prefs[LOCAL_AI_ENABLED_KEY] = "false"
+                }
+                withContext(Dispatchers.IO) { com.zhibai.app.localai.LocalAiManager.stop() }
+                // Restore cloud routing
+                apiService.updateBaseUrl("https://api.xiaomimimo.com/v1")
+                apiService.updateApiKey(_apiKey.value)
+                _apiKeyConfigured.value = _apiKey.value.isNotBlank()
+                if (_agentEnabled.value) {
+                    val key = if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
+                    val url = if (_agentApiKey.value.isNotBlank()) _agentBaseUrl.value
+                        else "https://api.xiaomimimo.com/v1"
+                    agentChatService.updateApiKey(key)
+                    agentChatService.updateBaseUrl(url)
+                }
+                refreshModelList()
+            }
+        }
+    }
+
+    /** Point every chat path at the localhost MNN server. */
+    private fun applyLocalAiRouting(startEngine: Boolean) {
+        val model = _localAiModel.value
+        apiService.updateBaseUrl(com.zhibai.app.localai.LocalAiManager.LOCAL_BASE_URL)
+        apiService.updateApiKey(com.zhibai.app.localai.LocalAiManager.LOCAL_API_KEY)
+        agentChatService.updateBaseUrl(com.zhibai.app.localai.LocalAiManager.LOCAL_BASE_URL)
+        agentChatService.updateApiKey(com.zhibai.app.localai.LocalAiManager.LOCAL_API_KEY)
+        _apiKeyConfigured.value = true // local mode needs no cloud key
+        _currentModel.value = model
+        if (startEngine) {
+            viewModelScope.launch(Dispatchers.IO) {
+                com.zhibai.app.localai.LocalAiManager.ensureStarted(context, model)
+                if (com.zhibai.app.localai.LocalAiManager.isReady) {
+                    refreshModelList()
+                } else {
+                    _error.value = "本地模型加载失败: " +
+                        (com.zhibai.app.localai.LocalAiManager.lastError ?: "未知错误")
+                }
             }
         }
     }

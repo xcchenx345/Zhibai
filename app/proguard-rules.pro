@@ -24,3 +24,7 @@
 -dontwarn org.bouncycastle.**
 -dontwarn org.conscrypt.**
 -dontwarn com.google.errorprone.annotations.**
+
+# MNN local LLM — JNI resolves natives by exact class/method name
+-keep class com.alibaba.mnnllm.android.llm.** { *; }
+-keepclassmembers class com.alibaba.mnnllm.android.llm.** { native <methods>; }

@@ -5,6 +5,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -39,11 +40,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhibai.app.ui.theme.MiMoColors
 import com.zhibai.app.viewmodel.ChatViewModel
+import com.zhibai.app.localai.LocalAiSupport
+import com.zhibai.app.localai.LocalModel
+import com.zhibai.app.localai.ModelRegistry
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 
 /** Steps of the first-run onboarding flow. */
 private enum class ObStep {
-    WELCOME, API_KEY, AGENT_TOGGLE, AGENT_API,
+    WELCOME, API_KEY, LOCAL_MODEL, AGENT_TOGGLE, AGENT_API,
     FONT_SIZE, TTS_VOICE, INPUT_STYLE, AGENT_PROFILE, DONE
 }
 
@@ -69,7 +78,8 @@ fun OnboardingScreen(
     fun advanceFrom(current: ObStep) {
         val next = when (current) {
             ObStep.WELCOME -> ObStep.API_KEY
-            ObStep.API_KEY -> ObStep.AGENT_TOGGLE
+            ObStep.API_KEY -> ObStep.LOCAL_MODEL
+            ObStep.LOCAL_MODEL -> ObStep.AGENT_TOGGLE
             ObStep.AGENT_TOGGLE -> if (agentEnabled) ObStep.AGENT_API else ObStep.FONT_SIZE
             ObStep.AGENT_API -> ObStep.FONT_SIZE
             ObStep.FONT_SIZE -> ObStep.TTS_VOICE
@@ -85,7 +95,8 @@ fun OnboardingScreen(
         val prev = when (current) {
             ObStep.WELCOME -> ObStep.WELCOME
             ObStep.API_KEY -> ObStep.WELCOME
-            ObStep.AGENT_TOGGLE -> ObStep.API_KEY
+            ObStep.LOCAL_MODEL -> ObStep.API_KEY
+            ObStep.AGENT_TOGGLE -> ObStep.LOCAL_MODEL
             ObStep.AGENT_API -> ObStep.AGENT_TOGGLE
             ObStep.FONT_SIZE -> if (agentEnabled) ObStep.AGENT_API else ObStep.AGENT_TOGGLE
             ObStep.TTS_VOICE -> ObStep.FONT_SIZE
@@ -140,6 +151,10 @@ fun OnboardingScreen(
                         ObStep.API_KEY -> ApiKeyStep(
                             viewModel = viewModel,
                             onNext = { advanceFrom(ObStep.API_KEY) }
+                        )
+                        ObStep.LOCAL_MODEL -> LocalModelStep(
+                            viewModel = viewModel,
+                            onNext = { advanceFrom(ObStep.LOCAL_MODEL) }
                         )
                         ObStep.AGENT_TOGGLE -> AgentToggleStep(
                             enabled = agentEnabled,
@@ -653,6 +668,294 @@ private fun ApiKeyStep(
             },
             nextLabel = if (savedKey.isNotBlank()) "保存并继续" else "继续",
             nextEnabled = input.isNotBlank()
+        )
+    }
+}
+
+// ── Step 1b: local model selection (built-in MNN) ───────────────────
+
+private enum class ObLocalAiDialog { NONE, WARNING, BATTERY, INSTALL_CONFIRM, ERROR, UNSUPPORTED }
+
+@Composable
+private fun LocalModelStep(
+    viewModel: ChatViewModel,
+    onNext: () -> Unit
+) {
+    val installing by viewModel.localAiInstalling.collectAsState()
+    val enabled by viewModel.localAiEnabled.collectAsState()
+    val activeModel by viewModel.localAiModel.collectAsState()
+    val scope = rememberCoroutineScope()
+
+    var support by remember { mutableStateOf<LocalAiSupport.Support?>(null) }
+    var models by remember { mutableStateOf<List<LocalModel>>(emptyList()) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var reloadKey by remember { mutableIntStateOf(0) }
+    var selected by remember { mutableStateOf<LocalModel?>(null) }
+    var dialog by remember { mutableStateOf(ObLocalAiDialog.NONE) }
+    var statusMsg by remember { mutableStateOf("") }
+
+    LaunchedEffect(reloadKey) {
+        loading = true
+        loadError = null
+        support = viewModel.localAiSupport()
+        try {
+            val list = withContext(Dispatchers.IO) { ModelRegistry.fetch() }
+            models = list
+            if (selected == null) {
+                selected = ModelRegistry.defaultModel(
+                    list, support?.tier ?: LocalAiSupport.Tier.HIGH
+                )
+            }
+        } catch (e: Exception) {
+            loadError = e.message ?: "网络错误"
+        } finally {
+            loading = false
+        }
+    }
+
+    fun confirmOrInstall() {
+        val m = selected ?: return
+        if (viewModel.isLocalAiInstalled(m)) {
+            dialog = ObLocalAiDialog.NONE
+            viewModel.setLocalAiEnabled(true, m.displayName)
+        } else {
+            dialog = ObLocalAiDialog.INSTALL_CONFIRM
+        }
+    }
+
+    fun beginEnable() {
+        val s = support ?: viewModel.localAiSupport().also { support = it }
+        if (!s.supported) {
+            dialog = ObLocalAiDialog.UNSUPPORTED
+        } else if (!viewModel.localAiBatteryOk()) {
+            statusMsg = ""
+            dialog = ObLocalAiDialog.BATTERY
+        } else {
+            confirmOrInstall()
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        ObStepColumn(modifier = Modifier.weight(1f)) {
+            ObHeading(
+                "本地模型（可选）",
+                "内置 MNN 推理引擎，不依赖任何第三方应用。启用后可离线对话；也可以跳过继续使用云端。"
+            )
+
+            support?.let { s ->
+                Text(
+                    "本机档位：${LocalAiSupport.tierLabel(s.tier)} · " +
+                        "${"%.1f".format(s.totalRamGb)}GB 内存",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (!s.supported) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(s.reason, fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            when {
+                loading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("正在获取模型列表…", fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+
+                loadError != null -> Column {
+                    Text(
+                        "获取模型列表失败：$loadError",
+                        fontSize = 13.sp, color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(onClick = { reloadKey++ }) { Text("重试") }
+                }
+
+                else -> {
+                    val tier = support?.tier ?: LocalAiSupport.Tier.HIGH
+                    models.forEach { m ->
+                        val allowed = ModelRegistry.allowedForTier(tier, m)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .then(
+                                    if (selected?.id == m.id && allowed)
+                                        Modifier.background(
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)
+                                        )
+                                    else Modifier
+                                )
+                                .clickable { if (allowed && !installing) selected = m }
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            RadioButton(
+                                selected = selected?.id == m.id,
+                                enabled = allowed && !installing,
+                                onClick = { if (allowed && !installing) selected = m }
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(m.displayName, fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium)
+                                Text(
+                                    buildString {
+                                        append("%.1fB".format(m.paramsB))
+                                        append(" · ")
+                                        append(
+                                            when {
+                                                !allowed -> "本机档位不足"
+                                                m.displayName.contains("MiMo-7B-RL") -> "推荐 · 默认"
+                                                else -> "可安装"
+                                            }
+                                        )
+                                    },
+                                    fontSize = 12.sp,
+                                    color = when {
+                                        !allowed -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                        m.displayName.contains("MiMo-7B-RL") ->
+                                            MaterialTheme.colorScheme.primary
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (installing) {
+                Spacer(modifier = Modifier.height(12.dp))
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    "下载中 — 进度与完成提醒见灵动岛",
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.primary
+                )
+            }
+            if (enabled) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "已启用 · $activeModel",
+                    fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            if (statusMsg.isNotBlank() && dialog == ObLocalAiDialog.NONE) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(statusMsg, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+            }
+        }
+
+        ObBottomBar(
+            onNext = {
+                if (enabled || installing) onNext()
+                else dialog = ObLocalAiDialog.WARNING
+            },
+            nextLabel = when {
+                installing -> "安装中…"
+                enabled -> "完成"
+                else -> "启用本地AI"
+            },
+            nextEnabled = !installing && (enabled || selected != null),
+            onSkip = { onNext() },
+            skipLabel = "跳过"
+        )
+    }
+
+    // ── dialogs ──
+    when (dialog) {
+        ObLocalAiDialog.NONE -> {}
+
+        ObLocalAiDialog.WARNING -> AlertDialog(
+            onDismissRequest = { dialog = ObLocalAiDialog.NONE },
+            title = { Text("启用本地AI？") },
+            text = {
+                Text(buildAnnotatedString {
+                    append("本地AI可能更慢，甚至导致发热卡顿\n")
+                    pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
+                    append("严重的会导致死机")
+                    pop()
+                    append("\n是否继续？")
+                }, lineHeight = 22.sp)
+            },
+            confirmButton = { TextButton(onClick = { beginEnable() }) { Text("继续") } },
+            dismissButton = { TextButton(onClick = { dialog = ObLocalAiDialog.NONE }) { Text("取消") } }
+        )
+
+        ObLocalAiDialog.UNSUPPORTED -> AlertDialog(
+            onDismissRequest = { dialog = ObLocalAiDialog.NONE },
+            title = { Text("机型不在支持名单") },
+            text = {
+                Text((support?.reason ?: "该设备不满足本地AI要求") +
+                    "\n\n支持名单按内存分档：低档 4-6GB、中档 6-8GB、高档 ≥8GB（需 arm64）。")
+            },
+            confirmButton = { TextButton(onClick = { dialog = ObLocalAiDialog.NONE }) { Text("关闭") } }
+        )
+
+        ObLocalAiDialog.BATTERY -> AlertDialog(
+            onDismissRequest = { dialog = ObLocalAiDialog.NONE },
+            title = { Text("先设置省电策略") },
+            text = {
+                Text("准备安装本地模型前，需要把本应用的省电策略设为「无限制」，" +
+                    "否则下载和推理过程可能被系统杀掉。\n\n$statusMsg")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (viewModel.localAiBatteryOk()) {
+                        dialog = ObLocalAiDialog.NONE
+                        confirmOrInstall()
+                    } else {
+                        statusMsg = "仍未设为「无限制」，请修改后重试"
+                    }
+                }) { Text("我已设置") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.openLocalAiBatterySettings() }) { Text("去设置") }
+            }
+        )
+
+        ObLocalAiDialog.INSTALL_CONFIRM -> AlertDialog(
+            onDismissRequest = { dialog = ObLocalAiDialog.NONE },
+            title = { Text("准备安装") },
+            text = {
+                val m = selected
+                Text(buildString {
+                    append("将下载并安装本地模型：\n")
+                    append("· ").append(m?.displayName ?: "—").append('\n')
+                    if (m != null && m.paramsB > 0) {
+                        append("· 约 ").append("%.1f".format(m.paramsB * 0.74)).append(" GB（4bit）\n")
+                    }
+                    append("\n下载期间会通过灵动岛显示进度，完成后提醒你。")
+                }, lineHeight = 22.sp)
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    dialog = ObLocalAiDialog.NONE
+                    val m = selected ?: return@TextButton
+                    viewModel.installLocalModel(m) { ok, msg ->
+                        if (ok) viewModel.setLocalAiEnabled(true, m.displayName)
+                        else scope.launch {
+                            statusMsg = "安装失败: $msg"
+                            dialog = ObLocalAiDialog.ERROR
+                        }
+                    }
+                }) { Text("开始安装") }
+            },
+            dismissButton = {
+                TextButton(onClick = { dialog = ObLocalAiDialog.NONE }) { Text("取消") }
+            }
+        )
+
+        ObLocalAiDialog.ERROR -> AlertDialog(
+            onDismissRequest = { dialog = ObLocalAiDialog.NONE },
+            title = { Text("本地AI出错了") },
+            text = { Text(statusMsg) },
+            confirmButton = { TextButton(onClick = { dialog = ObLocalAiDialog.NONE }) { Text("关闭") } }
         )
     }
 }
