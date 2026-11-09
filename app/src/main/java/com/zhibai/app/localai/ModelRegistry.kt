@@ -1,6 +1,5 @@
 package com.zhibai.app.localai
 
-import com.google.gson.Gson
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -32,7 +31,6 @@ data class LocalModel(
  */
 object ModelRegistry {
     private val HOSTS = listOf("https://hf-mirror.com", "https://huggingface.co")
-    private val gson = Gson()
 
     /** Max parameter count (billions) a device tier may run. */
     fun tierCapB(tier: LocalAiSupport.Tier): Double = when (tier) {
@@ -51,44 +49,102 @@ object ModelRegistry {
         val allowed = models.filter { allowedForTier(tier, it) }
         return allowed.firstOrNull { it.displayName.contains("MiMo-7B-RL", ignoreCase = true) }
             ?: allowed.sortedByDescending { it.paramsB }.firstOrNull()
-            ?: models.firstOrNull { it.displayName.contains("MiMo-7B-RL", ignoreCase = true) }
+        // No over-tier fallback on purpose: a LOW/MID device with no allowed model
+        // gets null so the UI shows an empty selection instead of a 7B it can't run.
     }
 
-    /** Fetch MiMo-series models; throws with the last network error when all hosts fail. */
+    /**
+     * File layout of the official taobao-mnn MiMo MNN exports (verified against
+     * the live API 2026-11). Used when the per-model file list can't be fetched
+     * and as the offline seed.
+     */
+    private val MIMO_MNN_FILES = listOf(
+        "config.json",
+        "embeddings_bf16.bin",
+        "llm.mnn",
+        "llm.mnn.json",
+        "llm.mnn.weight",
+        "llm_config.json",
+        "tokenizer.txt",
+    )
+
+    /** Offline seed — the official MiMo MNN exports, so the list NEVER fails hard. */
+    private fun seedModels(): List<LocalModel> =
+        listOf("MiMo-7B-RL-MNN", "MiMo-7B-RL-Zero-MNN", "MiMo-7B-SFT-MNN", "MiMo-7B-Base-MNN")
+            .map { name ->
+                LocalModel(
+                    id = "taobao-mnn/$name",
+                    displayName = name.removeSuffix("-MNN"),
+                    paramsB = parseParamsB(name),
+                    files = MIMO_MNN_FILES,
+                )
+            }
+
+    private fun getJson(urlStr: String): com.google.gson.JsonElement {
+        val conn = URL(urlStr).openConnection() as HttpURLConnection
+        conn.connectTimeout = 15_000
+        conn.readTimeout = 20_000
+        try {
+            val code = conn.responseCode
+            if (code !in 200..299) throw IllegalStateException("HTTP $code ← $urlStr")
+            return conn.inputStream.use {
+                JsonParser.parseString(it.readBytes().toString(Charsets.UTF_8))
+            }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /**
+     * Fetch MiMo-series models.
+     *
+     * hf-mirror.com first (this device is in China; huggingface.co is DNS-poisoned
+     * and only burns a 15s timeout). The LIST endpoint returns only `id` — file
+     * lists come from the per-model endpoint; if that fails we fall back to the
+     * known MNN file layout. If every host fails, return the offline seed so the
+     * picker always has a list.
+     */
     suspend fun fetch(): List<LocalModel> = withContext(Dispatchers.IO) {
-        var lastError: Exception? = null
         for (host in HOSTS) {
             try {
-                val url = URL("$host/api/models?author=taobao-mnn&limit=200")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 15_000
-                conn.readTimeout = 20_000
-                val body = conn.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
-                conn.disconnect()
-                val root = JsonParser.parseString(body).asJsonArray
-                val models = root.mapNotNull { el ->
+                val arr = getJson("$host/api/models?author=taobao-mnn&limit=200").asJsonArray
+                val ids = arr.mapNotNull { el ->
                     val obj = el.asJsonObject
-                    val id = obj.get("modelId")?.asString ?: return@mapNotNull null
-                    if (!id.contains("mimo", ignoreCase = true)) return@mapNotNull null
-                    val files = obj.getAsJsonArray("siblings")
-                        ?.mapNotNull { s -> s.asJsonObject.get("rfilename")?.asString }
-                        ?: emptyList()
-                    if (files.isEmpty()) return@mapNotNull null
+                    val id = obj.get("id")?.asString ?: obj.get("modelId")?.asString
+                        ?: return@mapNotNull null
+                    if (id.contains("mimo", ignoreCase = true)) id else null
+                }.distinct()
+                if (ids.isEmpty()) continue
+
+                val models = ids.map { id ->
                     val name = id.substringAfter("/")
+                    var files = try {
+                        getJson("$host/api/models/$id").asJsonObject
+                            .getAsJsonArray("siblings")
+                            ?.mapNotNull { s -> s.asJsonObject.get("rfilename")?.asString }
+                            ?.filterNot { it.startsWith(".") || it.equals("README.md", true) }
+                            ?: emptyList()
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                    if (files.isEmpty() && name.endsWith("-MNN")) files = MIMO_MNN_FILES
                     LocalModel(
                         id = id,
                         displayName = name.removeSuffix("-MNN"),
                         paramsB = parseParamsB(name),
                         files = files,
                     )
-                }.sortedByDescending { it.paramsB }
+                }.filter { it.files.isNotEmpty() }
+                    .sortedByDescending { it.paramsB }
+
                 if (models.isNotEmpty()) return@withContext models
-                lastError = IllegalStateException("registry returned no MiMo models")
-            } catch (e: Exception) {
-                lastError = e
+            } catch (_: Exception) {
+                // try next host
             }
         }
-        throw lastError ?: IllegalStateException("model registry unavailable")
+        // Everything unreachable (or the mirror broke): ship the known list so the
+        // user still sees models; download errors surface later, per file.
+        seedModels()
     }
 
     /** "MiMo-7B-RL-MNN" → 7.0 ; "Qwen2.5-0.5B" → 0.5 ; no match → 0. */
