@@ -11,17 +11,22 @@ import kotlin.coroutines.coroutineContext
 /**
  * Downloads an MNN model directory file-by-file.
  *
- * Sources, in order: ModelScope resolve URLs (domestic, fast — the MNN org
- * mirrors taobao-mnn), then hf-mirror.com, then huggingface.co. Files are
- * written to <destDir>/<file> with parent dirs created; a file is skipped when
- * it already exists with the advertised size (resume-friendly re-install).
+ * Sources, fastest first: ModelScope API FilePath (domestic, tested working),
+ * ModelScope resolve URL, hf-mirror.com, then huggingface.co as a last resort
+ * (DNS-poisoned in China — kept with a short connect timeout only).
+ *
+ * No HEAD/Content-Length probing: it burned 3x15s per file on bad networks and
+ * progress is driven by file counts anyway. On failure the exception carries
+ * ONE line per source so the UI shows why each host failed.
+ *
+ * Files are written to <destDir>/<file>; a file is skipped when it already
+ * exists with a non-zero size (resume-friendly re-install).
  */
 object ModelDownloader {
     data class Progress(
         val filesDone: Int,
         val filesTotal: Int,
         val bytesDone: Long,
-        val bytesTotal: Long?, // null when the server omitted Content-Length
         val currentFile: String,
     )
 
@@ -39,59 +44,34 @@ object ModelDownloader {
     ): Unit = withContext(Dispatchers.IO) {
         destDir.mkdirs()
         var bytesDone = 0L
-        var bytesTotal: Long? = null
         var done = 0
         for (path in model.files) {
             coroutineContext.ensureActive()
             val target = File(destDir, path)
             target.parentFile?.mkdirs()
-            val expected = contentLengthOf(model, path)
-            if (target.isFile && target.length() > 0 &&
-                (expected == null || target.length() == expected)
-            ) {
+            if (target.isFile && target.length() > 0) {
                 bytesDone += target.length()
                 done++
-                onProgress(Progress(done, model.files.size, bytesDone, bytesTotal, path))
+                onProgress(Progress(done, model.files.size, bytesDone, path))
                 continue
             }
             val tmp = File(destDir, "$path.part")
-            var fileBytes = 0L
             downloadFile(model, path, tmp) { readNow ->
-                fileBytes = readNow
-                onProgress(
-                    Progress(done, model.files.size, bytesDone + fileBytes, bytesTotal, path)
-                )
+                onProgress(Progress(done, model.files.size, bytesDone + readNow, path))
             }
             if (target.exists()) target.delete()
             if (!tmp.renameTo(target)) {
-                // Cross-dir rename fallback (shouldn't happen — same parent)
                 tmp.copyTo(target, overwrite = true)
                 tmp.delete()
             }
             bytesDone += target.length()
             done++
-            onProgress(Progress(done, model.files.size, bytesDone, bytesTotal, path))
+            onProgress(Progress(done, model.files.size, bytesDone, path))
         }
         if (!isInstalled(model, destDir)) {
             throw IllegalStateException("model install incomplete: ${model.displayName}")
         }
     }
-
-    /** Best-effort Content-Length probe (first source that answers). */
-    private fun contentLengthOf(model: LocalModel, path: String): Long? =
-        sourceUrls(model, path).firstNotNullOfOrNull { url ->
-            try {
-                val conn = URL(url).openConnection() as HttpURLConnection
-                conn.connectTimeout = 15_000
-                conn.readTimeout = 15_000
-                conn.requestMethod = "HEAD"
-                val len = if (conn.responseCode in 200..299) conn.contentLengthLong else -1L
-                conn.disconnect()
-                len.takeIf { it > 0 }
-            } catch (_: Exception) {
-                null
-            }
-        }
 
     private fun downloadFile(
         model: LocalModel,
@@ -99,17 +79,19 @@ object ModelDownloader {
         target: File,
         onBytes: (Long) -> Unit,
     ) {
-        var lastError: Exception? = null
+        val errors = mutableListOf<String>()
         for (urlStr in sourceUrls(model, path)) {
+            val host = try { URL(urlStr).host } catch (_: Exception) { urlStr }
             try {
                 val conn = URL(urlStr).openConnection() as HttpURLConnection
-                conn.connectTimeout = 20_000
+                // The poisoned host only ever gets a short connect window.
+                conn.connectTimeout = if (host == "huggingface.co") 8_000 else 10_000
                 conn.readTimeout = 60_000
                 conn.instanceFollowRedirects = true
                 val code = conn.responseCode
                 if (code !in 200..299) {
                     conn.disconnect()
-                    lastError = IllegalStateException("HTTP $code for $urlStr")
+                    errors += "$host: HTTP $code"
                     continue
                 }
                 conn.inputStream.use { input ->
@@ -126,17 +108,18 @@ object ModelDownloader {
                 }
                 conn.disconnect()
                 if (target.length() > 0) return
-                lastError = IllegalStateException("empty download: $path")
+                errors += "$host: 空文件"
             } catch (e: Exception) {
-                lastError = e
+                errors += "$host: ${e.message ?: e.javaClass.simpleName}"
                 target.delete()
             }
         }
-        throw lastError ?: IllegalStateException("no source for $path")
+        throw IllegalStateException(errors.joinToString("；"))
     }
 
     /** Candidate direct-download URLs for one repo file, fastest source first. */
     private fun sourceUrls(model: LocalModel, path: String): List<String> = buildList {
+        add("https://modelscope.cn/api/v1/models/${model.modelScopePath}/repo?FilePath=$path")
         add("https://modelscope.cn/models/${model.modelScopePath}/resolve/master/$path")
         add("https://hf-mirror.com/${model.id}/resolve/main/$path")
         add("https://huggingface.co/${model.id}/resolve/main/$path")

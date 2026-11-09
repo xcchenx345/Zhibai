@@ -893,12 +893,7 @@ $convoText
                 val dest = com.zhibai.app.localai.LocalAiManager.modelDir(context, model.displayName)
                 withContext(Dispatchers.IO) {
                     com.zhibai.app.localai.ModelDownloader.install(model, dest) { p ->
-                        val pct = when {
-                            p.bytesTotal != null && p.bytesTotal!! > 0 ->
-                                ((p.bytesDone * 100) / p.bytesTotal!!).toInt()
-                            p.filesTotal > 0 -> p.filesDone * 100 / p.filesTotal
-                            else -> -1
-                        }
+                        val pct = if (p.filesTotal > 0) p.filesDone * 100 / p.filesTotal else -1
                         islandService.showAgentTaskNotification(
                             taskTitle = "下载本地模型",
                             taskStatus = "${model.displayName} ${p.filesDone}/${p.filesTotal} · ${p.currentFile.substringAfterLast('/')}",
