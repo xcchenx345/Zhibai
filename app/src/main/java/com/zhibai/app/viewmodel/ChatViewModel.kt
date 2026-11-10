@@ -1011,6 +1011,36 @@ $convoText
     /** Ids of the local MNN model entries as they appear in the model list. */
     fun isLocalModelId(id: String): Boolean = id.startsWith("local:")
 
+    /**
+     * Delete the installed local model (frees the downloaded files), turn local
+     * AI off, and drop its entries from the model list. If the local model is
+     * currently selected we hop back to the first cloud model first, so the
+     * _currentModel collector re-routes every endpoint to the cloud.
+     */
+    fun deleteLocalAi() {
+        viewModelScope.launch {
+            if (isLocalModelId(_currentModel.value)) {
+                _currentModel.value =
+                    _modelIds.value.firstOrNull { it.startsWith("mimo-v") }
+                        ?: "mimo-v2.6-flash"
+            }
+            _localAiEnabled.value = false
+            _localAiModel.value = ""
+            context.dataStore.edit { prefs ->
+                prefs[LOCAL_AI_ENABLED_KEY] = "false"
+                prefs[LOCAL_AI_MODEL_KEY] = ""
+            }
+            withContext(Dispatchers.IO) {
+                com.zhibai.app.localai.LocalAiManager.deleteData(context)
+            }
+            refreshModelList()
+            islandService.showAgentTaskComplete(
+                taskTitle = "本地AI已删除",
+                result = "模型文件已清理，本地模型已从列表移除"
+            )
+        }
+    }
+
     /** "local:MiMo-7B-RL-agent" → "MiMo-7B-RL" (the installed model dir name). */
     fun localModelName(id: String): String =
         id.removePrefix("local:").removeSuffix("-agent")
@@ -3351,10 +3381,10 @@ AI：$assistantReply
             append("You are $agentName, an AI assistant developed by Xiaomi. ")
             append("Today is date: $dayOfWeek, $month ${today.dayOfMonth} ${today.year}. ")
             append("Your knowledge cutoff date is July 2025.")
-            if (_promptAmbiguousClarify.value) {
-                append(" $agentName tries to answer ambiguous queries as best as it can first, then asks for clarification if needed.")
-                append(" When $agentName does ask, it limits itself to one question at a time.")
-            }
+            // Always on (user directive): the hidden ForbiddenPage toggle no
+            // longer gates this line — it is part of the base prompt.
+            append(" $agentName tries to answer ambiguous queries as best as it can first, then asks for clarification if needed.")
+            append(" When $agentName does ask, it limits itself to one question at a time.")
             if (_promptSensitiveRefusal.value) {
                 append(" $agentName does not answer questions about foreign sensitive political news, incitement of confrontation, or historical distortion.")
             }

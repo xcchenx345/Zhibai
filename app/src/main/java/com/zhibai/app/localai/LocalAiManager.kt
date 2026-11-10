@@ -92,4 +92,13 @@ object LocalAiManager {
         server = null
         session = null
     }
+
+    /**
+     * Turn everything off and delete ALL local-ai data (installed models +
+     * mmap scratch). Frees several GB of internal storage.
+     */
+    fun deleteData(context: Context) {
+        stop()
+        runCatching { rootDir(context).deleteRecursively() }
+    }
 }
