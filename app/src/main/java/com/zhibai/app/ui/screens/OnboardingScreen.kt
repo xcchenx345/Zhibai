@@ -674,6 +674,12 @@ private fun ApiKeyStep(
 
 // ── Step 1b: local model selection (built-in MNN) ───────────────────
 
+private fun obHumanBytes(b: Long): String = when {
+    b >= 1024L * 1024 * 1024 -> "%.1f GB".format(b / 1024.0 / 1024.0 / 1024.0)
+    b >= 1024L * 1024 -> "%.0f MB".format(b / 1024.0 / 1024.0)
+    else -> "%.0f KB".format(b / 1024.0)
+}
+
 private enum class ObLocalAiDialog { NONE, WARNING, BATTERY, INSTALL_CONFIRM, ERROR, UNSUPPORTED }
 
 @Composable
@@ -829,11 +835,30 @@ private fun LocalModelStep(
             }
 
             if (installing) {
+                val dlProgress by viewModel.localAiProgress.collectAsState()
                 Spacer(modifier = Modifier.height(12.dp))
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(4.dp))
+                val p = dlProgress
+                if (p != null && p.percent >= 0) {
+                    LinearProgressIndicator(
+                        progress = { p.percent.coerceIn(0, 100) / 100f },
+                        modifier = Modifier.fillMaxWidth().height(4.dp)
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(4.dp))
+                }
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    "下载中 — 进度与完成提醒见灵动岛",
+                    buildString {
+                        append(if (p != null && p.percent >= 0) "下载中 ${p.percent}%" else "下载中")
+                        if (p != null && p.bytesTotal != null && p.bytesTotal > 0) {
+                            append(" · ").append(obHumanBytes(p.bytesDone))
+                            append('/').append(obHumanBytes(p.bytesTotal))
+                        }
+                        if (p != null && p.speedBps > 0) {
+                            append(" · ").append(obHumanBytes(p.speedBps)).append("/s")
+                        }
+                        append(" — 完成提醒见灵动岛")
+                    },
                     fontSize = 12.sp, color = MaterialTheme.colorScheme.primary
                 )
             }

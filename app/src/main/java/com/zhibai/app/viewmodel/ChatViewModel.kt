@@ -36,6 +36,18 @@ private val Application.dataStore: DataStore<Preferences> by preferencesDataStor
 /** One speed sample: t = seconds since stream start, think/answer in chars per second. */
 data class SpeedPoint(val t: Float, val think: Float, val answer: Float)
 
+/** Local AI model download progress (MNN Chat DownloadInfo style, simplified). */
+data class LocalAiProgress(
+    /** 0..100, or -1 when sizes are unknown. */
+    val percent: Int,
+    val bytesDone: Long,
+    val bytesTotal: Long?,
+    val speedBps: Long,
+    val currentFile: String,
+    val filesDone: Int,
+    val filesTotal: Int,
+)
+
 data class SpeedStats(
     val points: List<SpeedPoint> = emptyList(),
     val currentTotal: Float = 0f,
@@ -194,6 +206,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val localAiModel: StateFlow<String> = _localAiModel.asStateFlow()
     private val _localAiInstalling = MutableStateFlow(false)
     val localAiInstalling: StateFlow<Boolean> = _localAiInstalling.asStateFlow()
+    private val _localAiProgress = MutableStateFlow<LocalAiProgress?>(null)
+    val localAiProgress: StateFlow<LocalAiProgress?> = _localAiProgress.asStateFlow()
 
     /** null = still loading prefs; false = show first-run onboarding. */
     private val _onboardingDone = MutableStateFlow<Boolean?>(null)
@@ -893,12 +907,38 @@ $convoText
                 val dest = com.zhibai.app.localai.LocalAiManager.modelDir(context, model.displayName)
                 withContext(Dispatchers.IO) {
                     com.zhibai.app.localai.ModelDownloader.install(model, dest) { p ->
-                        val pct = if (p.filesTotal > 0) p.filesDone * 100 / p.filesTotal else -1
+                        val pct = when {
+                            p.bytesTotal != null && p.bytesTotal > 0 ->
+                                ((p.bytesDone * 100) / p.bytesTotal).toInt()
+                            p.filesTotal > 0 -> p.filesDone * 100 / p.filesTotal
+                            else -> -1
+                        }
+                        _localAiProgress.value = LocalAiProgress(
+                            percent = pct,
+                            bytesDone = p.bytesDone,
+                            bytesTotal = p.bytesTotal,
+                            speedBps = p.speedBps,
+                            currentFile = p.currentFile,
+                            filesDone = p.filesDone,
+                            filesTotal = p.filesTotal,
+                        )
                         islandService.showAgentTaskNotification(
                             taskTitle = "下载本地模型",
-                            taskStatus = "${model.displayName} ${p.filesDone}/${p.filesTotal} · ${p.currentFile.substringAfterLast('/')}",
+                            taskStatus = buildString {
+                                if (pct >= 0) append(pct).append("% · ")
+                                if (p.bytesTotal != null && p.bytesTotal > 0) {
+                                    append(humanBytes(p.bytesDone)).append('/')
+                                    append(humanBytes(p.bytesTotal))
+                                } else {
+                                    append("${p.filesDone}/${p.filesTotal} 文件")
+                                }
+                                if (p.speedBps > 0) {
+                                    append(" · ").append(humanBytes(p.speedBps)).append("/s")
+                                }
+                                append(" · ").append(p.currentFile.substringAfterLast('/'))
+                            },
                             progress = pct,
-                            isIndeterminate = false,
+                            isIndeterminate = pct < 0,
                             phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_RUN
                         )
                     }
@@ -916,8 +956,15 @@ $convoText
                 onDone(false, e.message ?: "未知错误")
             } finally {
                 _localAiInstalling.value = false
+                _localAiProgress.value = null
             }
         }
+    }
+
+    private fun humanBytes(b: Long): String = when {
+        b >= 1024L * 1024 * 1024 -> "%.1f GB".format(b / 1024.0 / 1024.0 / 1024.0)
+        b >= 1024L * 1024 -> "%.0f MB".format(b / 1024.0 / 1024.0)
+        else -> "%.0f KB".format(b / 1024.0)
     }
 
     /**

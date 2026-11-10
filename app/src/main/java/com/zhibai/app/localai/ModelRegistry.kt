@@ -6,6 +6,13 @@ import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
 
+/** One file of a model repo, with size + sha256 when the source provides them. */
+data class ModelFile(
+    val path: String,
+    val size: Long = 0L,
+    val sha256: String? = null,
+)
+
 /** One selectable local model (MNN format), as reported by the cloud registry. */
 data class LocalModel(
     /** Registry id, e.g. "taobao-mnn/MiMo-7B-RL-MNN" (HuggingFace form). */
@@ -13,8 +20,8 @@ data class LocalModel(
     val displayName: String,
     /** Parameter count in billions parsed from the name (7.0 for "7B"); 0 = unknown. */
     val paramsB: Double,
-    /** File paths inside the repo, needed for download. */
-    val files: List<String>,
+    /** Files needed for download (sizes/sha256 when available — drives progress + verify). */
+    val files: List<ModelFile>,
 ) {
     /** ModelScope org for downloads: HF "taobao-mnn/X" ↔ ModelScope "MNN/X". */
     val modelScopePath: String
@@ -24,13 +31,16 @@ data class LocalModel(
 /**
  * Cloud registry of MiMo-series MNN models.
  *
- * The list is fetched live from HuggingFace's public models API (hf-mirror.com
- * first — this device is in China — huggingface.co as fallback), filtered to the
- * MiMo series published by the MNN/taobao-mnn orgs. Device tier gates which
- * models may be selected (LOW ≤1B, MID ≤3B, HIGH ≤7B — see [LocalAiSupport]).
+ * Model ids come from the HuggingFace API (hf-mirror.com first — this device is
+ * in China; huggingface.co is DNS-poisoned). File lists prefer ModelScope's
+ * `repo/files?Recursive=1` — the endpoint MNN Chat's own downloader uses — which
+ * additionally provides per-file Size and Sha256 for byte-accurate progress and
+ * verification. Fallbacks: HF per-model siblings, then the offline seed, so the
+ * picker always has a list.
  */
 object ModelRegistry {
     private val HOSTS = listOf("https://hf-mirror.com", "https://huggingface.co")
+    private const val MS_API = "https://modelscope.cn/api/v1/models"
 
     /** Max parameter count (billions) a device tier may run. */
     fun tierCapB(tier: LocalAiSupport.Tier): Double = when (tier) {
@@ -55,8 +65,7 @@ object ModelRegistry {
 
     /**
      * File layout of the official taobao-mnn MiMo MNN exports (verified against
-     * the live API 2026-11). Used when the per-model file list can't be fetched
-     * and as the offline seed.
+     * the live APIs 2026-11). Last-resort fallback when no host answers.
      */
     private val MIMO_MNN_FILES = listOf(
         "config.json",
@@ -76,15 +85,15 @@ object ModelRegistry {
                     id = "taobao-mnn/$name",
                     displayName = name.removeSuffix("-MNN"),
                     paramsB = parseParamsB(name),
-                    files = MIMO_MNN_FILES,
+                    files = MIMO_MNN_FILES.map { ModelFile(it) },
                 )
             }
 
     private fun getJson(urlStr: String): com.google.gson.JsonElement {
         System.setProperty("java.net.preferIPv4Stack", "true")
         val conn = URL(urlStr).openConnection() as HttpURLConnection
-        conn.connectTimeout = 15_000
-        conn.readTimeout = 20_000
+        conn.connectTimeout = 20_000
+        conn.readTimeout = 30_000
         conn.setRequestProperty(
             "User-Agent",
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 " +
@@ -102,55 +111,80 @@ object ModelRegistry {
     }
 
     /**
-     * Fetch MiMo-series models.
-     *
-     * hf-mirror.com first (this device is in China; huggingface.co is DNS-poisoned
-     * and only burns a 15s timeout). The LIST endpoint returns only `id` — file
-     * lists come from the per-model endpoint; if that fails we fall back to the
-     * known MNN file layout. If every host fails, return the offline seed so the
-     * picker always has a list.
+     * ModelScope file list — the endpoint MNN Chat's MsApiService uses.
+     * Returns null when unreachable; caller falls back to HF siblings.
      */
+    private fun fetchMsFiles(modelScopePath: String): List<ModelFile>? = try {
+        val root = getJson("$MS_API/$modelScopePath/repo/files?Recursive=1")
+        val files = root.asJsonObject.getAsJsonObject("Data")?.getAsJsonArray("Files")
+            ?: return null
+        files.mapNotNull { el ->
+            val o = el.asJsonObject
+            if (o.get("Type")?.asString == "tree") return@mapNotNull null
+            val path = o.get("Path")?.asString ?: return@mapNotNull null
+            if (path.startsWith(".") || path.equals("README.md", true)) return@mapNotNull null
+            ModelFile(
+                path = path,
+                size = o.get("Size")?.asLong ?: 0L,
+                sha256 = o.get("Sha256")?.asString,
+            )
+        }.takeIf { it.isNotEmpty() }
+    } catch (_: Exception) {
+        null
+    }
+
+    /** HF per-model siblings (no sizes/sha). */
+    private fun fetchHfFiles(host: String, id: String): List<ModelFile>? = try {
+        getJson("$host/api/models/$id").asJsonObject
+            .getAsJsonArray("siblings")
+            ?.mapNotNull { s -> s.asJsonObject.get("rfilename")?.asString }
+            ?.filterNot { it.startsWith(".") || it.equals("README.md", true) }
+            ?.map { ModelFile(it) }
+            ?.takeIf { it.isNotEmpty() }
+    } catch (_: Exception) {
+        null
+    }
+
     suspend fun fetch(): List<LocalModel> = withContext(Dispatchers.IO) {
+        var ids: List<String>? = null
         for (host in HOSTS) {
             try {
                 val arr = getJson("$host/api/models?author=taobao-mnn&limit=200").asJsonArray
-                val ids = arr.mapNotNull { el ->
+                val found = arr.mapNotNull { el ->
                     val obj = el.asJsonObject
                     val id = obj.get("id")?.asString ?: obj.get("modelId")?.asString
                         ?: return@mapNotNull null
                     if (id.contains("mimo", ignoreCase = true)) id else null
                 }.distinct()
-                if (ids.isEmpty()) continue
-
-                val models = ids.map { id ->
-                    val name = id.substringAfter("/")
-                    var files = try {
-                        getJson("$host/api/models/$id").asJsonObject
-                            .getAsJsonArray("siblings")
-                            ?.mapNotNull { s -> s.asJsonObject.get("rfilename")?.asString }
-                            ?.filterNot { it.startsWith(".") || it.equals("README.md", true) }
-                            ?: emptyList()
-                    } catch (_: Exception) {
-                        emptyList()
-                    }
-                    if (files.isEmpty() && name.endsWith("-MNN")) files = MIMO_MNN_FILES
-                    LocalModel(
-                        id = id,
-                        displayName = name.removeSuffix("-MNN"),
-                        paramsB = parseParamsB(name),
-                        files = files,
-                    )
-                }.filter { it.files.isNotEmpty() }
-                    .sortedByDescending { it.paramsB }
-
-                if (models.isNotEmpty()) return@withContext models
+                if (found.isNotEmpty()) {
+                    ids = found
+                    break
+                }
             } catch (_: Exception) {
                 // try next host
             }
         }
-        // Everything unreachable (or the mirror broke): ship the known list so the
-        // user still sees models; download errors surface later, per file.
-        seedModels()
+
+        if (ids == null) return@withContext seedModels()
+
+        ids!!.map { id ->
+            val name = id.substringAfter("/")
+            val msPath =
+                if (id.startsWith("taobao-mnn/")) "MNN/" + id.substringAfter("taobao-mnn/") else id
+            // ModelScope first (sizes + sha256 — MNN Chat's proven endpoint),
+            // then HF siblings, then the known layout.
+            val files = fetchMsFiles(msPath)
+                ?: HOSTS.firstNotNullOfOrNull { host -> fetchHfFiles(host, id) }
+                ?: if (name.endsWith("-MNN")) MIMO_MNN_FILES.map { ModelFile(it) } else emptyList()
+            LocalModel(
+                id = id,
+                displayName = name.removeSuffix("-MNN"),
+                paramsB = parseParamsB(name),
+                files = files,
+            )
+        }.filter { it.files.isNotEmpty() }
+            .sortedByDescending { it.paramsB }
+            .ifEmpty { seedModels() }
     }
 
     /** "MiMo-7B-RL-MNN" → 7.0 ; "Qwen2.5-0.5B" → 0.5 ; no match → 0. */

@@ -50,6 +50,7 @@ fun LocalAiSettingsSection(viewModel: ChatViewModel) {
     val enabled by viewModel.localAiEnabled.collectAsState()
     val model by viewModel.localAiModel.collectAsState()
     val installing by viewModel.localAiInstalling.collectAsState()
+    val dlProgress by viewModel.localAiProgress.collectAsState()
 
     val scope = rememberCoroutineScope()
     var flow by remember { mutableStateOf(LocalAiFlow.NONE) }
@@ -105,7 +106,13 @@ fun LocalAiSettingsSection(viewModel: ChatViewModel) {
         }
     }
 
-    // ------------------------------------------------------------------ switch
+fun humanBytes(b: Long): String = when {
+    b >= 1024L * 1024 * 1024 -> "%.1f GB".format(b / 1024.0 / 1024.0 / 1024.0)
+    b >= 1024L * 1024 -> "%.0f MB".format(b / 1024.0 / 1024.0)
+    else -> "%.0f KB".format(b / 1024.0)
+}
+
+// ------------------------------------------------------------------ switch
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -114,7 +121,16 @@ fun LocalAiSettingsSection(viewModel: ChatViewModel) {
             Text("使用本地AI", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
             Spacer(modifier = Modifier.height(2.dp))
             val subtitle = when {
-                installing -> "正在安装本地模型…"
+                installing -> dlProgress?.let { p ->
+                    buildString {
+                        append(if (p.percent >= 0) "下载中 ${p.percent}%" else "下载中")
+                        if (p.bytesTotal != null && p.bytesTotal > 0) {
+                            append(" · ").append(humanBytes(p.bytesDone))
+                            append('/').append(humanBytes(p.bytesTotal))
+                        }
+                        if (p.speedBps > 0) append(" · ").append(humanBytes(p.speedBps)).append("/s")
+                    }
+                } ?: "正在安装本地模型…"
                 busy -> statusMsg.ifBlank { "处理中…" }
                 enabled && model.isNotBlank() -> "已启用 · $model（内置 MNN，不依赖云端）"
                 else -> "关闭 — 使用云端 MiMo API"
