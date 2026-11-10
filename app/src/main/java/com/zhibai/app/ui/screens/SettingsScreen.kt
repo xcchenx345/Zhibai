@@ -505,7 +505,7 @@ private fun ApiKeyPage(
             onValueChange = { apiKeyInput = it },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("MiMo API Key") },
-            placeholder = { Text("sk-xxxxx") },
+            placeholder = { Text("sk-xxxxx 或 mm-密文（签发方提供）") },
             singleLine = true,
             visualTransformation = if (showApiKey) VisualTransformation.None
             else PasswordVisualTransformation(),
@@ -821,7 +821,7 @@ private fun AgentSettingsPage(
                 value = agentKeyInput,
                 onValueChange = { agentKeyInput = it },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                placeholder = { Text("tp-xxxxx（留空则使用主密钥）") },
+                placeholder = { Text("tp-xxxxx / mm-密文（留空则使用主密钥）") },
                 singleLine = true,
                 visualTransformation = if (showAgentKey) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {

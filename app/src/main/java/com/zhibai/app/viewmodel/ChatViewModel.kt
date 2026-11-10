@@ -18,6 +18,7 @@ import com.zhibai.app.data.api.StreamChunk
 import com.zhibai.app.data.api.TTSService
 import com.zhibai.app.data.api.filterForSpeech
 import com.zhibai.app.data.model.*
+import com.zhibai.app.security.MmKeyCodec
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -658,8 +659,8 @@ $convoText
                 if (savedKey.isNotBlank()) {
                     _apiKey.value = savedKey
                     _apiKeyConfigured.value = true
-                    apiService.updateApiKey(savedKey)
-                    ttsService.updateApiKey(savedKey)
+                    apiService.updateApiKey(MmKeyCodec.resolve(savedKey))
+                    ttsService.updateApiKey(MmKeyCodec.resolve(savedKey))
                 }
                 val savedVoice = prefs[TTS_VOICE_KEY]
                 if (!savedVoice.isNullOrBlank()) {
@@ -753,7 +754,9 @@ $convoText
                 prefs[LOCAL_AI_ENABLED_KEY]?.let { _localAiEnabled.value = it == "true" }
                 prefs[LOCAL_AI_MODEL_KEY]?.let { _localAiModel.value = it }
                 if (_agentEnabled.value) {
-                    val key = if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
+                    val key = MmKeyCodec.resolve(
+                        if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
+                    )
                     val url = if (_agentApiKey.value.isNotBlank()) _agentBaseUrl.value
                         else "https://api.xiaomimimo.com/v1"
                     agentChatService.updateApiKey(key)
@@ -857,9 +860,10 @@ $convoText
     }
 
     fun setApiKey(key: String) {
-        apiService.updateApiKey(key)
-        cloudListService.updateApiKey(key)
-        ttsService.updateApiKey(key)
+        // Raw value (sk- or mm-) stays in DataStore/UI; services get the real key.
+        apiService.updateApiKey(MmKeyCodec.resolve(key))
+        cloudListService.updateApiKey(MmKeyCodec.resolve(key))
+        ttsService.updateApiKey(MmKeyCodec.resolve(key))
         _apiKey.value = key
         _apiKeyConfigured.value = key.isNotBlank()
         viewModelScope.launch {
@@ -1071,8 +1075,10 @@ $convoText
             }
         } else {
             apiService.updateBaseUrl("https://api.xiaomimimo.com/v1")
-            apiService.updateApiKey(_apiKey.value)
-            val key = if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
+            apiService.updateApiKey(MmKeyCodec.resolve(_apiKey.value))
+            val key = MmKeyCodec.resolve(
+                if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
+            )
             val url = if (_agentApiKey.value.isNotBlank()) _agentBaseUrl.value
                 else "https://api.xiaomimimo.com/v1"
             agentChatService.updateApiKey(key)
@@ -1184,14 +1190,17 @@ $convoText
     fun setAgentEnabled(enabled: Boolean) {
         _agentEnabled.value = enabled
         if (enabled && agentEngine == null) {
-            val key = if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
+            val key = MmKeyCodec.resolve(
+                if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
+            )
             val url = if (_agentApiKey.value.isNotBlank()) _agentBaseUrl.value else "https://api.xiaomimimo.com/v1"
             agentChatService.updateApiKey(key)
             agentChatService.updateBaseUrl(url)
-            val agentToolService = MiMoApiService()
-            agentToolService.updateApiKey(key)
-            agentToolService.updateBaseUrl(url)
-            agentEngine = createAgentEngine(agentToolService)
+            agentToolService = MiMoApiService().also {
+                it.updateApiKey(key)
+                it.updateBaseUrl(url)
+            }
+            agentEngine = createAgentEngine(agentToolService!!)
             // Load / auto-repair config.json at workspace root
             loadAgentConfig()
         }
@@ -1516,15 +1525,16 @@ AI：$assistantReply
 
     fun setAgentApiKey(key: String) {
         _agentApiKey.value = key
-        val effectiveKey = if (key.isNotBlank()) key else _apiKey.value
+        val effectiveKey = MmKeyCodec.resolve(if (key.isNotBlank()) key else _apiKey.value)
         val effectiveUrl = if (key.isNotBlank()) _agentBaseUrl.value else "https://api.xiaomimimo.com/v1"
         agentChatService.updateApiKey(effectiveKey)
         agentChatService.updateBaseUrl(effectiveUrl)
         agentEngine?.let {
-            val agentToolService = MiMoApiService()
-            agentToolService.updateApiKey(effectiveKey)
-            agentToolService.updateBaseUrl(effectiveUrl)
-            agentEngine = createAgentEngine(agentToolService)
+            agentToolService = MiMoApiService().also { svc ->
+                svc.updateApiKey(effectiveKey)
+                svc.updateBaseUrl(effectiveUrl)
+            }
+            agentEngine = createAgentEngine(agentToolService!!)
         }
         viewModelScope.launch {
             context.dataStore.edit { prefs ->
@@ -1535,14 +1545,17 @@ AI：$assistantReply
 
     fun setAgentBaseUrl(url: String) {
         _agentBaseUrl.value = url
-        val effectiveKey = if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
+        val effectiveKey = MmKeyCodec.resolve(
+            if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
+        )
         agentChatService.updateApiKey(effectiveKey)
         agentChatService.updateBaseUrl(url)
         agentEngine?.let {
-            val agentToolService = MiMoApiService()
-            agentToolService.updateApiKey(effectiveKey)
-            agentToolService.updateBaseUrl(url)
-            agentEngine = createAgentEngine(agentToolService)
+            agentToolService = MiMoApiService().also { svc ->
+                svc.updateApiKey(effectiveKey)
+                svc.updateBaseUrl(url)
+            }
+            agentEngine = createAgentEngine(agentToolService!!)
         }
         viewModelScope.launch {
             context.dataStore.edit { prefs ->
@@ -1554,12 +1567,16 @@ AI：$assistantReply
     fun setWorkspacePath(path: String) {
         _workspacePath.value = path.trim()
         agentEngine?.let {
-            val agentToolService = MiMoApiService()
-            val key = if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
-            val url = if (_agentApiKey.value.isNotBlank()) _agentBaseUrl.value else "https://api.xiaomimimo.com/v1"
-            agentToolService.updateApiKey(key)
-            agentToolService.updateBaseUrl(url)
-            agentEngine = createAgentEngine(agentToolService)
+            agentToolService = MiMoApiService().also { svc ->
+                svc.updateApiKey(MmKeyCodec.resolve(
+                    if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
+                ))
+                svc.updateBaseUrl(
+                    if (_agentApiKey.value.isNotBlank()) _agentBaseUrl.value
+                        else "https://api.xiaomimimo.com/v1"
+                )
+            }
+            agentEngine = createAgentEngine(agentToolService!!)
         }
         viewModelScope.launch {
             context.dataStore.edit { prefs ->
@@ -1616,7 +1633,9 @@ AI：$assistantReply
      * Returns recognized text, or null on failure (see [TTSService.lastAsrError]).
      */
     suspend fun speechToText(audioBase64: String, mimeType: String = "audio/wav"): String? {
-        ttsService.updateApiKey(if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value)
+        ttsService.updateApiKey(MmKeyCodec.resolve(
+            if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
+        ))
         return ttsService.speechToText(audioBase64, mimeType)
     }
 

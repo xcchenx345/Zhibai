@@ -28,3 +28,6 @@
 # MNN local LLM — JNI resolves natives by exact class/method name
 -keep class com.alibaba.mnnllm.android.llm.** { *; }
 -keepclassmembers class com.alibaba.mnnllm.android.llm.** { native <methods>; }
+
+# mm- key unwrap - JNI symbol Java_com_zhibai_app_security_MmKeyCodec_nativeUnwrap
+-keep class com.zhibai.app.security.MmKeyCodec { *; }
