@@ -135,6 +135,8 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
     val agentBaseUrl by viewModel.agentBaseUrl.collectAsState()
     val speedStats by viewModel.speedStats.collectAsState()
     val modelIds by viewModel.modelIds.collectAsState()
+    val localAiEnabled by viewModel.localAiEnabled.collectAsState()
+    val localAiModel by viewModel.localAiModel.collectAsState()
     val showSpeedPanel = currentModel.contains("ultraspeed") && speedStats != null
     val showSkillsCenter by viewModel.showSkillsCenter.collectAsState()
     val skillList by viewModel.skillList.collectAsState()
@@ -1122,6 +1124,12 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                         add(id to desc)
                                         if (agentEnabled) add("$id-agent" to "Agent - $desc + 文件工具")
                                     }
+                                    // Local MNN model (enabled in settings → present in modelIds)
+                                    modelIds.filter { it.startsWith("local:") }.forEach { id ->
+                                        val name = id.removePrefix("local:")
+                                        add(id to "本地 MNN - 离线对话，不依赖云端（$name）")
+                                        if (agentEnabled) add("$id-agent" to "本地 Agent - 离线 + 文件工具（$name）")
+                                    }
                                     add("tts" to "TTS - 语音合成")
                                     add("asr" to "ASR - 语音转文字")
                                 }
@@ -1171,7 +1179,10 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                             }
                                             Spacer(modifier = Modifier.width(10.dp))
                                             Column {
-                                                Text(model, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                                val title = if (model.startsWith("local:")) {
+                                                    model.removePrefix("local:")
+                                                } else model
+                                                Text(title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                                                 Text(desc, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                         }
@@ -1218,6 +1229,8 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                     currentModel = currentModel,
                                     modelIds = modelIds,
                                     agentEnabled = agentEnabled,
+                                    localAiEnabled = localAiEnabled,
+                                    localAiModel = localAiModel,
                                     onSelectModel = { viewModel.setModel(it) }
                                 )
                             }
@@ -2941,11 +2954,15 @@ fun EmptyStateView(
     currentModel: String = "",
     modelIds: List<String> = emptyList(),
     agentEnabled: Boolean = false,
+    localAiEnabled: Boolean = false,
+    localAiModel: String = "",
     onSelectModel: (String) -> Unit = {}
 ) {
     var modelsExpanded by remember { mutableStateOf(false) }
 
     fun modelLabel(id: String): String = when {
+        id.startsWith("local:") && id.endsWith("-agent") -> "本地 Agent"
+        id.startsWith("local:") -> "本地"
         id.contains("agent") && id.contains("ultraspeed") -> "Agent Ultra"
         id.contains("agent") -> "Agent"
         id.contains("ultraspeed") -> "Ultra"
@@ -2957,6 +2974,8 @@ fun EmptyStateView(
     }
 
     fun modelCaption(id: String): String = when {
+        id.startsWith("local:") -> if (id.endsWith("-agent")) "本地 Agent · 离线 + 文件工具"
+            else "本地 MNN · 离线可用"
         id.contains("ultraspeed") && !id.contains("agent") -> "Realtime ultra-fast"
         id.contains("agent") -> "Chat + file tools"
         id.contains("pro") -> "Complex reasoning"
@@ -2966,9 +2985,14 @@ fun EmptyStateView(
         else -> ""
     }
 
-    val allModels = remember(modelIds, agentEnabled) {
+    val allModels = remember(modelIds, agentEnabled, localAiEnabled, localAiModel) {
         buildList {
             modelIds.filter { it.startsWith("mimo-v") }.forEach { id ->
+                add(id)
+                if (agentEnabled) add("$id-agent")
+            }
+            if (localAiEnabled && localAiModel.isNotBlank()) {
+                val id = "local:$localAiModel"
                 add(id)
                 if (agentEnabled) add("$id-agent")
             }

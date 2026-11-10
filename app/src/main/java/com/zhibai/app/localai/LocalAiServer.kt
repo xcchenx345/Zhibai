@@ -22,6 +22,8 @@ import java.net.Socket
 class LocalAiServer(
     private val sessionProvider: () -> LlmSession?,
     private val modelName: String,
+    /** Model context length read from config.json — drives history trimming. */
+    private val contextLength: Int = 8192,
     private val port: Int = PORT,
 ) {
     @Volatile
@@ -152,12 +154,34 @@ class LocalAiServer(
             writeJson(output, 400, """{"error":{"message":"messages missing"}}""")
             return
         }
+        // Role mapping copied from MNN Chat's MessageTransformer: the native
+        // chat template only understands system/user/assistant — anything else
+        // (notably OpenAI "tool" results) must arrive as "user". Tool results
+        // get a [tool result: name] header so the 7B model can still correlate
+        // them with the call that produced them.
         val history = messages.mapNotNull { el ->
             val m = el.asJsonObject
             val role = m.get("role")?.asString ?: return@mapNotNull null
             val content = contentToText(m.get("content"))
-            role to content
-        }
+            when (role) {
+                "system" -> "system" to content
+                "assistant" -> "assistant" to content
+                else -> {
+                    val toolId = m.get("tool_call_id")?.asString
+                    val body = if (role == "tool" && !toolId.isNullOrBlank()) {
+                        "[tool result: $toolId]\n$content"
+                    } else content
+                    "user" to body
+                }
+            }
+        }.let { trimHistory(it, contextLength * 2) }
+
+        // The client sends max_completion_tokens=32768 (fine for the cloud);
+        // cap the local 7B so generations stay fast and can't run away.
+        val maxTokens = request.get("max_completion_tokens")
+            ?.takeIf { it.isJsonPrimitive }?.asInt?.coerceIn(256, 8192) ?: 4096
+        session.updateMaxNewTokens(maxTokens)
+
         val stream = request.get("stream")?.takeIf { it.isJsonPrimitive }?.asBoolean ?: false
 
         val created = System.currentTimeMillis() / 1000
@@ -210,6 +234,35 @@ class LocalAiServer(
     }
 
     // --------------------------------------------------------------- JSON bits
+
+    /**
+     * Keep system messages + the NEWEST dialogue that fits the char budget
+     * (≈2 chars/token — conservative for mixed CN/EN). Oldest turns drop first;
+     * a single oversized message is skipped rather than splitting a tool result
+     * mid-way. MNN Chat trims on the client too; doing it here protects every
+     * caller of our OpenAI endpoint.
+     */
+    private fun trimHistory(
+        history: List<Pair<String, String>>,
+        maxChars: Int,
+    ): List<Pair<String, String>> {
+        val system = history.filter { it.first == "system" }
+        val dialogue = history.filter { it.first != "system" }
+        fun sizeOf(list: List<Pair<String, String>>) = list.sumOf { it.second.length + 16 }
+        if (sizeOf(system) + sizeOf(dialogue) <= maxChars) return history
+        val kept = ArrayDeque<Pair<String, String>>()
+        var used = sizeOf(system)
+        for (msg in dialogue.asReversed()) {
+            val len = msg.second.length + 16
+            if (used + len > maxChars) {
+                if (kept.isNotEmpty()) break
+                continue // single message larger than the whole budget — skip it
+            }
+            kept.addFirst(msg)
+            used += len
+        }
+        return system + kept
+    }
 
     private fun contentToText(content: com.google.gson.JsonElement?): String = when {
         content == null || content.isJsonNull -> ""

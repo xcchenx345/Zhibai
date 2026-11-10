@@ -60,7 +60,19 @@ object LocalAiManager {
                 session = loaded
             }
             if (server == null || !server!!.isRunning) {
-                server = LocalAiServer({ session }, displayName).also { it.start() }
+                // Best-effort context length from config.json (keys vary by
+                // export); used by the server to trim history for the 7B.
+                val contextLength = try {
+                    val cfg = configFile.readText()
+                    Regex("\"[^\"]*[cC]ontext[^\"]*\"\\s*:\\s*(\\d+)")
+                        .find(cfg)?.groupValues?.get(1)?.toIntOrNull()
+                        ?.let { if (it in 1024..262144) it else 8192 }
+                        ?: 8192
+                } catch (_: Exception) {
+                    8192
+                }
+                server = LocalAiServer({ session }, displayName, contextLength)
+                    .also { it.start() }
             }
         } catch (e: Exception) {
             lastError = e.message ?: e.javaClass.simpleName

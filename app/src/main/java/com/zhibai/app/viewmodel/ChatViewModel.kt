@@ -69,6 +69,11 @@ data class SpeedStats(
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val apiService = MiMoApiService()
     private val agentChatService = MiMoApiService()
+    // Pinned to the CLOUD endpoint so refreshModelList can fetch the cloud list
+    // even while the active services are routed to the local model.
+    private val cloudListService = MiMoApiService()
+    // Held so routeForModel can re-point the Agent engine's tool service too.
+    private var agentToolService: MiMoApiService? = null
     private val ttsService = TTSService()
     private val islandService = com.zhibai.app.data.api.IslandNotificationService(application)
 
@@ -748,35 +753,29 @@ $convoText
                 prefs[LOCAL_AI_ENABLED_KEY]?.let { _localAiEnabled.value = it == "true" }
                 prefs[LOCAL_AI_MODEL_KEY]?.let { _localAiModel.value = it }
                 if (_agentEnabled.value) {
-                    val local = _localAiEnabled.value && _localAiModel.value.isNotBlank()
-                    val key = when {
-                        local -> com.zhibai.app.localai.LocalAiManager.LOCAL_API_KEY
-                        _agentApiKey.value.isNotBlank() -> _agentApiKey.value
-                        else -> _apiKey.value
-                    }
-                    val url = when {
-                        local -> com.zhibai.app.localai.LocalAiManager.LOCAL_BASE_URL
-                        _agentApiKey.value.isNotBlank() -> _agentBaseUrl.value
-                        else -> "https://api.xiaomimimo.com/v1"
-                    }
+                    val key = if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
+                    val url = if (_agentApiKey.value.isNotBlank()) _agentBaseUrl.value
+                        else "https://api.xiaomimimo.com/v1"
                     agentChatService.updateApiKey(key)
                     agentChatService.updateBaseUrl(url)
-                    val agentToolService = MiMoApiService()
-                    agentToolService.updateApiKey(key)
-                    agentToolService.updateBaseUrl(url)
-                    agentEngine = createAgentEngine(agentToolService)
+                    agentToolService = MiMoApiService().also {
+                        it.updateApiKey(key)
+                        it.updateBaseUrl(url)
+                    }
+                    agentEngine = createAgentEngine(agentToolService!!)
                     // Create / auto-repair config.json at workspace root
                     loadAgentConfig()
-                }
-                // Route the main service to the local engine last, so it wins.
-                if (_localAiEnabled.value && _localAiModel.value.isNotBlank()) {
-                    applyLocalAiRouting(startEngine = true)
                 }
                 // Load saved sessions into the drawer, but always start on a fresh chat
                 val savedSessions = loadSessions()
                 if (!savedSessions.isNullOrEmpty()) {
                     _sessions.value = savedSessions
                 }
+            }
+            // Every model selection re-points ALL endpoints (cloud ↔ local MNN),
+            // so picking the local model from the list switches chat AND agent.
+            viewModelScope.launch {
+                _currentModel.collect { model -> routeForModel(model) }
             }
             refreshModelList()
             if (_currentSession.value == null) createNewSession()
@@ -790,27 +789,29 @@ $convoText
      */
     fun refreshModelList() {
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val raw = apiService.listModels()
+            val localIds = if (_localAiEnabled.value && _localAiModel.value.isNotBlank()) {
+                listOf("local:${_localAiModel.value}") // UI adds the "-agent" twin
+            } else emptyList()
+            val cloudIds = try {
+                cloudListService.listModels()
+                    .filter { it.startsWith("mimo-v") }
                     .filterNot { it.contains("tts") || it.contains("asr") }
                     .distinct()
-                // Local mode: /v1/models is our own server listing the installed
-                // model — no mimo-v* prefix to match, keep the list as-is.
-                val ids = if (_localAiEnabled.value) raw
-                    else raw.filter { it.startsWith("mimo-v") }
-                if (ids.isNotEmpty()) {
-                    // Single TTS entry; sub-modes live inside TTSScreen
-                    _modelIds.value = ids + listOf("tts")
-                    val cur = _currentModel.value
-                    if (cur != "asr" && !cur.startsWith("tts")) {
-                        val base = cur.removeSuffix("-agent")
-                        if (base !in ids && cur !in ids) {
-                            ids.firstOrNull()?.let { _currentModel.value = it }
-                        }
+            } catch (_: Exception) {
+                emptyList() // keep whatever cloud ids we already show
+            }
+            val cloudPart = if (cloudIds.isNotEmpty()) cloudIds
+                else _modelIds.value.filter { it.startsWith("mimo-v") }
+            if (cloudPart.isNotEmpty() || localIds.isNotEmpty()) {
+                // Single TTS entry; sub-modes live inside TTSScreen
+                _modelIds.value = cloudPart + localIds + listOf("tts")
+                val cur = _currentModel.value
+                if (cur != "asr" && !cur.startsWith("tts") && !isLocalModelId(cur)) {
+                    val base = cur.removeSuffix("-agent")
+                    if (base !in cloudPart && cur !in cloudPart) {
+                        cloudPart.firstOrNull()?.let { _currentModel.value = it }
                     }
                 }
-            } catch (_: Exception) {
-                // keep current list on network failure
             }
         }
     }
@@ -857,6 +858,7 @@ $convoText
 
     fun setApiKey(key: String) {
         apiService.updateApiKey(key)
+        cloudListService.updateApiKey(key)
         ttsService.updateApiKey(key)
         _apiKey.value = key
         _apiKeyConfigured.value = key.isNotBlank()
@@ -982,49 +984,72 @@ $convoText
                     prefs[LOCAL_AI_ENABLED_KEY] = "true"
                     prefs[LOCAL_AI_MODEL_KEY] = displayName
                 }
-                applyLocalAiRouting(startEngine = true)
+                // Add the local entries to the model list, then jump onto the
+                // local chat entry — the _currentModel collector does the actual
+                // endpoint routing + engine start.
                 refreshModelList()
+                if (!isLocalModelId(_currentModel.value)) {
+                    setModel("local:$displayName")
+                }
             } else {
                 _localAiEnabled.value = false
                 context.dataStore.edit { prefs ->
                     prefs[LOCAL_AI_ENABLED_KEY] = "false"
                 }
                 withContext(Dispatchers.IO) { com.zhibai.app.localai.LocalAiManager.stop() }
-                // Restore cloud routing
-                apiService.updateBaseUrl("https://api.xiaomimimo.com/v1")
-                apiService.updateApiKey(_apiKey.value)
-                _apiKeyConfigured.value = _apiKey.value.isNotBlank()
-                if (_agentEnabled.value) {
-                    val key = if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
-                    val url = if (_agentApiKey.value.isNotBlank()) _agentBaseUrl.value
-                        else "https://api.xiaomimimo.com/v1"
-                    agentChatService.updateApiKey(key)
-                    agentChatService.updateBaseUrl(url)
-                }
                 refreshModelList()
+                if (isLocalModelId(_currentModel.value)) {
+                    // Fall back to the first cloud model — the collector re-routes.
+                    _currentModel.value =
+                        _modelIds.value.firstOrNull { it.startsWith("mimo-v") }
+                            ?: "mimo-v2.6-flash"
+                }
             }
         }
     }
 
-    /** Point every chat path at the localhost MNN server. */
-    private fun applyLocalAiRouting(startEngine: Boolean) {
-        val model = _localAiModel.value
-        apiService.updateBaseUrl(com.zhibai.app.localai.LocalAiManager.LOCAL_BASE_URL)
-        apiService.updateApiKey(com.zhibai.app.localai.LocalAiManager.LOCAL_API_KEY)
-        agentChatService.updateBaseUrl(com.zhibai.app.localai.LocalAiManager.LOCAL_BASE_URL)
-        agentChatService.updateApiKey(com.zhibai.app.localai.LocalAiManager.LOCAL_API_KEY)
-        _apiKeyConfigured.value = true // local mode needs no cloud key
-        _currentModel.value = model
-        if (startEngine) {
-            viewModelScope.launch(Dispatchers.IO) {
-                com.zhibai.app.localai.LocalAiManager.ensureStarted(context, model)
-                if (com.zhibai.app.localai.LocalAiManager.isReady) {
-                    refreshModelList()
-                } else {
-                    _error.value = "本地模型加载失败: " +
-                        (com.zhibai.app.localai.LocalAiManager.lastError ?: "未知错误")
+    /** Ids of the local MNN model entries as they appear in the model list. */
+    fun isLocalModelId(id: String): Boolean = id.startsWith("local:")
+
+    /** "local:MiMo-7B-RL-agent" → "MiMo-7B-RL" (the installed model dir name). */
+    fun localModelName(id: String): String =
+        id.removePrefix("local:").removeSuffix("-agent")
+
+    /**
+     * Follow the selected model: local ids point every service (chat, agent,
+     * agent tool engine) at the localhost MNN server and warm the model; cloud
+     * ids restore the normal endpoints. Called by the _currentModel collector.
+     */
+    private fun routeForModel(model: String) {
+        if (isLocalModelId(model)) {
+            apiService.updateBaseUrl(com.zhibai.app.localai.LocalAiManager.LOCAL_BASE_URL)
+            apiService.updateApiKey(com.zhibai.app.localai.LocalAiManager.LOCAL_API_KEY)
+            agentChatService.updateBaseUrl(com.zhibai.app.localai.LocalAiManager.LOCAL_BASE_URL)
+            agentChatService.updateApiKey(com.zhibai.app.localai.LocalAiManager.LOCAL_API_KEY)
+            agentToolService?.updateBaseUrl(com.zhibai.app.localai.LocalAiManager.LOCAL_BASE_URL)
+            agentToolService?.updateApiKey(com.zhibai.app.localai.LocalAiManager.LOCAL_API_KEY)
+            _apiKeyConfigured.value = true // local needs no cloud key
+            val name = localModelName(model)
+            if (name.isNotBlank()) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    com.zhibai.app.localai.LocalAiManager.ensureStarted(context, name)
+                    if (!com.zhibai.app.localai.LocalAiManager.isReady) {
+                        _error.value = "本地模型加载失败: " +
+                            (com.zhibai.app.localai.LocalAiManager.lastError ?: "未知错误")
+                    }
                 }
             }
+        } else {
+            apiService.updateBaseUrl("https://api.xiaomimimo.com/v1")
+            apiService.updateApiKey(_apiKey.value)
+            val key = if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
+            val url = if (_agentApiKey.value.isNotBlank()) _agentBaseUrl.value
+                else "https://api.xiaomimimo.com/v1"
+            agentChatService.updateApiKey(key)
+            agentChatService.updateBaseUrl(url)
+            agentToolService?.updateApiKey(key)
+            agentToolService?.updateBaseUrl(url)
+            _apiKeyConfigured.value = _apiKey.value.isNotBlank()
         }
     }
 
@@ -1526,6 +1551,7 @@ AI：$assistantReply
     fun setModel(model: String) {
         if (_currentModel.value != model) {
             _currentModel.value = model
+            // Route endpoints follow the selection (init collector → routeForModel).
             if (_forceNewSessionOnModelSwitch.value) {
                 // New chat with the new model — leave the old session's model untouched
                 createNewSession()
