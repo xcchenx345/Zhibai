@@ -8,6 +8,11 @@
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File tools\mm_encode.ps1 sk-xxxxx
 #   .\tools\mm_encode.ps1 tp-xxxxx
+#   .\tools\mm_encode.ps1 sk-xxxxx -NoPause   (automation: no clipboard wait)
+#
+# The result is printed AND copied to the clipboard; the window then waits for
+# Enter so it doesn't vanish before you can copy it (right-click → Run with
+# PowerShell closes instantly otherwise).
 #
 # Protocol (must stay byte-identical with app/src/main/cpp/mm_codec.cpp):
 #   blob = 0x01 || (utf8(key) XOR keystream) || HMAC-SHA256(mackey, ct)[0..8]
@@ -19,7 +24,8 @@
 
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [string]$Key
+    [string]$Key,
+    [switch]$NoPause
 )
 
 $ErrorActionPreference = "Stop"
@@ -95,3 +101,21 @@ for ($i = 0; $i -lt $blob.Length; $i += 3) {
 
 $mm = 'mm-' + $sb.ToString()
 Write-Output $mm
+
+# Also park it in the clipboard — the window used to close the moment the
+# result printed, racing your Ctrl+V.
+$copied = $false
+try { Set-Clipboard -Value $mm; $copied = $true } catch { }
+
+if (-not $NoPause) {
+    try {
+        Write-Host ""
+        if ($copied) {
+            Write-Host "OK - result copied to clipboard, paste it directly (Ctrl+V)."
+        } else {
+            Write-Host "Clipboard unavailable - copy the mm- line above manually."
+        }
+        Write-Host "Press Enter to close..."
+        [void][Console]::ReadLine()
+    } catch { }
+}
