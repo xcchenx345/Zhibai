@@ -81,9 +81,15 @@ object ModelRegistry {
             }
 
     private fun getJson(urlStr: String): com.google.gson.JsonElement {
+        System.setProperty("java.net.preferIPv4Stack", "true")
         val conn = URL(urlStr).openConnection() as HttpURLConnection
         conn.connectTimeout = 15_000
         conn.readTimeout = 20_000
+        conn.setRequestProperty(
+            "User-Agent",
+            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36"
+        )
         try {
             val code = conn.responseCode
             if (code !in 200..299) throw IllegalStateException("HTTP $code ← $urlStr")

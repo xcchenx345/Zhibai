@@ -79,42 +79,61 @@ object ModelDownloader {
         target: File,
         onBytes: (Long) -> Unit,
     ) {
+        // Some mobile networks have broken IPv6 routes and some WAFs flag the
+        // default Dalvik UA — both showed up as timeout/reset on-device while
+        // desktop curl (IPv4 + browser UA) got 200 from the same hosts.
+        System.setProperty("java.net.preferIPv4Stack", "true")
         val errors = mutableListOf<String>()
         for (urlStr in sourceUrls(model, path)) {
             val host = try { URL(urlStr).host } catch (_: Exception) { urlStr }
-            try {
-                val conn = URL(urlStr).openConnection() as HttpURLConnection
-                // The poisoned host only ever gets a short connect window.
-                conn.connectTimeout = if (host == "huggingface.co") 8_000 else 10_000
-                conn.readTimeout = 60_000
-                conn.instanceFollowRedirects = true
-                val code = conn.responseCode
-                if (code !in 200..299) {
-                    conn.disconnect()
-                    errors += "$host: HTTP $code"
-                    continue
-                }
-                conn.inputStream.use { input ->
-                    target.outputStream().use { output ->
-                        val buffer = ByteArray(256 * 1024)
-                        var read: Int
-                        var total = 0L
-                        while (input.read(buffer).also { read = it } >= 0) {
-                            output.write(buffer, 0, read)
-                            total += read
-                            onBytes(total)
+            var lastMsg: String? = null
+            var succeeded = false
+            for (attempt in 0 until 2) {
+                if (attempt > 0) Thread.sleep(1_500)
+                try {
+                    val conn = URL(urlStr).openConnection() as HttpURLConnection
+                    // The poisoned host only ever gets a short connect window.
+                    conn.connectTimeout = if (host == "huggingface.co") 8_000 else 20_000
+                    conn.readTimeout = 60_000
+                    conn.instanceFollowRedirects = true
+                    conn.setRequestProperty(
+                        "User-Agent",
+                        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 " +
+                            "(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36"
+                    )
+                    val code = conn.responseCode
+                    if (code !in 200..299) {
+                        conn.disconnect()
+                        lastMsg = "HTTP $code"
+                        continue
+                    }
+                    conn.inputStream.use { input ->
+                        target.outputStream().use { output ->
+                            val buffer = ByteArray(256 * 1024)
+                            var read: Int
+                            var total = 0L
+                            while (input.read(buffer).also { read = it } >= 0) {
+                                output.write(buffer, 0, read)
+                                total += read
+                                onBytes(total)
+                            }
                         }
                     }
+                    conn.disconnect()
+                    if (target.length() > 0) {
+                        succeeded = true
+                        break
+                    }
+                    lastMsg = "空文件"
+                } catch (e: Exception) {
+                    lastMsg = e.message ?: e.javaClass.simpleName
+                    target.delete()
                 }
-                conn.disconnect()
-                if (target.length() > 0) return
-                errors += "$host: 空文件"
-            } catch (e: Exception) {
-                errors += "$host: ${e.message ?: e.javaClass.simpleName}"
-                target.delete()
             }
+            if (succeeded) return
+            errors += "$host: $lastMsg"
         }
-        throw IllegalStateException(errors.joinToString("；"))
+        throw IllegalStateException("[$path] " + errors.joinToString("；"))
     }
 
     /** Candidate direct-download URLs for one repo file, fastest source first. */
