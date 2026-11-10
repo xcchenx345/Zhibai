@@ -448,7 +448,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         const val MAX_CONTEXT_TOKENS = 900_000
         const val COMPRESSION_KEEP_LAST = 10
-        const val SWITCH_MARKER = "[SWITCH_TO_BUILD]"
     }
     private val _estimatedTokens = MutableStateFlow(0)
     val estimatedTokens: StateFlow<Int> = _estimatedTokens.asStateFlow()
@@ -462,7 +461,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---- Agent Plan/Build phase ----
     enum class AgentPhase { PLAN, BUILD }
-    private val _agentPhase = MutableStateFlow(AgentPhase.PLAN)
+    // Every new conversation starts in BUILD (user decision 2026-11);
+    // switching happens via the switch_phase confirmation card.
+    private val _agentPhase = MutableStateFlow(AgentPhase.BUILD)
     val agentPhase: StateFlow<AgentPhase> = _agentPhase.asStateFlow()
 
     fun setAgentPhase(phase: AgentPhase) {
@@ -474,7 +475,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun resetAgentPhase() {
-        _agentPhase.value = AgentPhase.PLAN
+        _agentPhase.value = AgentPhase.BUILD
     }
 
     /** Rough token estimate: ~3.5 chars/token for CJK-heavy text, ~4 for ASCII. */
@@ -2065,13 +2066,9 @@ AI：$assistantReply
                 val isAgent = _currentModel.value.contains("agent") && agentEngine != null
 
                 if (isAgent) {
-                    val phase = _agentPhase.value
-                    if (phase == AgentPhase.BUILD) {
-                        executeAgentFlow(text, fullUserContent, imageBase64List, audioBase64, audioMimeType, videoBase64, videoMimeType, isFirstMessage, session)
-                    } else {
-                        // PLAN phase: streaming, no file tools
-                        executeNormalFlow(text, fullUserContent, imageBase64List, audioBase64, audioMimeType, videoBase64, videoMimeType, isFirstMessage, session)
-                    }
+                    // Both PLAN and BUILD run the full tool loop — the phase only
+                    // changes the prompt persona (switching goes through switch_phase).
+                    executeAgentFlow(text, fullUserContent, imageBase64List, audioBase64, audioMimeType, videoBase64, videoMimeType, isFirstMessage, session)
                 } else if (_enableSearch.value) {
                     // Normal chat + search ON → agent-style tool loop, but restricted to
                     // web_search (cn.bing.com scrape) + fetch_url. No permissions, no
@@ -2292,6 +2289,7 @@ AI：$assistantReply
             var toolCardCount = 0
             var narrationNotified = false
             var sawLengthTruncation = false
+            var thinkNotified = false
 
             // Collect one streamed structured round. Returns the failure (balance errors
             // are retried on the fallback key by the caller) or null on success.
@@ -2302,12 +2300,26 @@ AI：$assistantReply
                 toolCardCount = 0
                 narrationNotified = false
                 sawLengthTruncation = false
+                thinkNotified = false
                 var failure: Exception? = null
                 try {
                     api.chatCompletion(request).collect { chunk ->
                         if (chunk !is StreamChunk.Data) return@collect
                         if (chunk.finishReason == "length") sawLengthTruncation = true
-                        if (chunk.reasoning.isNotBlank()) thinkOut += chunk.reasoning
+                        if (chunk.reasoning.isNotBlank()) {
+                            thinkOut += chunk.reasoning
+                            if (!thinkNotified) {
+                                // Bug fix: the island used to sit on "等待响应" for the
+                                // whole thinking phase — flip to 思考中 on first token.
+                                thinkNotified = true
+                                islandService.showAgentTaskNotification(
+                                    taskTitle = "思考中",
+                                    taskStatus = "正在深度思考...",
+                                    progress = -1,
+                                    phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_THINK
+                                )
+                            }
+                        }
                         if (chunk.content.isNotEmpty()) {
                             streamBuf.append(chunk.content)
                             extractPartialField(streamBuf.toString(), "response")?.let { respOut = it }
@@ -2630,6 +2642,17 @@ AI：$assistantReply
                         }
                     } else {
                         toolResult = "用户放弃授权（${permissionLabel(type)}），跳过此操作。"
+                    }
+                }
+                // switch_phase result → flip the phase here (the engine has no
+                // access to _agentPhase). The card itself was already shown by
+                // the questionnaire flow inside the tool.
+                if (toolResult.startsWith("PHASE_SWITCH:")) {
+                    toolResult = when (toolResult.removePrefix("PHASE_SWITCH:")) {
+                        "plan" -> { setAgentPhase(AgentPhase.PLAN); "用户确认：已切换到 PLAN 规划阶段。" }
+                        "build" -> { setAgentPhase(AgentPhase.BUILD); "用户确认：已切换到 BUILD 执行阶段。" }
+                        "declined" -> "用户选择留在当前阶段，继续当前工作。"
+                        else -> "用户取消了切换请求，继续当前阶段。"
                     }
                 }
                 val displayResult = toolResult
@@ -2997,20 +3020,6 @@ AI：$assistantReply
                         if (isFirstMessage && (leakFinal ?: fullContent).isNotBlank()) {
                             generateTitle(sessionId, userText, leakFinal ?: fullContent)
                         }
-                        // Plan→Build phase switch: model signals with [SWITCH_TO_BUILD] marker
-                        if (fullContent.contains(SWITCH_MARKER) && _currentModel.value.contains("agent")) {
-                            // Strip the marker from the visible message
-                            val cleanContent = fullContent.replace(SWITCH_MARKER, "").trimEnd()
-                            updateSessionById(sessionId) { s ->
-                                val msgs = s.messages.toMutableList()
-                                val lastIdx = msgs.indexOfLast { it.isStreaming }
-                                if (lastIdx >= 0) {
-                                    msgs[lastIdx] = msgs[lastIdx].copy(content = cleanContent)
-                                }
-                                s.copy(messages = msgs)
-                            }
-                            switchToBuild()
-                        }
                     }
                 }
             }
@@ -3347,55 +3356,50 @@ NEVER paste a list of sources/links/titles at the end of your answer — markers
         } else ""
         val toolCallInstructions = if (isAgentMode) {
             val currentPhase = _agentPhase.value
-            if (currentPhase == AgentPhase.PLAN) {
-                // PLAN phase: streaming, no file modification, plan + task list + md summary
+            val taskList = agentTaskManager.tasks.value
+            val taskListText = if (taskList.isNotEmpty()) {
+                taskList.joinToString("\n") { t ->
+                    val status = when (t.status) {
+                        com.zhibai.app.agent.CheckTaskStatus.PENDING -> "pending"
+                        com.zhibai.app.agent.CheckTaskStatus.IN_PROGRESS -> "in_progress"
+                        com.zhibai.app.agent.CheckTaskStatus.DONE -> "done"
+                        com.zhibai.app.agent.CheckTaskStatus.CANCELLED -> "cancelled"
+                    }
+                    "- ${t.label} [$status] ${t.title}"
+                }
+            } else "(empty — no tasks yet)"
+
+            // Phase-specific header. BOTH phases speak the same structured JSON and
+            // share the full tool list below — switching happens via switch_phase
+            // (a confirmation card), never via output markers.
+            val phaseHeader = if (currentPhase == AgentPhase.PLAN) {
                 """
 CURRENT PHASE: PLAN (规划阶段)
 
-You are in the PLANNING phase. Your job:
+You have FULL access to every tool — the JSON format, output rules and tool list below are identical to BUILD. Use tools to research (read files, grep, web search, inspect the workspace) instead of guessing.
+
+Your goals in this phase:
 1. Analyze the user's request thoroughly.
-2. Create a clear step-by-step plan for how to accomplish it.
-3. Build a task checklist using the task format below (in your reply text).
-4. When planning is complete, write a summary in Markdown format (.md) that covers:
-   - Goal / 目标
-   - Steps / 步骤 (numbered list)
-   - Risks & notes / 风险与备注
-5. After presenting the plan and the .md summary, END your reply with exactly:
-$SWITCH_MARKER
+2. Create a clear step-by-step plan.
+3. Build the task checklist with add_task (one call per task) so the tasks show in the panel.
+4. When the plan is ready: save the .md summary (Goal / Steps / Risks) to the workspace with write_file, put the plan text in your response, then call switch_phase: {"phase":"build"}.
+   switch_phase sends the user a confirmation card — the phase changes ONLY after they confirm.
+5. Until the user confirms, stay in PLAN: answer follow-ups, refine the plan, call switch_phase again if needed.
 
-IMPORTANT RULES FOR PLAN PHASE:
-- You MUST respond in normal streaming text (NOT JSON).
-- You MUST NOT call ANY tools. No read_file, list_files, grep, write_file, edit_file,
-  delete_file, or any other tool. Do not output tool_call JSON — nothing is executed
-  in this phase, and tool JSON would appear as raw garbage to the user.
-- Focus on analysis, planning, and documentation only.
-
-TASK CHECKLIST FORMAT (include in your reply):
+TASK CHECKLIST FORMAT (include in your response):
 - [ ] Task 1 description
 - [ ] Task 2 description
 - [ ] ...
-
-When the user confirms or when you output $SWITCH_MARKER, the system will automatically switch to BUILD phase where you can execute the plan with full tool access.
-"""
+""".trimIndent()
             } else {
-                // BUILD phase: structured output, full tools
-                val taskList = agentTaskManager.tasks.value
-                val taskListText = if (taskList.isNotEmpty()) {
-                    taskList.joinToString("\n") { t ->
-                        val status = when (t.status) {
-                            com.zhibai.app.agent.CheckTaskStatus.PENDING -> "pending"
-                            com.zhibai.app.agent.CheckTaskStatus.IN_PROGRESS -> "in_progress"
-                            com.zhibai.app.agent.CheckTaskStatus.DONE -> "done"
-                            com.zhibai.app.agent.CheckTaskStatus.CANCELLED -> "cancelled"
-                        }
-                        "- ${t.label} [$status] ${t.title}"
-                    }
-                } else "(empty — no tasks yet)"
-
                 """
-
 CURRENT PHASE: BUILD (执行阶段)
 
+Execute the task list with tools, one step at a time. If the plan turns out to be wrong or the user asks to rethink it, call switch_phase: {"phase":"plan"} — the phase changes only after the user confirms on the card.
+""".trimIndent()
+            }
+
+            val commonTools = """
 You have access to local device tools. When the user asks you to perform file operations or use tools, you MUST respond with a SINGLE raw JSON object. No other text.
 
 CRITICAL OUTPUT RULES:
@@ -3483,10 +3487,12 @@ ${phoneToolDoc}- read_file: {"path":"file path"}
   One question at a time; user can go back, skip, pick 其它 and type custom text, or close (掀桌) to cancel.
   Returns answers JSON like {"q1":"选项A"} (multi returns arrays). Skipped questions are omitted.
   If the user cancels/closes, returns {"_status":"USER_CANCELLED"}.
+- switch_phase: {"phase":"build"} — Send the user a confirmation card to switch phase (values: plan | build). plan→build once the plan is ready; build→plan when a re-plan is needed. The phase changes ONLY after the user confirms on the card.
 
 Workspace: ${agentEngine?.workspaceDir?.absolutePath ?: "/sdcard/知白/"}
 """.trimIndent()
-                }
+
+            phaseHeader + "\n\n" + commonTools
         } else ""
         // Custom prompt always goes LAST with explicit override priority so the default
         // prompt can never wash it out (it is user-owned configuration, not a suggestion).

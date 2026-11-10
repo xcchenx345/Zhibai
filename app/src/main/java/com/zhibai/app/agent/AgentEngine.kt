@@ -1684,6 +1684,40 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
             }
             requestQuestionnaire(items)
         })
+
+        // switch_phase — questionnaire-style confirmation card (same card UI as
+        // create_questionnaire). The engine can't touch the ViewModel's phase
+        // state, so it returns a PHASE_SWITCH: token that ChatViewModel
+        // intercepts after execution to actually flip the phase.
+        tools.add(AgentTool(
+            name = "switch_phase",
+            description = "Send the user a confirmation card to switch between PLAN and BUILD phase. Args: phase (plan|build). The phase changes only after the user confirms on the card.",
+            riskLevel = 1, category = "ui"
+        ) { args, _ ->
+            val target = (args["phase"] as? String)?.trim()?.lowercase()
+            if (target != "plan" && target != "build") {
+                return@AgentTool "Error: phase must be plan or build"
+            }
+            val question = if (target == "build") {
+                "规划已完成，切换到 Build 执行阶段？"
+            } else {
+                "需要重新规划，切换到 Plan 规划阶段？"
+            }
+            val answers = requestQuestionnaire(listOf(
+                QuestionnaireItem(
+                    id = "phase",
+                    type = "single",
+                    question = question,
+                    options = listOf("确认切换", "留在当前阶段"),
+                    required = true,
+                )
+            ))
+            when {
+                answers.contains("USER_CANCELLED") -> "PHASE_SWITCH:cancelled"
+                answers.contains("确认切换") -> "PHASE_SWITCH:$target"
+                else -> "PHASE_SWITCH:declined"
+            }
+        })
     }
 
     suspend fun executeTool(toolName: String, args: Map<String, Any>, mode: Int): String {
