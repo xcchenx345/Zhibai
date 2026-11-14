@@ -2130,9 +2130,12 @@ AI：$assistantReply
                 )
                 val assistantMessage = ChatMessage(role = "assistant", content = "", isStreaming = true)
 
-                updateSession(session.copy(
-                    messages = session.messages + userMessage + assistantMessage
-                ))
+                // Append against the LIVE session — the `session` snapshot was taken
+                // before file/image work (seconds of network) and would wipe any
+                // concurrent finalize (Done handler) if we copied from it.
+                updateSessionById(session.id) { s ->
+                    s.copy(messages = s.messages + userMessage + assistantMessage)
+                }
 
                 _isGenerating.value = true
                 _error.value = null
@@ -2284,16 +2287,17 @@ AI：$assistantReply
             when (msg.role) {
                 "user" -> apiMessages.add(Message(role = "user", content = msg.content))
                 "assistant" -> if (msg.content.isNotBlank()) apiMessages.add(Message(role = "assistant", content = msg.content))
-                "tool" -> apiMessages.add(Message(role = "tool", content = msg.content, toolCallId = msg.id))
+                // Flattened like the in-loop results — role=tool breaks the MiMo API.
+                "tool" -> apiMessages.add(Message(role = "user", content = msg.content))
                 "tool_group" -> {
-                    // Expand collapsed operations back into tool messages for model context
+                    // Expand collapsed operations back into the conversation for model context
                     try {
                         val arr = com.google.gson.JsonParser.parseString(msg.content).asJsonArray
                         arr.forEach { el ->
                             val o = el.asJsonObject
                             val t = o.get("tool")?.asString ?: "tool"
                             val r = o.get("result")?.asString ?: ""
-                            apiMessages.add(Message(role = "tool", content = r, toolCallId = t))
+                            apiMessages.add(Message(role = "user", content = "[tool result: $t]\n$r"))
                         }
                     } catch (_: Exception) {}
                 }
@@ -2573,22 +2577,30 @@ AI：$assistantReply
                     structured.thinking?.trim()?.takeIf { it.isNotBlank() }
                         ?: "模型未输出 response 字段。"
                 }
-                val current = _sessions.value.find { it.id == session.id }
-                if (current != null) {
-                    // Collapse this run's live tool cards into one group, reply goes below it
-                    val collapsed = collapseRunMessages(current, toolSteps, runStartIdx)
-                    // Bing results → annotations (chips + 搜索 card). Fallback appends
-                    // [reference:N] markers when the model forgot to cite inline.
-                    val anns = searchAnnotations.toList().ifEmpty { null }
-                    updateSessionById(session.id) {
-                        current.copy(
-                            messages = collapsed + ChatMessage(
-                                role = "assistant",
-                                content = withReferenceFallback(sanitizeHighRisk(finalText), anns),
-                                annotations = anns,
-                                isStreaming = false
-                            )
+                val anns = searchAnnotations.toList().ifEmpty { null }
+                val finalContent = withReferenceFallback(sanitizeHighRisk(finalText), anns)
+                updateSessionById(session.id) { s ->
+                    // No tools ran → finalize the placeholder IN PLACE (same id).
+                    // Collapsing into a new message here made the LazyColumn key
+                    // change → the finished answer flashed and re-rendered.
+                    val msgs = s.messages.filterNot {
+                        it.id.startsWith("stream-tc-$round-") && it.content.contains("调用中")
+                    }.toMutableList()
+                    val i = msgs.indexOfFirst { it.id == placeholderId }
+                    if (i >= 0) {
+                        msgs[i] = msgs[i].copy(
+                            content = finalContent,
+                            annotations = anns,
+                            isStreaming = false
                         )
+                        s.copy(messages = msgs)
+                    } else {
+                        s.copy(messages = msgs + ChatMessage(
+                            role = "assistant",
+                            content = finalContent,
+                            annotations = anns,
+                            isStreaming = false
+                        ))
                     }
                 }
                 if (isFirstMessage && finalText.isNotBlank()) {
@@ -2618,6 +2630,11 @@ AI：$assistantReply
                 s.copy(messages = msgs)
             }
 
+            // Tool results are flattened into ONE user turn: MiMo's OpenAI-compatible
+            // API rejects role=tool messages that aren't preceded by structured
+            // assistant.tool_calls (our assistant turn is a plain JSON string), so
+            // every tool round 400'd and killed the conversation.
+            val roundToolResults = mutableListOf<String>()
             toolCalls.forEachIndexed { idx, tc ->
                 _toolExecuting.value = true
                 islandService.showAgentTaskNotification(
@@ -2748,8 +2765,13 @@ AI：$assistantReply
                     (tc.args["new_text"] as? String)?.let { stepMap["newText"] = it }
                 }
                 toolSteps.add(stepMap)
-
-                apiMessages.add(Message(role = "tool", content = displayResult, toolCallId = tc.tool))
+                roundToolResults.add("[tool result: ${tc.tool}]\n$displayResult")
+            }
+            if (roundToolResults.isNotEmpty()) {
+                apiMessages.add(Message(
+                    role = "user",
+                    content = roundToolResults.joinToString("\n\n")
+                ))
             }
             // Drop pending cards that never matched a real tool call (e.g. "tool":"…"
             // text inside args values that the stream detector picked up).
@@ -2775,13 +2797,12 @@ AI：$assistantReply
             enableSearch = false
         )
 
-        val current = _sessions.value.find { it.id == session.id }
-        if (current != null) {
-            val collapsed = collapseRunMessages(current, toolSteps, runStartIdx)
-            val streamingMsg = ChatMessage(role = "assistant", content = "", isStreaming = true)
-            updateSessionById(session.id) {
-                current.copy(messages = collapsed + streamingMsg)
-            }
+        val streamingMsg = ChatMessage(role = "assistant", content = "", isStreaming = true)
+        updateSessionById(session.id) { s ->
+            // Collapse against the LIVE session inside the transform — capturing
+            // `current` first and ignoring the fresh `s` wiped concurrent updates.
+            val collapsed = collapseRunMessages(s, toolSteps, runStartIdx)
+            s.copy(messages = collapsed + streamingMsg)
         }
 
         streamResponse(activeApi, finalRequest, isFirstMessage, session.id, text, searchAnnotations.toList(), expectSchemaLeak = true)
@@ -3046,31 +3067,36 @@ AI：$assistantReply
                         }
                         val current = _sessions.value.find { it.id == sessionId } ?: return@collect
                         chunk.usage?.let { calibrateTokenBias(it, current.messages) }
-                        val updatedMessages = current.messages.toMutableList()
-                        val lastIdx = updatedMessages.indexOfLast { it.isStreaming }
-                        if (lastIdx >= 0) {
-                            val duration = when {
-                                reasoningEndMs > 0 && reasoningStartMs > 0 -> reasoningEndMs - reasoningStartMs
-                                reasoningStartMs > 0 -> System.currentTimeMillis() - reasoningStartMs
-                                else -> 0L
-                            }
-                            val anns = if (allAnnotations.isNotEmpty()) allAnnotations.toList() else null
-                            val displayed = updatedMessages[lastIdx].content
-                            // leakFinal wins; else a blanked JSON stream (no tool_calls marker
-                            // → model answered WITH json) is restored as-is.
-                            val baseContent = when {
-                                leakFinal != null -> leakFinal
-                                expectSchemaLeak && displayed.isBlank() && fullContent.isNotBlank() ->
-                                    sanitizeHighRisk(fullContent)
-                                else -> displayed
-                            }
-                            updatedMessages[lastIdx] = updatedMessages[lastIdx].copy(
-                                isStreaming = false,
-                                content = withReferenceFallback(baseContent, anns),
-                                annotations = anns,
-                                reasoningDurationMs = duration
-                            )
-                            updateSessionById(sessionId) { current.copy(messages = updatedMessages) }
+                        val anns = if (allAnnotations.isNotEmpty()) allAnnotations.toList() else null
+                        val duration = when {
+                            reasoningEndMs > 0 && reasoningStartMs > 0 -> reasoningEndMs - reasoningStartMs
+                            reasoningStartMs > 0 -> System.currentTimeMillis() - reasoningStartMs
+                            else -> 0L
+                        }
+                        // Finalize against the LIVE session inside the transform —
+                        // `current.copy(...)` ignored the fresh `s` and reverted any
+                        // message the user sent in the isGenerating=false window.
+                        updateSessionById(sessionId) { s ->
+                            val msgs = s.messages.toMutableList()
+                            val lastIdx = msgs.indexOfLast { it.isStreaming }
+                            if (lastIdx >= 0) {
+                                val displayed = msgs[lastIdx].content
+                                // leakFinal wins; else a blanked JSON stream (no tool_calls marker
+                                // → model answered WITH json) is restored as-is.
+                                val baseContent = when {
+                                    leakFinal != null -> leakFinal
+                                    expectSchemaLeak && displayed.isBlank() && fullContent.isNotBlank() ->
+                                        sanitizeHighRisk(fullContent)
+                                    else -> displayed
+                                }
+                                msgs[lastIdx] = msgs[lastIdx].copy(
+                                    isStreaming = false,
+                                    content = withReferenceFallback(baseContent, anns),
+                                    annotations = anns,
+                                    reasoningDurationMs = duration
+                                )
+                                s.copy(messages = msgs)
+                            } else s
                         }
                         recalcTokens()
                         // Rejected round (not a false positive): neither the reply NOR the
