@@ -2330,6 +2330,20 @@ AI：$assistantReply
         }
         val activeApi = getActiveApiService()
         AppLog.d("agentFlow enter: searchOnly=$searchOnly model=${_currentModel.value} engine=${engine != null} url=${activeApi.getBaseUrl()} key=${AppLog.keyShape(activeApi.getApiKey())}")
+        // Search runs render their own role="step" timeline rows — flag the answer
+        // so MessageBubble hides the built-in process card (no double display).
+        var thinkStepId: String? = null
+        var searchStepId: String? = null
+        var fetchStepId: String? = null
+        var searchCount = 0
+        var fetchCount = 0
+        if (searchOnly) {
+            updateSessionById(session.id) { s ->
+                s.copy(messages = s.messages.map {
+                    if (it.role == "assistant" && it.isStreaming) it.copy(flatProcess = true) else it
+                })
+            }
+        }
         val maxRounds = 5
         agentTaskManager.startSession()
         // Tool-card ids must be unique across runs: leftover "stream-tc-1-0" cards
@@ -2474,17 +2488,20 @@ AI：$assistantReply
                             streamBuf.append(chunk.content)
                             extractPartialField(streamBuf.toString(), "response")?.let { respOut = it }
                             // Tool name fully present in the stream → pending card NOW.
-                            val names = toolNameRegex.findAll(streamBuf).map { it.groupValues[1] }.toList()
-                            while (names.size > toolCardCount) {
-                                val cardId = "${cardTag}$toolCardCount"
-                                val name = names[toolCardCount]
-                                updateSessionById(session.id) { s ->
-                                    if (s.messages.any { it.id == cardId }) s
-                                    else s.copy(messages = s.messages + ChatMessage(
-                                        id = cardId, role = "tool", content = "⏳ $name 调用中..."
-                                    ))
+                            // Search runs show the flat step rows instead — no cards.
+                            if (!searchOnly) {
+                                val names = toolNameRegex.findAll(streamBuf).map { it.groupValues[1] }.toList()
+                                while (names.size > toolCardCount) {
+                                    val cardId = "${cardTag}$toolCardCount"
+                                    val name = names[toolCardCount]
+                                    updateSessionById(session.id) { s ->
+                                        if (s.messages.any { it.id == cardId }) s
+                                        else s.copy(messages = s.messages + ChatMessage(
+                                            id = cardId, role = "tool", content = "⏳ $name 调用中..."
+                                        ))
+                                    }
+                                    toolCardCount++
                                 }
-                                toolCardCount++
                             }
                         }
                         updateSessionById(session.id) { s ->
@@ -2525,6 +2542,15 @@ AI：$assistantReply
                 return failure
             }
 
+            if (searchOnly) {
+                thinkStepId = java.util.UUID.randomUUID().toString().also { id ->
+                    updateSessionById(session.id) { s ->
+                        s.copy(messages = s.messages + ChatMessage(
+                            id = id, role = "step", content = "正在思考", isStreaming = true
+                        ))
+                    }
+                }
+            }
             var streamFailure = runStreamRound(activeApi)
             // A round that already produced content is a success — a tail error must
             // not trigger a re-stream over the finished answer. Only a truly empty
@@ -2540,6 +2566,25 @@ AI：$assistantReply
                 streamFailure = null
             }
             AppLog.d("agentFlow round $round streamed: chars=${streamBuf.length} think=${thinkOut.length} fail=${streamFailure?.message?.take(120)}")
+            if (searchOnly) {
+                val tid = thinkStepId
+                thinkStepId = null
+                if (tid != null) {
+                    if (thinkOut.isNotBlank()) {
+                        updateSessionById(session.id) { s ->
+                            s.copy(messages = s.messages.map {
+                                if (it.id == tid) it.copy(
+                                    content = "已深度思考", reasoningContent = thinkOut, isStreaming = false
+                                ) else it
+                            })
+                        }
+                    } else {
+                        updateSessionById(session.id) { s ->
+                            s.copy(messages = s.messages.filterNot { it.id == tid })
+                        }
+                    }
+                }
+            }
             if (streamFailure != null) {
                 _error.value = "Agent request failed: ${streamFailure.message}"
                 // Surface the failure in the bubble too — a bare banner (or a blank
@@ -2745,12 +2790,22 @@ AI：$assistantReply
                 val toolStartMs = System.currentTimeMillis()
                 // Reuse the live "调用中" card inserted when this tool's name appeared in
                 // the stream; insert a fresh card only if detection missed it. Declared
-                // outside the try — the result back-fill below needs the id.
+                // outside the try — the result back-fill below needs the id. Search runs
+                // skip cards entirely (flat step rows instead).
                 val streamCardId = "${cardTag}$idx"
                 val hasStreamCard = _sessions.value.find { it.id == session.id }
                     ?.messages?.any { it.id == streamCardId } == true
                 val runningMsgId = if (hasStreamCard) streamCardId
                     else java.util.UUID.randomUUID().toString()
+                if (!searchOnly) {
+                    updateSessionById(session.id) { s ->
+                        val msgs = s.messages.toMutableList()
+                        val i = msgs.indexOfFirst { it.id == runningMsgId }
+                        if (i >= 0) msgs[i] = msgs[i].copy(content = "⏳ ${tc.tool} 运行中...")
+                        else msgs.add(ChatMessage(id = runningMsgId, role = "tool", content = "⏳ ${tc.tool} 运行中..."))
+                        s.copy(messages = msgs)
+                    }
+                }
                 var toolResult = try {
                     _toolExecuting.value = true
                     islandService.showAgentTaskNotification(
@@ -2880,6 +2935,35 @@ AI：$assistantReply
                 }
                 toolSteps.add(stepMap)
                 roundToolResults.add("[tool result: ${tc.tool}]\n$displayResult")
+                if (searchOnly && (tc.tool == "web_search" || tc.tool == "fetch_url")) {
+                    val label = if (tc.tool == "web_search") {
+                        searchCount++
+                        "搜索 $searchCount 个关键词，参考 ${searchAnnotations.size} 篇资料"
+                    } else {
+                        fetchCount++
+                        "浏览页面，参考了 $fetchCount 篇资料"
+                    }
+                    val stepId = if (tc.tool == "web_search") searchStepId else fetchStepId
+                    if (stepId == null) {
+                        val id = java.util.UUID.randomUUID().toString()
+                        if (tc.tool == "web_search") searchStepId = id else fetchStepId = id
+                        updateSessionById(session.id) { s ->
+                            s.copy(messages = s.messages + ChatMessage(
+                                id = id, role = "step", content = label,
+                                reasoningContent = displayResult
+                            ))
+                        }
+                    } else {
+                        updateSessionById(session.id) { s ->
+                            s.copy(messages = s.messages.map {
+                                if (it.id == stepId) it.copy(
+                                    content = label,
+                                    reasoningContent = it.reasoningContent + "\n\n" + displayResult
+                                ) else it
+                            })
+                        }
+                    }
+                }
             }
             if (roundToolResults.isNotEmpty()) {
                 apiMessages.add(Message(

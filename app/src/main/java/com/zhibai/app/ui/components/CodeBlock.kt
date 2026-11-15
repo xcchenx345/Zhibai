@@ -3,12 +3,15 @@ package com.zhibai.app.ui.components
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
@@ -17,7 +20,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -25,6 +32,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import java.io.File
 
 // ── Lightweight regex syntax highlight (no external deps) ─────────────
@@ -182,6 +190,17 @@ fun CodeBlock(
     val context = LocalContext.current
     var copied by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
+    var collapsed by remember { mutableStateOf(false) }
+
+    // 折叠贴顶: a collapsed block's header pins to the top of the chat area while
+    // the block scrolls past. LazyColumn does not clip its items, so a zIndex +
+    // translation paints the header over the messages above it.
+    val density = LocalDensity.current
+    val stickyTopPx = with(density) { 104.dp.toPx() }
+    var winY by remember { mutableFloatStateOf(0f) }
+    var blockH by remember { mutableFloatStateOf(0f) }
+    val stuck = collapsed && winY < stickyTopPx && winY + blockH > stickyTopPx
+    val stickDy = if (stuck) stickyTopPx - winY else 0f
 
     val codeBg = if (isDarkTheme) Color(0xFF2A2A2A) else Color(0xFFECECEC)
     // Re-highlight only when code / language / theme actually changes
@@ -192,6 +211,15 @@ fun CodeBlock(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .onGloballyPositioned { coords ->
+                winY = coords.positionInWindow().y
+                blockH = coords.size.height.toFloat()
+            }
+            .graphicsLayer {
+                translationY = stickDy
+                shadowElevation = if (stuck) 12f else 0f
+            }
+            .zIndex(if (stuck) 10f else 0f)
             .clip(RoundedCornerShape(8.dp))
             .background(codeBg)
     ) {
@@ -199,18 +227,32 @@ fun CodeBlock(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable { collapsed = !collapsed }
                 .padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (language.isNotBlank()) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Icon(
+                    if (collapsed) Icons.Default.KeyboardArrowRight else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (collapsed) "展开代码" else "折叠代码",
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = language,
+                    text = if (language.isNotBlank()) language else "code",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            } else {
-                Spacer(modifier = Modifier)
+                if (collapsed) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "${code.lineCount()} 行",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -314,16 +356,20 @@ fun CodeBlock(
             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
         )
 
-        // Code content — syntax highlighted
-        Text(
-            text = highlighted,
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(12.dp),
-            fontFamily = FontFamily.Monospace,
-            fontSize = 13.sp,
-            lineHeight = 18.sp
-        )
+        // Code content — syntax highlighted (hidden while collapsed)
+        if (!collapsed) {
+            Text(
+                text = highlighted,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(12.dp),
+                fontFamily = FontFamily.Monospace,
+                fontSize = 13.sp,
+                lineHeight = 18.sp
+            )
+        }
     }
 }
+
+private fun String.lineCount(): Int = if (isEmpty()) 0 else count { it == '\n' } + 1

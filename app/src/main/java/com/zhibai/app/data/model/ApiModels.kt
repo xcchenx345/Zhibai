@@ -171,7 +171,10 @@ data class ChatMessage(
     val isStreaming: Boolean = false,
     val timestamp: Long = System.currentTimeMillis(),
     val annotations: List<Annotation>? = null,
-    val reasoningDurationMs: Long = 0
+    val reasoningDurationMs: Long = 0,
+    /** Search runs carry their own role="step" timeline rows — hide the built-in
+     *  process card on the answer so think/search info is not shown twice. */
+    val flatProcess: Boolean = false
 )
 
 data class ChatSession(

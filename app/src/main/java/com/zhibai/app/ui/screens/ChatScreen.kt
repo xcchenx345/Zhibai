@@ -1112,83 +1112,17 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                             modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
-                                Text("选择模型", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                Text("切换模型", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.height(12.dp))
-                                val models = buildList {
-                                    modelIds.filter { it.startsWith("mimo-v") }.forEach { id ->
-                                        val desc = when {
-                                            id.contains("ultraspeed") -> "UltraSpeed - 实时超快生成"
-                                            id.contains("pro") -> "Pro - 复杂推理"
-                                            id.contains("flash") -> "Flash - 日常快问快答"
-                                            else -> id.substringAfter("mimo-", "对话")
-                                        }
-                                        add(id to desc)
-                                        if (agentEnabled) add("$id-agent" to "Agent - $desc + 文件工具")
+                                com.zhibai.app.ui.components.CapsuleModelBar(
+                                    currentModel = currentModel,
+                                    modelIds = modelIds,
+                                    agentEnabled = agentEnabled,
+                                    onSelectModel = { model ->
+                                        viewModel.setModel(model)
+                                        showModelSelector = false
                                     }
-                                    // Local MNN model (enabled in settings → present in modelIds)
-                                    modelIds.filter { it.startsWith("local:") }.forEach { id ->
-                                        val name = id.removePrefix("local:")
-                                        add(id to "本地 MNN - 离线对话，不依赖云端（$name）")
-                                        if (agentEnabled) add("$id-agent" to "本地 Agent - 离线 + 文件工具（$name）")
-                                    }
-                                    add("tts" to "TTS - 语音合成")
-                                    add("asr" to "ASR - 语音转文字")
-                                }
-                                Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                                    models.forEach { (model, desc) ->
-                                        val selected = currentModel == model
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 3.dp)
-                                                .clip(RoundedCornerShape(50))
-                                                .background(
-                                                    if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                                                )
-                                                .clickable {
-                                                    viewModel.setModel(model)
-                                                    showModelSelector = false
-                                                }
-                                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(18.dp)
-                                                    .clip(CircleShape)
-                                                    .background(
-                                                        if (selected) MaterialTheme.colorScheme.primary
-                                                        else Color.Transparent
-                                                    )
-                                                    .border(
-                                                        width = 1.5.dp,
-                                                        color = if (selected) MaterialTheme.colorScheme.primary
-                                                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
-                                                        shape = CircleShape
-                                                    ),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                if (selected) {
-                                                    Icon(
-                                                        Icons.Default.Check,
-                                                        contentDescription = null,
-                                                        tint = MaterialTheme.colorScheme.onPrimary,
-                                                        modifier = Modifier.size(12.dp)
-                                                    )
-                                                }
-                                            }
-                                            Spacer(modifier = Modifier.width(10.dp))
-                                            Column {
-                                                val title = if (model.startsWith("local:")) {
-                                                    model.removePrefix("local:")
-                                                } else model
-                                                Text(title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                                Text(desc, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            }
-                                        }
-                                    }
-                                }
+                                )
                             }
                         }
                     }
@@ -2328,6 +2262,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                             .background(
                                 MaterialTheme.colorScheme.background.copy(alpha = 0.88f)
                             )
+                            .clickable { showModelSelector = true }
                             .padding(horizontal = 12.dp, vertical = 4.dp)
                     ) {
                         Text(
@@ -2962,49 +2897,6 @@ fun EmptyStateView(
     localAiModel: String = "",
     onSelectModel: (String) -> Unit = {}
 ) {
-    var modelsExpanded by remember { mutableStateOf(false) }
-
-    fun modelLabel(id: String): String = when {
-        id.startsWith("local:") && id.endsWith("-agent") -> "本地 Agent"
-        id.startsWith("local:") -> "本地"
-        id.contains("agent") && id.contains("ultraspeed") -> "Agent Ultra"
-        id.contains("agent") -> "Agent"
-        id.contains("ultraspeed") -> "Ultra"
-        id.contains("pro") -> "Pro"
-        id.contains("flash") -> "Flash"
-        id.startsWith("tts") -> "TTS"
-        id == "asr" -> "ASR"
-        else -> id.substringAfterLast("-").take(12).ifBlank { "Model" }
-    }
-
-    fun modelCaption(id: String): String = when {
-        id.startsWith("local:") -> if (id.endsWith("-agent")) "本地 Agent · 离线 + 文件工具"
-            else "本地 MNN · 离线可用"
-        id.contains("ultraspeed") && !id.contains("agent") -> "Realtime ultra-fast"
-        id.contains("agent") -> "Chat + file tools"
-        id.contains("pro") -> "Complex reasoning"
-        id.contains("flash") -> "Fast everyday answers"
-        id.startsWith("tts") -> "Voice"
-        id == "asr" -> "Speech to text"
-        else -> ""
-    }
-
-    val allModels = remember(modelIds, agentEnabled, localAiEnabled, localAiModel) {
-        buildList {
-            modelIds.filter { it.startsWith("mimo-v") }.forEach { id ->
-                add(id)
-                if (agentEnabled) add("$id-agent")
-            }
-            if (localAiEnabled && localAiModel.isNotBlank()) {
-                val id = "local:$localAiModel"
-                add(id)
-                if (agentEnabled) add("$id-agent")
-            }
-            add("tts")
-            add("asr")
-        }
-    }
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -3030,139 +2922,14 @@ fun EmptyStateView(
         )
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Model switcher — one capsule that morphs in place into the list.
-        // Max height keeps the panel above the floating input bar.
-        Surface(
-            shape = if (modelsExpanded) RoundedCornerShape(24.dp) else RoundedCornerShape(50),
-            color = if (modelsExpanded)
-                MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
-            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-            border = BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.outline.copy(alpha = if (modelsExpanded) 0.2f else 0.25f)
-            ),
-            shadowElevation = if (modelsExpanded) 6.dp else 2.dp,
-            modifier = Modifier
-                .fillMaxWidth(0.86f)
-                .animateContentSize(
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessMediumLow
-                    )
-                )
-        ) {
-            if (!modelsExpanded) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { modelsExpanded = true }
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
-                ) {
-                    Icon(
-                        Icons.Default.SmartToy,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = modelLabel(currentModel),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Icon(
-                        Icons.Default.KeyboardArrowDown,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                // Constrained so the panel never reaches under the input bar.
-                // Collapse lives OUTSIDE the scroll area so it is always visible.
-                Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 176.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        allModels.forEach { id ->
-                            val selected = currentModel == id
-                            // Selection by tone only — no accent fill
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = if (selected)
-                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)
-                                else Color.Transparent,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(50))
-                                    .clickable {
-                                        onSelectModel(id)
-                                        modelsExpanded = false
-                                    }
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = modelLabel(id),
-                                            fontSize = 14.sp,
-                                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        val caption = modelCaption(id)
-                                        if (caption.isNotBlank()) {
-                                            Text(
-                                                text = caption,
-                                                fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-                                    if (selected) {
-                                        Icon(
-                                            Icons.Default.Check,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                            tint = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    // Collapse affordance — always pinned below the list
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { modelsExpanded = false }
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.KeyboardArrowUp,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            "收起",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
+        // Model switcher — capsule segmented bar (Chat / Agent / ASR / TTS).
+        // Sliding to Chat/Agent pops the model list; ASR/TTS switch directly.
+        com.zhibai.app.ui.components.CapsuleModelBar(
+            currentModel = currentModel,
+            modelIds = modelIds,
+            agentEnabled = agentEnabled,
+            onSelectModel = onSelectModel
+        )
     }
 }
 

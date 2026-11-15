@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Refresh
@@ -80,6 +81,7 @@ fun MessageBubble(
     val isUser = message.role == "user"
     val isTool = message.role == "tool"
     val isToolGroup = message.role == "tool_group"
+    val isStep = message.role == "step"
     var showContextMenu by remember { mutableStateOf(false) }
     var showRawTextDialog by remember { mutableStateOf(false) }
     var toolExpanded by remember { mutableStateOf(false) }
@@ -123,6 +125,14 @@ fun MessageBubble(
         if (!message.isStreaming && message.reasoningContent.isNotBlank()) {
             // handled by ProcessFlowCard
         }
+    }
+
+    // Flat process-step row (normal chat search runs): one line per phase,
+    // tap to expand the detail. Matches the reference design —
+    // 「已深度思考」「搜索 N 个关键词，参考 M 篇资料」「浏览页面，参考了 N 篇资料」「正在思考」
+    if (isStep) {
+        ProcessStepRow(message = message, fontSize = fontSize, isDarkTheme = isDarkTheme)
+        return
     }
 
     // Collapsed group of executed operations: expand → list of steps → expand step → detail
@@ -320,7 +330,7 @@ fun MessageBubble(
         }
 
         // Process flow: independent 思考 / 搜索 / 查看页面 sections
-        if (!isUser && !HighRiskRejection.isReply(message.content) &&
+        if (!isUser && !message.flatProcess && !HighRiskRejection.isReply(message.content) &&
             (message.reasoningContent.isNotBlank() || !message.annotations.isNullOrEmpty())
         ) {
             ProcessFlowCard(
@@ -630,6 +640,80 @@ fun MessageBubble(
  *  查看页面 → browsed pages (tap → leave-app confirm)
  * Each row is collapsed by default (Think auto-opens while streaming).
  */
+/**
+ * One compact process row (search-run timeline): icon + label + right chevron,
+ * tap to expand the detail underneath. Consecutive rows stack with hairline
+ * separators like a single list.
+ */
+@Composable
+private fun ProcessStepRow(
+    message: ChatMessage,
+    fontSize: Int,
+    isDarkTheme: Boolean
+) {
+    var open by remember(message.id) { mutableStateOf(false) }
+    val textColor = if (isDarkTheme) MiMoColors.ThinkingTextDark else MiMoColors.ThinkingText
+    val secondaryColor = textColor.copy(alpha = 0.65f)
+    val icon = when {
+        message.content.contains("思考") -> Icons.Default.Lightbulb
+        message.content.startsWith("搜索") -> Icons.Default.Search
+        else -> Icons.Default.Description
+    }
+    val chevron by animateFloatAsState(if (open) 90f else 0f, label = "stepChevron")
+    Column(modifier = Modifier.fillMaxWidth(0.92f)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { open = !open }
+                .padding(vertical = 7.dp)
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = secondaryColor
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = message.content,
+                fontSize = (fontSize - 3).sp,
+                fontWeight = FontWeight.Medium,
+                color = textColor.copy(alpha = 0.92f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(
+                Icons.Default.KeyboardArrowRight,
+                contentDescription = if (open) "收起" else "展开",
+                modifier = Modifier.size(15.dp).graphicsLayer { rotationZ = chevron },
+                tint = secondaryColor
+            )
+        }
+        if (open && message.reasoningContent.isNotBlank()) {
+            Text(
+                message.reasoningContent,
+                fontSize = (fontSize - 3).sp,
+                color = secondaryColor,
+                lineHeight = (fontSize + 2).sp,
+                modifier = Modifier.padding(start = 22.dp, end = 8.dp, bottom = 7.dp)
+            )
+        } else if (open) {
+            Text(
+                if (message.isStreaming) "进行中…" else "无详情",
+                fontSize = (fontSize - 4).sp,
+                color = secondaryColor,
+                modifier = Modifier.padding(start = 22.dp, bottom = 7.dp)
+            )
+        }
+        HorizontalDivider(
+            thickness = 0.5.dp,
+            color = textColor.copy(alpha = 0.12f)
+        )
+    }
+}
+
 @Composable
 private fun ProcessFlowCard(
     message: ChatMessage,
