@@ -1446,7 +1446,7 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
         // request_permission - ask the user to grant a system permission & jump to Settings
         tools.add(AgentTool(
             name = "request_permission",
-            description = "Ask the user to grant a system permission. Use when a needed permission is missing. Args: permission (accessibility|overlay|storage|projection|notification|mic), reason (why it is needed)",
+            description = "Ask the user to grant a system permission. Use when a needed permission is missing. Args: permission (accessibility|overlay|storage|projection|notification|mic|calendar|alarm), reason (why it is needed)",
             riskLevel = 1, category = "system"
         ) { args, _ ->
             val permission = (args["permission"] as? String ?: "storage").lowercase()

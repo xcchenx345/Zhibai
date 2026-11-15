@@ -3457,6 +3457,8 @@ AI：$assistantReply
         "projection" -> "屏幕录制"
         "notification" -> "通知"
         "mic" -> "麦克风"
+        "calendar" -> "日历日程"
+        "alarm" -> "闹钟与提醒"
         else -> type
     }
 
@@ -3487,7 +3489,22 @@ AI：$assistantReply
                 "notification" ->
                     android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                         .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, pkg)
-                // projection / mic / anything else: app detail page (closest jumpable surface)
+                "alarm" ->
+                    // Android 12+ exact-alarm special access page; below 12 there is
+                    // nothing to grant (AlarmClock intents are permission-free).
+                    if (android.os.Build.VERSION.SDK_INT >= 31) {
+                        android.content.Intent(
+                            android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                            android.net.Uri.parse("package:$pkg")
+                        )
+                    } else {
+                        android.content.Intent(
+                            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            android.net.Uri.parse("package:$pkg")
+                        )
+                    }
+                // calendar / projection / mic / anything else: app detail page
+                // (closest jumpable surface for runtime permissions).
                 else ->
                     android.content.Intent(
                         android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
@@ -3744,7 +3761,7 @@ ${phoneToolDoc}- read_file: {"path":"file path"}
   Use on any image/audio/video file to see, transcribe, or analyze its content autonomously.
 - open_app: {"package":"com.package.name"}
 - list_apps: {}
-- request_permission: {"permission":"accessibility|overlay|storage|projection|notification|mic","reason":"why it is needed"}
+- request_permission: {"permission":"accessibility|overlay|storage|projection|notification|mic|calendar|alarm","reason":"why it is needed"}
   Use when you are blocked by a missing system permission or a tool reports NEED_PERMISSION. The user will be offered a jump to system Settings.
 - get_location: {} — Get GPS coordinates
 - set_alarm: {"hour":8,"minute":30,"label":"起床"} — Set alarm clock
