@@ -2202,6 +2202,7 @@ AI：$assistantReply
             } catch (e: kotlinx.coroutines.CancellationException) {
                 // user pressed stop — not an error
             } catch (e: Exception) {
+                AppLog.e("sendMessage run failed", e)
                 _error.value = e.message ?: "Unknown error"
                 updateSessionById(session.id) { s ->
                     s.copy(messages = s.messages
@@ -2564,7 +2565,7 @@ AI：$assistantReply
                     } catch (e: Exception) { null }
                 }
             }
-            AppLog.d("agentFlow round $round parse: structured=${structured != null} tools=${structured?.toolCalls?.size ?: 0} respLen=${structured?.response?.length ?: 0}")
+            AppLog.d("agentFlow round $round parse: structured=${structured != null} tools=${structured?.toolCalls?.size ?: 0} names=${structured?.toolCalls?.map { it.tool }} respLen=${structured?.response?.length ?: 0} thinkJson=${structured?.thinking?.length ?: 0}")
             if (structured == null) {
                 // Broken schema JSON vs plain prose the model wrote instead of the schema.
                 val looksJson = rawText.trimStart().startsWith("{") || rawText.contains("\"tool_calls\"")
@@ -2636,9 +2637,13 @@ AI：$assistantReply
             val toolCalls = structured.toolCalls
             if (toolCalls.isNullOrEmpty()) {
                 val responseText = structured.response?.trim().orEmpty()
-                if (responseText.isEmpty() && round < maxRounds) {
-                    // BUG fix: model thought but returned no answer — nudge it once more
-                    // instead of ending the task with a blank reply
+                val thinkingText = structured.thinking?.trim().orEmpty()
+                // Nudge only when the model gave us NOTHING. Small models often put the
+                // whole answer in thinking and leave response empty — that IS an answer
+                // (finalText below falls back to it); looping "Continue." until maxRounds
+                // just shows an empty bubble for half a minute.
+                if (responseText.isEmpty() && thinkingText.isEmpty() && thinkOut.isBlank() && round < maxRounds) {
+                    AppLog.d("agentFlow round $round: empty reply, nudging")
                     apiMessages.add(Message(role = "assistant", content = rawText))
                     apiMessages.add(Message(
                         role = "user",
@@ -2647,8 +2652,9 @@ AI：$assistantReply
                     continue
                 }
                 val finalText = responseText.ifBlank {
-                    structured.thinking?.trim()?.takeIf { it.isNotBlank() }
-                        ?: "模型未输出 response 字段。"
+                    thinkingText.ifBlank {
+                        thinkOut.trim().takeIf { it.isNotBlank() } ?: "模型未输出 response 字段。"
+                    }
                 }
                 val anns = searchAnnotations.toList().ifEmpty { null }
                 val finalContent = withReferenceFallback(sanitizeHighRisk(finalText), anns)
@@ -2709,35 +2715,41 @@ AI：$assistantReply
             // every tool round 400'd and killed the conversation.
             val roundToolResults = mutableListOf<String>()
             toolCalls.forEachIndexed { idx, tc ->
-                _toolExecuting.value = true
-                islandService.showAgentTaskNotification(
-                    taskTitle = "运行中",
-                    taskStatus = "执行 ${tc.tool}",
-                    progress = ((idx) * 100 / toolCalls.size),
-                    phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_RUN
-                )
+                // gson fills data-class fields via Unsafe: a JSON object that omits
+                // "args" leaves this null even though Kotlin defaults it to emptyMap().
+                // Accessing it unguarded used to NPE the whole run right after the
+                // tool card appeared.
+                val tcArgs = tc.args ?: emptyMap<String, Any>()
+                AppLog.d("tool -> ${tc.tool} args=${tcArgs.keys} searchOnly=$searchOnly")
+                val toolStartMs = System.currentTimeMillis()
                 // Reuse the live "调用中" card inserted when this tool's name appeared in
-                // the stream; insert a fresh card only if detection missed it.
+                // the stream; insert a fresh card only if detection missed it. Declared
+                // outside the try — the result back-fill below needs the id.
                 val streamCardId = "stream-tc-$round-$idx"
                 val hasStreamCard = _sessions.value.find { it.id == session.id }
                     ?.messages?.any { it.id == streamCardId } == true
                 val runningMsgId = if (hasStreamCard) streamCardId
                     else java.util.UUID.randomUUID().toString()
-                updateSessionById(session.id) { s ->
-                    val msgs = s.messages.toMutableList()
-                    val i = msgs.indexOfFirst { it.id == runningMsgId }
-                    if (i >= 0) msgs[i] = msgs[i].copy(content = "⏳ ${tc.tool} 运行中...")
-                    else msgs.add(ChatMessage(id = runningMsgId, role = "tool", content = "⏳ ${tc.tool} 运行中..."))
-                    s.copy(messages = msgs)
-                }
-                val toolStartMs = System.currentTimeMillis()
-                AppLog.d("tool -> ${tc.tool} args=${tc.args.keys} searchOnly=$searchOnly")
                 var toolResult = try {
+                    _toolExecuting.value = true
+                    islandService.showAgentTaskNotification(
+                        taskTitle = "运行中",
+                        taskStatus = "执行 ${tc.tool}",
+                        progress = ((idx) * 100 / toolCalls.size),
+                        phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_RUN
+                    )
+                    updateSessionById(session.id) { s ->
+                        val msgs = s.messages.toMutableList()
+                        val i = msgs.indexOfFirst { it.id == runningMsgId }
+                        if (i >= 0) msgs[i] = msgs[i].copy(content = "⏳ ${tc.tool} 运行中...")
+                        else msgs.add(ChatMessage(id = runningMsgId, role = "tool", content = "⏳ ${tc.tool} 运行中..."))
+                        s.copy(messages = msgs)
+                    }
                     if (searchOnly) {
                         // Network-only tools, executed directly — no engine, no approval.
                         when (tc.tool) {
                             "web_search" -> {
-                                val q = (tc.args["query"] as? String)?.trim().orEmpty()
+                                val q = (tcArgs["query"] as? String)?.trim().orEmpty()
                                 if (q.isEmpty()) "Error: no query"
                                 else try {
                                     val results = BingSearch.search(q)
@@ -2755,8 +2767,8 @@ AI：$assistantReply
                                 } catch (e: Exception) { "Error: search failed: ${e.message}" }
                             }
                             "fetch_url" -> {
-                                val u = (tc.args["url"] as? String)?.trim().orEmpty()
-                                val maxLen = (tc.args["max_length"] as? Number)?.toInt() ?: 5000
+                                val u = (tcArgs["url"] as? String)?.trim().orEmpty()
+                                val maxLen = (tcArgs["max_length"] as? Number)?.toInt() ?: 5000
                                 if (u.isEmpty()) "Error: no url"
                                 else try { BingSearch.fetch(u, maxLen) }
                                 catch (e: Exception) { "Error: fetch failed: ${e.message}" }
@@ -2764,7 +2776,7 @@ AI：$assistantReply
                             else -> "Error: tool '${tc.tool}' is not available in normal chat. Available: web_search, fetch_url."
                         }
                     } else {
-                        engine!!.executeTool(tc.tool, tc.args, _agentPermissionMode.value)
+                        engine!!.executeTool(tc.tool, tcArgs, _agentPermissionMode.value)
                     }
                 } catch (e: Exception) {
                     "Error: ${e.message}"
@@ -2800,7 +2812,7 @@ AI：$assistantReply
                             phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_RUN
                         )
                         toolResult = try {
-                            engine!!.executeTool(tc.tool, tc.args, _agentPermissionMode.value)
+                            engine!!.executeTool(tc.tool, tcArgs, _agentPermissionMode.value)
                         } catch (e: Exception) {
                             "Error: ${e.message}"
                         }
@@ -2837,8 +2849,8 @@ AI：$assistantReply
                 val stepMap = mutableMapOf("tool" to tc.tool, "result" to displayResult)
                 // Precise edit → carry old/new text so the UI can render a side-by-side diff
                 if (tc.tool == "edit_file" && !displayResult.startsWith("Error")) {
-                    (tc.args["old_text"] as? String)?.let { stepMap["oldText"] = it }
-                    (tc.args["new_text"] as? String)?.let { stepMap["newText"] = it }
+                    (tcArgs["old_text"] as? String)?.let { stepMap["oldText"] = it }
+                    (tcArgs["new_text"] as? String)?.let { stepMap["newText"] = it }
                 }
                 toolSteps.add(stepMap)
                 roundToolResults.add("[tool result: ${tc.tool}]\n$displayResult")

@@ -12,7 +12,9 @@ data class StructuredToolCallResponse(
 
 data class StructuredToolCall(
     val tool: String,
-    val args: Map<String, Any> = emptyMap(),
+    // Nullable on purpose: gson instantiates data classes via Unsafe, so a JSON
+    // object that omits "args" leaves this null despite the Kotlin default.
+    val args: Map<String, Any>? = null,
     val reason: String? = null
 )
 
