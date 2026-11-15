@@ -12,14 +12,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.VolumeUp
@@ -46,21 +48,19 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 /**
- * Capsule segmented model switcher (spec: CAPSULE TAB BAR).
+ * Capsule segmented model switcher — the Android-clock style: one big white
+ * capsule shell, four bold icon-over-label segments, and the selection shown as
+ * a gray rounded slab behind the whole icon+label block (not a dot under it).
  *
- * Four segments — Chat / Agent / ASR / TTS — icon over label, with a darker
- * indicator pill under the active label. The pill is tap-to-jump and
- * press-to-drag (strict 1:1 while dragging, velocity-driven squash, spring
- * snap on release). Landing on Chat or Agent pops the model list for that
- * category; ASR and TTS switch directly.
+ * Interactions: tap-to-jump with spring, drag the slab 1:1 with velocity squash
+ * and snap-to-nearest on release. Landing on Chat / Agent pops the model list;
+ * ASR / TTS switch directly.
  */
 @Composable
 fun CapsuleModelBar(
@@ -70,7 +70,6 @@ fun CapsuleModelBar(
     onSelectModel: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val density = LocalDensity.current
     val scope = rememberCoroutineScope()
 
     val segments = listOf("Chat", "Agent", "ASR", "TTS")
@@ -84,24 +83,26 @@ fun CapsuleModelBar(
     val chatModels = modelIds.filter { it.startsWith("mimo-v") || it.startsWith("local:") }
     val agentModels = if (agentEnabled) chatModels.map { "$it-agent" } else emptyList()
 
-    // ---- geometry (px, filled at layout time) ----
+    // ---- geometry (px, filled at layout) ----
     var trackWidthPx by remember { mutableFloatStateOf(0f) }
     val segCount = segments.size
+    val density = LocalDensity.current
+    val insetPx = with(density) { 6.dp.toPx() }
     fun segCenterPx(i: Int): Float =
         if (trackWidthPx <= 0f) 0f else trackWidthPx * (i + 0.5f) / segCount
+    fun slabWidthPx(): Float =
+        if (trackWidthPx <= 0f) 0f else trackWidthPx / segCount - insetPx * 2
 
-    // ---- pill position (px) + squash ----
-    val pillX = remember { Animatable(0f) }
-    var pillInited by remember { mutableStateOf(false) }
+    // ---- indicator slab position + squash ----
+    val slabX = remember { Animatable(0f) }
+    var slabInited by remember { mutableStateOf(false) }
     var hoverIndex by remember { mutableIntStateOf(selectedIndex) }
     var pressedIndex by remember { mutableIntStateOf(-1) }
-    var menuFor by remember { mutableIntStateOf(-1) } // 0=Chat 1=Agent popup open
+    var menuFor by remember { mutableIntStateOf(-1) }
 
-    // Velocity-driven squash: the faster the pill moves the flatter it gets
-    // (k from the spec; velocities are dp/s-ish in px, clamped to a visible band).
-    val speed = abs(pillX.velocity)
-    val pillScaleY = (1f - speed * 0.00022f).coerceIn(0.72f, 1f)
-    val pillScaleX = 1f / pillScaleY
+    val speed = abs(slabX.velocity)
+    val slabScaleY = (1f - speed * 0.00018f).coerceIn(0.78f, 1f)
+    val slabScaleX = 1f / slabScaleY
 
     fun land(index: Int) {
         when (index) {
@@ -113,25 +114,47 @@ fun CapsuleModelBar(
 
     Box(
         modifier = modifier
-            .fillMaxWidth(0.94f)
-            .onSizeChanged { trackWidthPx = it.width.toFloat() }
+            .fillMaxWidth(0.96f)
+            .onSizeChanged {
+                trackWidthPx = it.width.toFloat()
+                if (!slabInited && trackWidthPx > 0f) {
+                    slabInited = true
+                    scope.launch { slabX.snapTo(segCenterPx(selectedIndex)) }
+                }
+            }
     ) {
-        // ---- shell ----
+        // ---- shell: big rounded capsule, hairline border ----
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
-                .clip(RoundedCornerShape(28.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f))
+                .height(64.dp)
+                .clip(RoundedCornerShape(32.dp))
+                .background(MaterialTheme.colorScheme.surface)
                 .border(
                     1.dp,
-                    MaterialTheme.colorScheme.outline.copy(alpha = 0.22f),
-                    RoundedCornerShape(28.dp)
+                    MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
+                    RoundedCornerShape(32.dp)
                 )
         )
 
-        // ---- segments (icon + label) ----
-        Row(modifier = Modifier.fillMaxWidth().height(56.dp)) {
+        // ---- selection slab (gray rounded block behind icon+label) ----
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .graphicsLayer {
+                    translationX = slabX.value - slabWidthPx() / 2f
+                    scaleX = slabScaleX
+                    scaleY = slabScaleY
+                }
+                .width(with(density) { slabWidthPx().toDp() })
+                .fillMaxHeight(0.82f)
+                .padding(vertical = 0.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f))
+        )
+
+        // ---- segments: big filled icon over bold label ----
+        Row(modifier = Modifier.fillMaxWidth().height(64.dp)) {
             segments.forEachIndexed { i, label ->
                 val active = i == hoverIndex
                 val pressed = i == pressedIndex
@@ -140,52 +163,34 @@ fun CapsuleModelBar(
                     verticalArrangement = Arrangement.Center,
                     modifier = Modifier
                         .weight(1f)
-                        .height(56.dp)
-                        .scale(if (pressed) 0.92f else 1f)
+                        .fillMaxHeight()
+                        .scale(if (pressed) 0.93f else 1f)
                 ) {
                     Icon(
                         imageVector = when (i) {
-                            0 -> Icons.Default.Chat
+                            0 -> Icons.AutoMirrored.Filled.Chat
                             1 -> Icons.Default.SmartToy
                             2 -> Icons.Default.Mic
                             else -> Icons.Default.VolumeUp
                         },
                         contentDescription = label,
-                        modifier = Modifier.size(20.dp),
-                        tint = if (active) MaterialTheme.colorScheme.onSurface
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                        modifier = Modifier.size(26.dp),
+                        tint = MaterialTheme.colorScheme.onSurface
                     )
-                    Spacer(modifier = Modifier.height(3.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = label,
-                        fontSize = 10.sp,
-                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                        fontSize = 12.sp,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = if (active) MaterialTheme.colorScheme.onSurface
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
         }
 
-        // ---- indicator pill ----
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(top = 40.dp)
-                .graphicsLayer {
-                    translationX = pillX.value - 10.dp.toPx()
-                    scaleX = pillScaleX
-                    scaleY = pillScaleY
-                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin.Center
-                }
-                .size(width = 20.dp, height = 4.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f))
-        )
-
-        // ---- hit layer: whole track is tappable + draggable ----
+        // ---- hit layer: whole track tappable + draggable ----
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -198,41 +203,36 @@ fun CapsuleModelBar(
                         var lastX = down.position.x
                         var lastT = System.currentTimeMillis()
                         var moved = false
-                        var v = 0f
                         while (true) {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull() ?: break
                             if (!change.pressed) break
                             val x = change.position.x
-                            val now = System.currentTimeMillis()
-                            val dt = ((now - lastT) / 1000f).coerceAtLeast(0.008f)
-                            v = (x - lastX) / dt
                             if (abs(x - down.position.x) > 6f) moved = true
                             if (moved) {
-                                // 1:1 tracking while dragging — no easing, glued to finger.
-                                // Allow a small overshoot past the track edges.
+                                // 1:1 tracking — glued to the finger
                                 val lo = -8.dp.toPx()
                                 val hi = trackWidthPx + 8.dp.toPx()
                                 val clamped = x.coerceIn(lo, hi)
-                                scope.launch { pillX.snapTo(clamped) }
-                                hoverIndex = ((x / trackWidthPx) * segCount).toInt().coerceIn(0, segCount - 1)
+                                scope.launch { slabX.snapTo(clamped) }
+                                hoverIndex = ((x / trackWidthPx) * segCount)
+                                    .toInt().coerceIn(0, segCount - 1)
                             }
                             lastX = x
-                            lastT = now
+                            lastT = System.currentTimeMillis()
                         }
                         pressedIndex = -1
-                        val target = if (moved) {
-                            hoverIndex
-                        } else {
-                            ((down.position.x / trackWidthPx) * segCount).toInt().coerceIn(0, segCount - 1)
-                        }
+                        val target = if (moved) hoverIndex
+                        else ((down.position.x / trackWidthPx) * segCount)
+                            .toInt().coerceIn(0, segCount - 1)
                         hoverIndex = target
                         scope.launch {
-                            pillX.animateTo(
+                            slabX.animateTo(
                                 segCenterPx(target),
                                 animationSpec = spring(
-                                    dampingRatio = 0.72f,
-                                    stiffness = if (moved) Spring.StiffnessMediumLow else Spring.StiffnessMedium
+                                    dampingRatio = 0.75f,
+                                    stiffness = if (moved) Spring.StiffnessMediumLow
+                                    else Spring.StiffnessMedium
                                 )
                             )
                         }

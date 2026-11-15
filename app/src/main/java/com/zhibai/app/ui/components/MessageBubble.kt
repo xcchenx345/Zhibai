@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -346,6 +347,8 @@ fun MessageBubble(
                 if (isUser) {
                     val customBubble = com.zhibai.app.ui.theme.LocalCustomBubbleColor.current
                     val bubbleColor = if (customBubble != Color.Unspecified) customBubble else MiMoColors.UserBubble
+                    // Light-gray bubble → dark text; custom colors adapt by luminance
+                    val bubbleTextColor = if (bubbleColor.luminance() > 0.45f) Color(0xFF1C1C1E) else Color.White
                     // Auto-collapse long sent messages
                     var bubbleExpanded by remember { mutableStateOf(false) }
                     var bubbleHeightPx by remember { mutableIntStateOf(0) }
@@ -355,7 +358,7 @@ fun MessageBubble(
                     val bubbleTooTall = bubbleHeightPx > collapsedMaxPx
                     val bubbleScrollState = rememberScrollState()
                     Surface(
-                        shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomStart = 12.dp, bottomEnd = 2.dp),
+                        shape = RoundedCornerShape(6.dp),
                         color = bubbleColor,
                         shadowElevation = 0.dp
                     ) {
@@ -381,7 +384,7 @@ fun MessageBubble(
                                     ) {
                                         Text(
                                             message.content.ifBlank { if (message.isStreaming) "..." else "" },
-                                            color = MiMoColors.OnPrimary,
+                                            color = bubbleTextColor,
                                             fontSize = fontSize.sp,
                                             lineHeight = (fontSize + 7).sp,
                                             fontFamily = if (studyMode) androidx.compose.ui.text.font.FontFamily.Serif else null
@@ -390,7 +393,7 @@ fun MessageBubble(
                                             Spacer(modifier = Modifier.height(4.dp))
                                             LinearProgressIndicator(
                                                 modifier = Modifier.width(40.dp).height(2.dp).clip(RoundedCornerShape(1.dp)),
-                                                color = MiMoColors.OnPrimary.copy(alpha = 0.6f)
+                                                color = bubbleTextColor.copy(alpha = 0.6f)
                                             )
                                         }
                                     }
@@ -422,7 +425,7 @@ fun MessageBubble(
                                 Text(
                                     text = if (bubbleExpanded) "收起" else "展开全部",
                                     fontSize = 12.sp,
-                                    color = MiMoColors.OnPrimary.copy(alpha = 0.7f),
+                                    color = bubbleTextColor.copy(alpha = 0.7f),
                                     modifier = Modifier
                                         .align(Alignment.CenterHorizontally)
                                         .clickable { bubbleExpanded = !bubbleExpanded }

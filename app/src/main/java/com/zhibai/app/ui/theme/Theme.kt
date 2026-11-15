@@ -31,7 +31,7 @@ object MiMoColors {
     val SurfaceDarkElevated = Color(0xFF181818) // ~2% lighter than SurfaceDark
     val Background = Color(0xFFF5F5F5)
     val BackgroundDark = Color(0xFF0C0C0C)   // ~1.5% lighter than 0A0A0A
-    val UserBubble = Color(0xFF000000)
+    val UserBubble = Color(0xFFE9E9EB)
     val AssistantBubble = Color(0xFFFFFFFF)
     val AssistantBubbleDark = Color(0xFF1E1E1E)
     val TextPrimary = Color(0xFF1A1A1A)
