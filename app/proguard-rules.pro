@@ -5,6 +5,10 @@
 # reflective binding and the tool loop died with ClassCastException.
 -keep class com.zhibai.app.agent.StructuredToolCallResponse { *; }
 -keep class com.zhibai.app.agent.StructuredToolCall { *; }
+# Gson-reflected DTOs in data.api / agent — R8 mangling made gson throw
+# "Abstract classes can't be instantiated" on the ASR/TTS responses.
+-keep class com.zhibai.app.data.api.** { *; }
+-keep class com.zhibai.app.agent.** { *; }
 
 # OkHttp
 -dontwarn okhttp3.**

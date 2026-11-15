@@ -1665,8 +1665,10 @@ AI：$assistantReply
      * Returns recognized text, or null on failure (see [TTSService.lastAsrError]).
      */
     suspend fun speechToText(audioBase64: String, mimeType: String = "audio/wav"): String? {
+        // ASR/TTS are platform endpoints — they take the MAIN key. Preferring the
+        // agent key here sent a stale/garbage one and 401'd every transcription.
         ttsService.updateApiKey(
-            if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
+            if (_apiKey.value.isNotBlank()) _apiKey.value else _agentApiKey.value
         )
         return ttsService.speechToText(audioBase64, mimeType)
     }
