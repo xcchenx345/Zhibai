@@ -5,6 +5,8 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.view.Surface
+import android.view.WindowManager
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -30,24 +32,40 @@ import androidx.compose.ui.platform.LocalContext
 import kotlin.math.sin
 import kotlin.random.Random
 
+/** Process-scoped field — survives Activity recreation on screen rotation. */
+private object SnowField {
+    val sim = SnowPhysics()
+}
+
+private fun displayRotation(context: Context): Int = try {
+    if (android.os.Build.VERSION.SDK_INT >= 30) {
+        context.display?.rotation ?: Surface.ROTATION_0
+    } else {
+        @Suppress("DEPRECATION")
+        (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.rotation
+    }
+} catch (_: Throwable) {
+    Surface.ROTATION_0
+}
+
 /**
- * Physics snow celebration.
+ * Physics snow — once triggered it keeps falling for the life of the process.
  *
  * - Flakes fall under gravity and settle into a heightmap pile at the BOTTOM of
  *   the screen (not the input bar).
- * - Device tilt (gravity sensor) is a lateral wind: falling flakes drift and the
- *   settled pile avalanches toward the low side, so the snow moves around as the
- *   phone is tilted.
+ * - Device tilt is a lateral wind: falling flakes drift and the settled pile
+ *   avalanches toward the low side. The gravity vector is remapped through the
+ *   display rotation so landscape tilt points the wind the same way the screen
+ *   faces.
  * - Hard caps: [SnowPhysics.MAX_PILE_FRACTION] of screen height and
- *   [SnowPhysics.MAX_ALIVE] concurrent flakes. Spawning runs for
- *   [SnowPhysics.SPAWN_WINDOW_MS] so the snow covers a whole conversation.
+ *   [SnowPhysics.MAX_ALIVE] concurrent flakes.
+ * - The sim lives in [SnowField] (process scope) so rotating the phone keeps the
+ *   field instead of re-randomizing every flake.
  */
 @Composable
 fun SnowCelebration(
     active: Boolean,
-    modifier: Modifier = Modifier,
-    /** Increments once per celebration — restarts the sim with a fresh pile. */
-    celebrateKey: Int = 0
+    modifier: Modifier = Modifier
 ) {
     if (!active) return
 
@@ -55,8 +73,8 @@ fun SnowCelebration(
     val flakeColor = if (isDark) Color.White else Color(0xFF333333)
     val pileColor = if (isDark) Color.White else Color(0xFF555555)
 
-    // Tilt = gravity.x / g, roughly -1..1. Falls back to the accelerometer on
-    // devices without a gravity sensor.
+    // Tilt = screen-x component of gravity / g, roughly -1..1. Falls back to the
+    // accelerometer on devices without a gravity sensor.
     val context = LocalContext.current
     val tilt = remember { mutableFloatStateOf(0f) }
     DisposableEffect(Unit) {
@@ -65,7 +83,17 @@ fun SnowCelebration(
             ?: sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         val listener = object : SensorEventListener {
             override fun onSensorChanged(e: SensorEvent) {
-                tilt.floatValue = (e.values[0] / SensorManager.GRAVITY_EARTH).coerceIn(-1f, 1f)
+                val gx = e.values[0]
+                val gy = e.values[1]
+                // Sensor axes follow the device's natural orientation — remap to
+                // screen axes or landscape tilt blows the snow the wrong way.
+                val screenX = when (displayRotation(context)) {
+                    Surface.ROTATION_90 -> gy
+                    Surface.ROTATION_180 -> -gx
+                    Surface.ROTATION_270 -> -gy
+                    else -> gx
+                }
+                tilt.floatValue = (screenX / SensorManager.GRAVITY_EARTH).coerceIn(-1f, 1f)
             }
             override fun onAccuracyChanged(s: Sensor?, accuracy: Int) {}
         }
@@ -73,11 +101,7 @@ fun SnowCelebration(
         onDispose { sm.unregisterListener(listener) }
     }
 
-    val sim = remember { SnowPhysics() }
-    // A new celebration restarts the sim — fresh pile and spawn window.
-    LaunchedEffect(celebrateKey) {
-        if (celebrateKey > 0) sim.reset()
-    }
+    val sim = SnowField.sim
     // Frame ticker: read inside the draw lambda → per-frame redraw only.
     val tick by rememberInfiniteTransition(label = "snowFall").animateFloat(
         initialValue = 0f,
@@ -107,20 +131,18 @@ private class SnowPhysics {
         const val COLS = 64
         /** Settled snow never covers more than this fraction of screen height. */
         const val MAX_PILE_FRACTION = 0.22f
-        /** Concurrent falling flakes (perf cap) — spawning is continuous, not budgeted. */
-        const val MAX_ALIVE = 180
-        private const val SPAWN_PER_SEC = 22f
-        private const val SPAWN_WINDOW_MS = 60_000L
+        /** Concurrent falling flakes (perf cap) — spawning runs forever (一直下). */
+        const val MAX_ALIVE = 320
+        private const val SPAWN_PER_SEC = 60f
         private const val GRAVITY = 420f
         private const val TERMINAL_VY = 420f
-        private const val WIND_GAIN = 150f
+        private const val WIND_GAIN = 220f
     }
 
     private val height = FloatArray(COLS)
     private val flakes = ArrayList<Flake>(MAX_ALIVE)
     private val rng = Random(7)
     private var lastMs = -1L
-    private var startMs = -1L
     private var spawnAcc = 0f
     private var lastW = 0f
     private var lastH = 0f
@@ -149,13 +171,11 @@ private class SnowPhysics {
         lastH = h
         val dt = if (lastMs < 0) 0.016f else ((nowMs - lastMs) / 1000f).coerceIn(0f, 0.05f)
         lastMs = nowMs
-        if (startMs < 0) startMs = nowMs
         val maxPile = h * MAX_PILE_FRACTION
 
-        // Continuous spawn while the celebration is young and the screen is not
-        // already full of falling flakes — the old 220-flake lifetime budget ran
-        // out after ~4s, so snow stopped during the conversation.
-        if (flakes.size < MAX_ALIVE && nowMs - startMs < SPAWN_WINDOW_MS) {
+        // Continuous spawn — it snows until the process dies. The only cap is how
+        // many flakes may be airborne at once.
+        if (flakes.size < MAX_ALIVE) {
             spawnAcc += dt * SPAWN_PER_SEC
             while (spawnAcc >= 1f && flakes.size < MAX_ALIVE) {
                 spawnAcc -= 1f
@@ -227,14 +247,6 @@ private class SnowPhysics {
                 k++
             }
         }
-    }
-
-    /** Fresh celebration: empty pile, new spawn window. */
-    fun reset() {
-        for (i in height.indices) height[i] = 0f
-        flakes.clear()
-        spawnAcc = 0f
-        startMs = -1L
     }
 
     fun draw(scope: DrawScope, flakeColor: Color, pileColor: Color) = with(scope) {

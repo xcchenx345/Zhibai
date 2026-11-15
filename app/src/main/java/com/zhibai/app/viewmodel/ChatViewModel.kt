@@ -643,9 +643,15 @@ $convoText
     private val _toolExecuting = MutableStateFlow(false)
     val toolExecuting: StateFlow<Boolean> = _toolExecuting.asStateFlow()
 
-    /** Incremented by the model's let_it_snow tool — ChatScreen turns it into snow. */
+    /** Incremented by the model's let_it_snow tool and the agent celebration —
+     *  ChatScreen mounts the snow layer while this is above zero (it never stops). */
     private val _manualSnowRequest = MutableStateFlow(0)
     val manualSnowRequest: StateFlow<Int> = _manualSnowRequest.asStateFlow()
+
+    fun snowNow() {
+        _manualSnowRequest.value = _manualSnowRequest.value + 1
+        AppLog.d("snow: triggered #${_manualSnowRequest.value}")
+    }
 
     private val _speedStats = MutableStateFlow<SpeedStats?>(null)
     val speedStats: StateFlow<SpeedStats?> = _speedStats.asStateFlow()
@@ -2763,8 +2769,7 @@ AI：$assistantReply
                     // Built-in fun tool — handled here so normal chat and Agent both
                     // can snow without going through the engine or a network call.
                     if (tc.tool == "let_it_snow") {
-                        _manualSnowRequest.value = _manualSnowRequest.value + 1
-                        AppLog.d("tool let_it_snow -> snow requested #${_manualSnowRequest.value}")
+                        snowNow()
                         "雪已经下了起来。"
                     } else if (searchOnly) {
                         // Network-only tools, executed directly — no engine, no approval.

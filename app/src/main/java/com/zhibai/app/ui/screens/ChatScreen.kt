@@ -1380,31 +1380,19 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     // Snow layer — works in normal chat AND Agent. Two triggers:
                     // 1. an Agent run whose whole checklist got checked (celebration)
                     // 2. the model calling the let_it_snow tool (manual)
-                    var snowActive by remember { mutableStateOf(false) }
-                    var celebrateKey by remember { mutableIntStateOf(0) }
-                    // Trigger when agent goes from active → inactive (output finished).
-                    // The one-shot gate lives in AgentTaskManager: a remember'd flag
-                    // reset every time the Agent screen re-entered composition and
-                    // re-played the celebration (「一进 Agent 就下雪」).
+                    // Both bump the ViewModel counter; the layer mounts while it is
+                    // above zero and then snows forever (counter survives rotation).
                     LaunchedEffect(agentActive) {
                         if (agentActive) {
                             viewModel.agentTaskManager.armCelebration()
                         } else if (viewModel.agentTaskManager.consumeCelebration()) {
-                            snowActive = true
-                            celebrateKey++
+                            viewModel.snowNow()
                         }
                     }
-                    val manualSnow by viewModel.manualSnowRequest.collectAsState()
-                    LaunchedEffect(manualSnow) {
-                        if (manualSnow > 0) {
-                            snowActive = true
-                            celebrateKey++
-                        }
-                    }
-                    if (snowActive) {
+                    val snowTrigger by viewModel.manualSnowRequest.collectAsState()
+                    if (snowTrigger > 0) {
                         com.zhibai.app.ui.components.SnowCelebration(
-                            active = snowActive,
-                            celebrateKey = celebrateKey,
+                            active = true,
                             // zIndex: the snow draws ON TOP of the input bar — it used
                             // to compose before the bar, so flakes fell behind it and
                             // vanished (「飞入输入框看不见」).
