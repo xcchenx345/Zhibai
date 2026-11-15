@@ -600,7 +600,7 @@ private fun ApiKeyStep(
                 onValueChange = { input = it },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("MiMo API Key") },
-                placeholder = { Text("sk-xxxxx 或 mm-密文") },
+                placeholder = { Text("sk-xxxxx") },
                 singleLine = true,
                 visualTransformation = if (visible) VisualTransformation.None
                     else PasswordVisualTransformation(),

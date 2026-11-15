@@ -18,7 +18,7 @@ import com.zhibai.app.data.api.StreamChunk
 import com.zhibai.app.data.api.TTSService
 import com.zhibai.app.data.api.filterForSpeech
 import com.zhibai.app.data.model.*
-import com.zhibai.app.security.MmKeyCodec
+import com.zhibai.app.util.AppLog
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -665,15 +665,11 @@ $convoText
             context.dataStore.data.first().let { prefs ->
                 val savedKey = prefs[API_KEY] ?: ""
                 if (savedKey.isNotBlank()) {
-                    val resolvedKey = MmKeyCodec.resolve(savedKey)
                     _apiKey.value = savedKey.trim()
-                    _apiKeyConfigured.value = resolvedKey.isNotBlank()
-                    apiService.updateApiKey(resolvedKey)
-                    cloudListService.updateApiKey(resolvedKey)
-                    ttsService.updateApiKey(resolvedKey)
-                    if (resolvedKey.isBlank()) {
-                        _error.value = "密钥解析失败（mm-密文损坏），请到设置页重新粘贴密钥"
-                    }
+                    _apiKeyConfigured.value = true
+                    apiService.updateApiKey(savedKey.trim())
+                    cloudListService.updateApiKey(savedKey.trim())
+                    ttsService.updateApiKey(savedKey.trim())
                 }
                 val savedVoice = prefs[TTS_VOICE_KEY]
                 if (!savedVoice.isNullOrBlank()) {
@@ -767,9 +763,7 @@ $convoText
                 prefs[LOCAL_AI_ENABLED_KEY]?.let { _localAiEnabled.value = it == "true" }
                 prefs[LOCAL_AI_MODEL_KEY]?.let { _localAiModel.value = it }
                 if (_agentEnabled.value) {
-                    val key = MmKeyCodec.resolve(
-                        if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
-                    )
+                    val key = if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
                     val url = if (_agentApiKey.value.isNotBlank()) _agentBaseUrl.value
                         else "https://api.xiaomimimo.com/v1"
                     agentChatService.updateApiKey(key)
@@ -875,17 +869,12 @@ $convoText
     }
 
     fun setApiKey(key: String) {
-        // Raw value (sk- or mm-) stays in DataStore/UI; services get the real key.
         val raw = key.trim()
-        val resolved = MmKeyCodec.resolve(raw)
-        apiService.updateApiKey(resolved)
-        cloudListService.updateApiKey(resolved)
-        ttsService.updateApiKey(resolved)
+        apiService.updateApiKey(raw)
+        cloudListService.updateApiKey(raw)
+        ttsService.updateApiKey(raw)
         _apiKey.value = raw
-        _apiKeyConfigured.value = resolved.isNotBlank()
-        if (raw.isNotBlank() && resolved.isBlank()) {
-            _error.value = "密钥解析失败（mm-密文损坏），请重新复制粘贴密钥"
-        }
+        _apiKeyConfigured.value = raw.isNotBlank()
         viewModelScope.launch {
             context.dataStore.edit { prefs ->
                 prefs[API_KEY] = raw
@@ -1101,19 +1090,17 @@ $convoText
             }
         } else {
             apiService.updateBaseUrl("https://api.xiaomimimo.com/v1")
-            val resolvedKey = MmKeyCodec.resolve(_apiKey.value)
-            apiService.updateApiKey(resolvedKey)
-            val key = MmKeyCodec.resolve(
-                if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
-            )
+            apiService.updateApiKey(_apiKey.value.trim())
+            val key = if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
             val url = if (_agentApiKey.value.isNotBlank()) _agentBaseUrl.value
                 else "https://api.xiaomimimo.com/v1"
-            agentChatService.updateApiKey(key)
+            agentChatService.updateApiKey(key.trim())
             agentChatService.updateBaseUrl(url)
-            agentToolService?.updateApiKey(key)
+            agentToolService?.updateApiKey(key.trim())
             agentToolService?.updateBaseUrl(url)
-            _apiKeyConfigured.value = resolvedKey.isNotBlank()
+            _apiKeyConfigured.value = _apiKey.value.isNotBlank()
         }
+        AppLog.d("route: model=$model local=${isLocalModelId(model)} key=${AppLog.keyShape(_apiKey.value)} agentKey=${AppLog.keyShape(_agentApiKey.value)}")
     }
 
     /** Apply a route change that arrived while a generation was running. */
@@ -1227,9 +1214,7 @@ $convoText
     fun setAgentEnabled(enabled: Boolean) {
         _agentEnabled.value = enabled
         if (enabled && agentEngine == null) {
-            val key = MmKeyCodec.resolve(
-                if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
-            )
+            val key = if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
             val url = if (_agentApiKey.value.isNotBlank()) _agentBaseUrl.value else "https://api.xiaomimimo.com/v1"
             agentChatService.updateApiKey(key)
             agentChatService.updateBaseUrl(url)
@@ -1563,10 +1548,7 @@ AI：$assistantReply
     fun setAgentApiKey(key: String) {
         val raw = key.trim()
         _agentApiKey.value = raw
-        val effectiveKey = MmKeyCodec.resolve(if (raw.isNotBlank()) raw else _apiKey.value)
-        if (raw.isNotBlank() && effectiveKey.isBlank()) {
-            _error.value = "Agent 密钥解析失败（mm-密文损坏），请重新复制粘贴"
-        }
+        val effectiveKey = if (raw.isNotBlank()) raw else _apiKey.value
         val effectiveUrl = if (raw.isNotBlank()) _agentBaseUrl.value else "https://api.xiaomimimo.com/v1"
         agentChatService.updateApiKey(effectiveKey)
         agentChatService.updateBaseUrl(effectiveUrl)
@@ -1586,9 +1568,7 @@ AI：$assistantReply
 
     fun setAgentBaseUrl(url: String) {
         _agentBaseUrl.value = url
-        val effectiveKey = MmKeyCodec.resolve(
-            if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
-        )
+        val effectiveKey = if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
         agentChatService.updateApiKey(effectiveKey)
         agentChatService.updateBaseUrl(url)
         agentEngine?.let {
@@ -1609,9 +1589,9 @@ AI：$assistantReply
         _workspacePath.value = path.trim()
         agentEngine?.let {
             agentToolService = MiMoApiService().also { svc ->
-                svc.updateApiKey(MmKeyCodec.resolve(
+                svc.updateApiKey(
                     if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
-                ))
+                )
                 svc.updateBaseUrl(
                     if (_agentApiKey.value.isNotBlank()) _agentBaseUrl.value
                         else "https://api.xiaomimimo.com/v1"
@@ -1674,9 +1654,9 @@ AI：$assistantReply
      * Returns recognized text, or null on failure (see [TTSService.lastAsrError]).
      */
     suspend fun speechToText(audioBase64: String, mimeType: String = "audio/wav"): String? {
-        ttsService.updateApiKey(MmKeyCodec.resolve(
+        ttsService.updateApiKey(
             if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
-        ))
+        )
         return ttsService.speechToText(audioBase64, mimeType)
     }
 
@@ -2205,6 +2185,7 @@ AI：$assistantReply
                 }
 
                 val isAgent = _currentModel.value.contains("agent") && agentEngine != null
+                AppLog.d("sendMessage dispatch: agent=$isAgent search=${_enableSearch.value} model=${_currentModel.value} textLen=${text.length} images=${imageUris.size} file=$fileName")
 
                 if (isAgent) {
                     // Both PLAN and BUILD run the full tool loop — the phase only
@@ -2308,7 +2289,7 @@ AI：$assistantReply
             )
             streamResponse(activeApi, request, isFirstMessage, session.id, text)
         } catch (e: Exception) {
-            if (isBalanceError(e) && MmKeyCodec.resolve(_agentApiKey.value).isNotBlank()) {
+            if (isBalanceError(e) && _agentApiKey.value.isNotBlank()) {
                 val fallbackApi = agentChatService
                 streamResponse(fallbackApi, request, isFirstMessage, session.id, text)
             } else {
@@ -2327,8 +2308,12 @@ AI：$assistantReply
         // searchOnly = normal chat with the search toggle: two network tools, no engine,
         // no permission gates. Regular agent mode still requires the engine.
         val engine = agentEngine
-        if (engine == null && !searchOnly) return
+        if (engine == null && !searchOnly) {
+            AppLog.w("agentFlow exit: no engine and not searchOnly")
+            return
+        }
         val activeApi = getActiveApiService()
+        AppLog.d("agentFlow enter: searchOnly=$searchOnly model=${_currentModel.value} engine=${engine != null} url=${activeApi.getBaseUrl()} key=${AppLog.keyShape(activeApi.getApiKey())}")
         val maxRounds = 5
         agentTaskManager.startSession()
 
@@ -2401,6 +2386,7 @@ AI：$assistantReply
         var malformedRecovery = 0
         while (round < maxRounds) {
             round++
+            AppLog.d("agentFlow round $round: msgs=${apiMessages.size} model=${getApiModel()}")
             // Streaming structured round: MiMo accepts stream + response_format
             // (json_schema) — JSON arrives token by token. Thinking streams natively
             // via reasoning_content; the `response` field is extracted incrementally;
@@ -2522,13 +2508,16 @@ AI：$assistantReply
             // not trigger a re-stream over the finished answer. Only a truly empty
             // round may fall back to the agent key, and only when that key resolves.
             if (streamFailure != null && streamBuf.isBlank() && isBalanceError(streamFailure) &&
-                MmKeyCodec.resolve(_agentApiKey.value).isNotBlank()
+                _agentApiKey.value.isNotBlank()
             ) {
+                AppLog.w("agentFlow round $round: empty round, balance fallback to agent key")
                 streamFailure = runStreamRound(agentChatService)
             }
             if (streamFailure != null && streamBuf.isNotBlank()) {
+                AppLog.w("agentFlow round $round: tail error ignored, ${streamBuf.length}B already arrived")
                 streamFailure = null
             }
+            AppLog.d("agentFlow round $round streamed: chars=${streamBuf.length} think=${thinkOut.length} fail=${streamFailure?.message?.take(120)}")
             if (streamFailure != null) {
                 _error.value = "Agent request failed: ${streamFailure.message}"
                 // Surface the failure in the bubble too — a bare banner (or a blank
@@ -2575,9 +2564,11 @@ AI：$assistantReply
                     } catch (e: Exception) { null }
                 }
             }
+            AppLog.d("agentFlow round $round parse: structured=${structured != null} tools=${structured?.toolCalls?.size ?: 0} respLen=${structured?.response?.length ?: 0}")
             if (structured == null) {
                 // Broken schema JSON vs plain prose the model wrote instead of the schema.
                 val looksJson = rawText.trimStart().startsWith("{") || rawText.contains("\"tool_calls\"")
+                AppLog.w("agentFlow round $round unparseable output: looksJson=$looksJson recovery=$malformedRecovery head=${rawText.take(120)}")
                 if (looksJson && malformedRecovery < 2) {
                     // Never dump raw JSON on the user and never end the run over a bad
                     // parse: show the model its own broken reply and ask for a resend.
@@ -2739,6 +2730,8 @@ AI：$assistantReply
                     else msgs.add(ChatMessage(id = runningMsgId, role = "tool", content = "⏳ ${tc.tool} 运行中..."))
                     s.copy(messages = msgs)
                 }
+                val toolStartMs = System.currentTimeMillis()
+                AppLog.d("tool -> ${tc.tool} args=${tc.args.keys} searchOnly=$searchOnly")
                 var toolResult = try {
                     if (searchOnly) {
                         // Network-only tools, executed directly — no engine, no approval.
@@ -2779,6 +2772,7 @@ AI：$assistantReply
                     _toolExecuting.value = false
                     _pendingToolCall.value = null
                 }
+                AppLog.d("tool <- ${tc.tool} ${System.currentTimeMillis() - toolStartMs}ms: ${toolResult.take(120).replace('\n', ' ')}")
                 // Tool reported a missing system permission → suspend, jump to Settings,
                 // wait for the user to grant, then retry the SAME tool call once.
                 if (toolResult.startsWith("NEED_PERMISSION:")) {
@@ -2868,6 +2862,7 @@ AI：$assistantReply
         // All tool rounds done, stream final response.
         // This pass has NO json_schema — a model still mid-task would dump its
         // {"thinking","tool_calls"...} JSON as plain text. Tell it to answer in prose.
+        AppLog.d("agentFlow tool rounds done ($round), final prose pass: msgs=${apiMessages.size} steps=${toolSteps.size}")
         apiMessages.add(Message(
             role = "user",
             content = "Tool execution rounds are exhausted. Do NOT emit another tool_calls JSON object. Give your final answer to the user now as plain prose."
@@ -3127,6 +3122,7 @@ AI：$assistantReply
                         _isGenerating.value = false
                         watchdogJob.cancel()
                         lastStreamCompleted = true
+                        AppLog.d("streamResponse done: content=${fullContent.length} think=${fullReasoning.length} anns=${allAnnotations.size}")
                         // Schema JSON leaked through this plain pass → salvage the prose
                         // answer once; null = normal content (unchanged behavior).
                         val leakFinal: String? = if (expectSchemaLeak && fullContent.contains("\"tool_calls\"")) {
@@ -3216,6 +3212,7 @@ AI：$assistantReply
             // Mid-stream failure: keep whatever partial content arrived, just stop the spinner.
             // Content already delivered means the answer is done — a tail error is not
             // an error worth a banner (and must never trigger a re-stream).
+            AppLog.e("streamResponse failed: content=${fullContent.length} think=${fullReasoning.length}", e)
             if (fullContent.isBlank()) _error.value = e.message ?: "连接中断"
             watchdogJob.cancel()
             if (trackSpeed) {
@@ -3898,11 +3895,7 @@ sources inline as [reference:N]."""
     }
 
     private fun getActiveApiService(): MiMoApiService {
-        // A raw mm- agent key that fails to unwrap must not route requests to the
-        // agent service — it would send an empty Bearer and 401 the run.
-        return if (_currentModel.value.contains("agent") &&
-            MmKeyCodec.resolve(_agentApiKey.value).isNotBlank()
-        ) {
+        return if (_currentModel.value.contains("agent") && _agentApiKey.value.isNotBlank()) {
             agentChatService
         } else {
             apiService
@@ -3943,9 +3936,12 @@ sources inline as [reference:N]."""
                 file.writeText(json)
                 tmp.delete()
             }
+            AppLog.d("sessions saved: ${cleanSessions.size} sessions ${json.length}B")
             // Also write encrypted backup to external storage
             com.zhibai.app.data.ChatBackupManager.backup(context, json)
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            AppLog.e("sessions save FAILED", e)
+        }
     }
 
     private suspend fun loadSessions(): List<ChatSession>? {
@@ -3967,10 +3963,16 @@ sources inline as [reference:N]."""
                 if (json.isNotBlank()) {
                     // A torn/corrupt file must fall back to the backup instead of
                     // wiping history (the old code returned null and dropped it all).
-                    val parsed = try { parseAndClean(json) } catch (_: Exception) { null }
-                    parsed ?: tryRestoreFromBackup(file, parseAndClean)
+                    val parsed = try { parseAndClean(json) } catch (e: Exception) {
+                        AppLog.e("sessions file corrupt (${json.length}B), falling back to backup", e)
+                        null
+                    }
+                    val result = parsed ?: tryRestoreFromBackup(file, parseAndClean)
+                    AppLog.d("sessions loaded: ${result?.size ?: 0} sessions (fallback=${parsed == null})")
+                    result
                 } else {
                     // File empty → try backup
+                    AppLog.w("sessions file empty, trying backup")
                     tryRestoreFromBackup(file, parseAndClean)
                 }
             } else {

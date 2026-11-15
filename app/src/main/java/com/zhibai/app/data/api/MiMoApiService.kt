@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder
 import com.google.gson.JsonElement
 import com.google.gson.JsonParser
 import com.zhibai.app.data.model.*
+import com.zhibai.app.util.AppLog
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -72,6 +73,7 @@ class MiMoApiService(
             .post(body)
             .build()
 
+        AppLog.d("http-> ${request.model} msgs=${request.messages.size} bytes=${json.length} url=$baseUrl key=${AppLog.keyShape(apiKey)}")
         val call = client.newCall(httpRequest)
 
         call.enqueue(object : Callback {
@@ -79,13 +81,17 @@ class MiMoApiService(
                 // call.cancel() from awaitClose (user pressed stop) surfaces as
                 // IOException("Canceled") — not an error, close the flow silently.
                 if (call.isCanceled()) close()
-                else close(e)
+                else {
+                    AppLog.e("http xx ${request.model}: ${e.javaClass.simpleName}: ${e.message}")
+                    close(e)
+                }
             }
 
             override fun onResponse(call: Call, response: Response) {
                 if (!response.isSuccessful) {
                     val errorBody = try { response.body?.string() ?: "" } catch (_: Exception) { "" }
                     response.close()
+                    AppLog.e("http ${response.code} ${request.model}: ${errorBody.take(300)}")
                     close(IOException(parseErrorDetail(errorBody) ?: "HTTP ${response.code}: ${response.message}"))
                     return
                 }
@@ -121,6 +127,7 @@ class MiMoApiService(
                         // Mid-stream API error — surface it instead of swallowing (Rikkahub-style)
                         if (obj.has("error") && !obj.get("error").isJsonNull) {
                             streamError = IOException(parseErrorDetail(data) ?: data.take(300))
+                            AppLog.e("sse error frame after ${frameBuf.length}B buf: ${data.take(200)}")
                             return false
                         }
                         try {
@@ -180,10 +187,12 @@ class MiMoApiService(
                     // A tail error frame after finish_reason carries no signal — the
                     // content is already complete. Closing with err here made callers
                     // treat a finished answer as a failure and re-stream over it.
+                    AppLog.w("sse end: sawFinish=$sawFinish sawDone=$sawDone err=${err.message?.take(120)}")
                     if (sawFinish) close() else close(err)
                     return
                 }
                 // EOF without [DONE] — finalize anyway
+                AppLog.d("sse end: sawDone=$sawDone sawFinish=$sawFinish")
                 if (!sawDone) trySend(StreamChunk.Done(usage))
                 close()
             }

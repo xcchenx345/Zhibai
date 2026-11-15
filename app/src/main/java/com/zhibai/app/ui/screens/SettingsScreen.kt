@@ -505,7 +505,7 @@ private fun ApiKeyPage(
             onValueChange = { apiKeyInput = it },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("MiMo API Key") },
-            placeholder = { Text("sk-xxxxx 或 mm-密文（签发方提供）") },
+            placeholder = { Text("sk-xxxxx") },
             singleLine = true,
             visualTransformation = if (showApiKey) VisualTransformation.None
             else PasswordVisualTransformation(),
@@ -821,7 +821,7 @@ private fun AgentSettingsPage(
                 value = agentKeyInput,
                 onValueChange = { agentKeyInput = it },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                placeholder = { Text("tp-xxxxx / mm-密文（留空则使用主密钥）") },
+                placeholder = { Text("tp-xxxxx（留空则使用主密钥）") },
                 singleLine = true,
                 visualTransformation = if (showAgentKey) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
@@ -1081,9 +1081,19 @@ private fun ForbiddenPage(
             leadingContent = { Icon(Icons.Default.BugReport, contentDescription = null) },
             modifier = Modifier.clickable {
                 try {
-                    val log = Runtime.getRuntime().exec("logcat -d -s MiMoApp").inputStream.bufferedReader().readText()
+                    val mem = com.zhibai.app.util.AppLog.dump()
+                    val logcat = try {
+                        Runtime.getRuntime().exec("logcat -d -s MiMoApp")
+                            .inputStream.bufferedReader().readText()
+                    } catch (_: Exception) { "" }
+                    val content = buildString {
+                        appendLine("=== MiMo AppLog (${mem.lines().size} lines) ===")
+                        appendLine(mem)
+                        appendLine()
+                        appendLine("=== logcat -s MiMoApp ===")
+                        appendLine(logcat.ifBlank { "(empty)" })
+                    }
                     val fileName = "mimo_log_${System.currentTimeMillis()}.txt"
-                    val content = log.ifBlank { "No logs found" }
                     // Save to public Download directory via MediaStore (Android 10+)
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                         val values = android.content.ContentValues().apply {

@@ -8,7 +8,6 @@ find_package(boringssl REQUIRED CONFIG)
 find_package(cxx REQUIRED CONFIG)
 
 add_library(adb SHARED
-        adb_pairing.cpp
-        mm_codec.cpp)
+        adb_pairing.cpp)
 
 target_link_libraries(adb log boringssl::crypto_static cxx::cxx)
