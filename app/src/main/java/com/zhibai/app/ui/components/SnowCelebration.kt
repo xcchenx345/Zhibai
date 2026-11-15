@@ -98,7 +98,23 @@ fun SnowCelebration(
             override fun onAccuracyChanged(s: Sensor?, accuracy: Int) {}
         }
         if (sensor != null) sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)
-        onDispose { sm.unregisterListener(listener) }
+        // Real gyroscope: rotation rate feeds the wind so twisting the phone blows
+        // the snow around (no permission needed for motion sensors on Android).
+        val sim = SnowField.sim
+        val gyro = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+        val gyroListener = object : SensorEventListener {
+            override fun onSensorChanged(e: SensorEvent) {
+                // values[2] = rotation rate around the screen normal (spin).
+                sim.addSpin(e.values[2])
+            }
+            override fun onAccuracyChanged(s: Sensor?, accuracy: Int) {}
+        }
+        if (gyro != null) sm.registerListener(gyroListener, gyro, SensorManager.SENSOR_DELAY_GAME)
+        com.zhibai.app.util.AppLog.d("snow sensors: tilt=${sensor?.name ?: "none"} gyro=${gyro?.name ?: "none"}")
+        onDispose {
+            sm.unregisterListener(listener)
+            sm.unregisterListener(gyroListener)
+        }
     }
 
     val sim = SnowField.sim
@@ -130,10 +146,10 @@ private class SnowPhysics {
     companion object {
         const val COLS = 64
         /** Settled snow never covers more than this fraction of screen height. */
-        const val MAX_PILE_FRACTION = 0.22f
+        const val MAX_PILE_FRACTION = 0.12f
         /** Concurrent falling flakes (perf cap) — spawning runs forever (一直下). */
-        const val MAX_ALIVE = 320
-        private const val SPAWN_PER_SEC = 60f
+        const val MAX_ALIVE = 160
+        private const val SPAWN_PER_SEC = 30f
         private const val GRAVITY = 420f
         private const val TERMINAL_VY = 420f
         private const val WIND_GAIN = 220f
@@ -146,6 +162,14 @@ private class SnowPhysics {
     private var spawnAcc = 0f
     private var lastW = 0f
     private var lastH = 0f
+
+    /** Gyro spin wind, written from the sensor thread and decayed in [step]. */
+    @Volatile
+    private var spin = 0f
+
+    fun addSpin(rateRadPerSec: Float) {
+        spin = (spin + rateRadPerSec * 0.22f).coerceIn(-1.5f, 1.5f)
+    }
 
     private class Flake(
         var x: Float, var y: Float,
@@ -192,8 +216,9 @@ private class SnowPhysics {
             }
         }
 
-        // Integrate falling flakes.
-        val wind = tilt * WIND_GAIN
+        // Integrate falling flakes. Wind = steady tilt + gyro spin impulse.
+        spin *= (1f - 2.5f * dt)
+        val wind = (tilt + spin) * WIND_GAIN
         var i = 0
         while (i < flakes.size) {
             val f = flakes[i]
@@ -220,13 +245,14 @@ private class SnowPhysics {
         // snapshot (each pair sees the same pre-frame heights) and both sides are
         // capped — a cascading in-place sweep used to drain the uphill columns into
         // the downhill edge every frame (拆东墙补西墙).
+        val eff = tilt + spin
         val dir = when {
-            tilt > 0.12f -> 1
-            tilt < -0.12f -> -1
+            eff > 0.12f -> 1
+            eff < -0.12f -> -1
             else -> 0
         }
         if (dir != 0) {
-            val gain = (0.25f + kotlin.math.abs(tilt) * 0.6f) * (dt * 60f).coerceAtMost(2f)
+            val gain = (0.25f + kotlin.math.abs(eff) * 0.6f) * (dt * 60f).coerceAtMost(2f)
             val snapshot = height.clone()
             var k = 0
             while (k < COLS - 1) {
