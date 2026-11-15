@@ -91,7 +91,7 @@ fun CapsuleModelBar(
     fun segCenterPx(i: Int): Float =
         if (trackWidthPx <= 0f) 0f else trackWidthPx * (i + 0.5f) / segCount
     fun slabWidthPx(): Float =
-        if (trackWidthPx <= 0f) 0f else trackWidthPx / segCount - insetPx * 2
+        if (trackWidthPx <= 0f) 0f else trackWidthPx / segCount - insetPx
 
     // ---- indicator slab position + squash ----
     val slabX = remember { Animatable(0f) }
@@ -137,7 +137,7 @@ fun CapsuleModelBar(
                 )
         )
 
-        // ---- selection slab (gray rounded block behind icon+label) ----
+        // ---- selection slab: true capsule (stadium) behind icon+label ----
         Box(
             modifier = Modifier
                 .align(Alignment.CenterStart)
@@ -148,8 +148,7 @@ fun CapsuleModelBar(
                 }
                 .width(with(density) { slabWidthPx().toDp() })
                 .fillMaxHeight(0.82f)
-                .padding(vertical = 0.dp)
-                .clip(RoundedCornerShape(22.dp))
+                .clip(RoundedCornerShape(percent = 50))
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f))
         )
 
@@ -174,14 +173,14 @@ fun CapsuleModelBar(
                             else -> Icons.Default.VolumeUp
                         },
                         contentDescription = label,
-                        modifier = Modifier.size(26.dp),
+                        modifier = Modifier.size(28.dp),
                         tint = MaterialTheme.colorScheme.onSurface
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = label,
-                        fontSize = 12.sp,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurface
