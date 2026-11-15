@@ -161,6 +161,15 @@ data class StreamFunctionCall(
 
 // ===== App Model =====
 
+/** One file mutation recorded by an agent tool run (write/edit/delete/move/copy). */
+data class FileChange(
+    val path: String = "",
+    val added: Int = 0,
+    val removed: Int = 0,
+    /** Pre-mutation content snapshot for undo — never serialized into cards. */
+    val oldContent: String? = null
+)
+
 data class ChatMessage(
     val id: String = java.util.UUID.randomUUID().toString(),
     val role: String,
@@ -174,7 +183,15 @@ data class ChatMessage(
     val reasoningDurationMs: Long = 0,
     /** Search runs carry their own role="step" timeline rows — hide the built-in
      *  process card on the answer so think/search info is not shown twice. */
-    val flatProcess: Boolean = false
+    val flatProcess: Boolean = false,
+    /** Tool-card display: what the tool is doing right now (collapsed title). */
+    val toolTitle: String? = null,
+    /** Icon key for the tool card (shell/android/file/web/...). */
+    val toolIcon: String? = null,
+    /** Real-time tool output accumulated while the tool runs. */
+    val toolLive: String? = null,
+    /** "running" | "ok" | "error" — null on legacy messages. */
+    val toolStatus: String? = null
 )
 
 data class ChatSession(

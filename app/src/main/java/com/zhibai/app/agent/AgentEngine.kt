@@ -103,6 +103,11 @@ class AgentEngine(
     private val gson = Gson()
     val workspaceDir: File = resolveWorkspace()
 
+    init {
+        // Gallery privacy: keep workspace files out of MediaScanner's index.
+        markWorkspacePrivate(workspaceDir)
+    }
+
     private fun tryMakeWritable(dir: File): Boolean {
         return try {
             if (!dir.exists()) dir.mkdirs()
@@ -125,11 +130,79 @@ class AgentEngine(
         if (tryMakeWritable(default)) return default
         return File(context.filesDir, "mimo_agent").apply { mkdirs() }
     }
+
+    /**
+     * Workspace must stay visible in the file manager but stay OUT of the gallery:
+     * MediaScanner indexes every image under shared storage, so the agent's working
+     * files (and their previews) ended up in the photo roll. A .nomedia in the root
+     * keeps all subdirs unindexed while the folder itself remains browsable; entries
+     * already indexed before the .nomedia existed are purged from MediaStore here.
+     */
+    private fun markWorkspacePrivate(dir: File) {
+        try {
+            File(dir, ".nomedia").apply { if (!exists()) createNewFile() }
+        } catch (_: Exception) {}
+        try {
+            val root = dir.canonicalPath
+            val resolver = context.contentResolver
+            val projection = arrayOf(android.provider.MediaStore.MediaColumns._ID)
+            // Purge any MediaStore rows pointing INSIDE the workspace — the app owns
+            // those files, their gallery presence is the leak being fixed.
+            val selection = android.provider.MediaStore.MediaColumns.DATA + " LIKE ?"
+            val args = arrayOf("$root/%")
+            listOf(
+                android.provider.MediaStore.Files.getContentUri("external")
+            ).forEach { uri ->
+                resolver.query(uri, projection, selection, args, null)?.use { c ->
+                    while (c.moveToNext()) {
+                        val id = c.getLong(0)
+                        try {
+                            resolver.delete(
+                                android.content.ContentUris.withAppendedId(uri, id),
+                                null, null
+                            )
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+    }
     private val skillsDir = File(workspaceDir, "skills").apply { mkdirs() }
     private val outputDir = File(workspaceDir, "output").apply { mkdirs() }
 
     val tools = mutableListOf<AgentTool>()
     private val scheduledTasks = mutableListOf<AgentTask>()
+
+    /** Live tool output sink — invoked per line while a tool runs (UI shows it in real time). */
+    @Volatile
+    var liveOutputSink: ((String) -> Unit)? = null
+
+    /** File-mutation sink — write/edit/delete/move/copy report +N/-M line deltas here. */
+    @Volatile
+    var fileChangeSink: ((com.zhibai.app.data.model.FileChange) -> Unit)? = null
+
+    private fun emitOutput(line: String) {
+        try { liveOutputSink?.invoke(line) } catch (_: Exception) {}
+    }
+
+    private fun emitFileChange(path: String, added: Int, removed: Int, oldContent: String? = null) {
+        try {
+            fileChangeSink?.invoke(com.zhibai.app.data.model.FileChange(
+                path = path, added = added, removed = removed, oldContent = oldContent
+            ))
+        } catch (_: Exception) {}
+    }
+
+    /** Line-level add/remove count between two texts (prefix/suffix trim, no LCS). */
+    private fun lineDelta(old: String, new: String): Pair<Int, Int> {
+        val o = old.split('\n')
+        val n = new.split('\n')
+        var prefix = 0
+        while (prefix < o.size && prefix < n.size && o[prefix] == n[prefix]) prefix++
+        var suffix = 0
+        while (suffix < o.size - prefix && suffix < n.size - prefix && o[o.size - 1 - suffix] == n[n.size - 1 - suffix]) suffix++
+        return (n.size - prefix - suffix) to (o.size - prefix - suffix)
+    }
 
     var pendingConfirmation: PendingConfirmation? = null
         private set
@@ -405,7 +478,13 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
             val file = resolvePath(path)
             if (!validatePath(file)) return@AgentTool "Error: access denied"
             file.parentFile?.mkdirs()
+            val existed = file.exists()
+            val old = if (existed) try { file.readText() } catch (_: Exception) { "" } else ""
             file.writeText(content)
+            val (added, removed) = lineDelta(old, content)
+            // null oldContent = brand-new file → undo deletes it
+            emitFileChange(file.absolutePath, added, removed, oldContent = if (existed) old else null)
+            emitOutput("Written ${content.length} bytes to ${file.absolutePath}")
             "Written ${content.length} bytes to ${file.absolutePath}"
         })
 
@@ -429,7 +508,14 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
             val file = resolvePath(path)
             if (!validatePath(file)) return@AgentTool "Error: access denied"
             if (!file.exists()) return@AgentTool "Error: file not found"
-            if (file.deleteRecursively()) "Deleted ${file.absolutePath}" else "Error: failed to delete"
+            val oldText = if (file.isFile) try { file.readText() } catch (_: Exception) { "" } else ""
+            val lineCount = if (oldText.isNotEmpty()) oldText.count { it == '\n' } + 1 else 0
+            val ok = file.deleteRecursively()
+            if (ok) {
+                emitFileChange(file.absolutePath, 0, lineCount, oldContent = oldText)
+                emitOutput("Deleted ${file.absolutePath}")
+                "Deleted ${file.absolutePath}"
+            } else "Error: failed to delete"
         })
 
         // move_file
@@ -567,7 +653,11 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
                 count == 0 -> return@AgentTool "Error: old_text not found in file"
                 count > 1 -> return@AgentTool "Error: old_text matches $count times — make it more specific (add surrounding context)"
                 else -> {
-                    file.writeText(content.replaceFirst(oldText, newText))
+                    val newContent = content.replaceFirst(oldText, newText)
+                    file.writeText(newContent)
+                    val (added, removed) = lineDelta(oldText, newText)
+                    emitFileChange(file.absolutePath, added, removed, oldContent = content)
+                    emitOutput("Replaced 1 occurrence in ${file.absolutePath}")
                     "Replaced 1 occurrence in ${file.absolutePath}"
                 }
             }
@@ -767,9 +857,56 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
                     ?: return@AgentTool "Error: no location available. Grant location permission and try again."
                 "Lat: ${loc.latitude}, Lng: ${loc.longitude}, Accuracy: ${loc.accuracy}m, Provider: $provider"
             } catch (e: SecurityException) {
-                "NEED_PERMISSION:storage|Location permission is required"
+                "NEED_PERMISSION:location|Location permission is required to read the current position"
             } catch (e: Exception) {
                 "Error: ${e.message}"
+            }
+        })
+
+        // open_file — hand a workspace/absolute file to the system viewer (FileProvider)
+        tools.add(AgentTool(
+            name = "open_file",
+            description = "Open a file with the system viewer (images, documents, audio, video). Args: path",
+            riskLevel = 2, category = "app"
+        ) { args, ctx ->
+            val path = args["path"] as? String ?: return@AgentTool "Error: no path"
+            val file = resolvePath(path)
+            if (!validatePath(file)) return@AgentTool "Error: access denied"
+            if (!file.exists()) return@AgentTool "Error: file not found: ${file.absolutePath}"
+            try {
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    ctx, ctx.packageName + ".fileprovider", file
+                )
+                val mime = android.webkit.MimeTypeMap.getSingleton()
+                    .getMimeTypeFromExtension(file.extension.lowercase()) ?: "*/*"
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, mime)
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                ctx.startActivity(intent)
+                "Opened ${file.absolutePath} with the system viewer"
+            } catch (e: Exception) {
+                "Error: cannot open file: ${e.message}"
+            }
+        })
+
+        // open_url — open a web page in the browser
+        tools.add(AgentTool(
+            name = "open_url",
+            description = "Open a web page in the default browser. Args: url",
+            riskLevel = 2, category = "network"
+        ) { args, ctx ->
+            val url = args["url"] as? String ?: return@AgentTool "Error: no url"
+            val normalized = if (url.startsWith("http://") || url.startsWith("https://")) url else "https://$url"
+            try {
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(normalized)).apply {
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                ctx.startActivity(intent)
+                "Opened $normalized in the browser"
+            } catch (e: Exception) {
+                "Error: cannot open url: ${e.message}"
             }
         })
 
@@ -1443,10 +1580,21 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
             listSkillsDetailed().joinToString("\n") { it.name }.ifEmpty { "No skills saved" }
         })
 
+        // run_subagent — hand a self-contained subtask to a fresh mini tool loop
+        tools.add(AgentTool(
+            name = "run_subagent",
+            description = "Delegate a self-contained subtask to a subagent with its own tool loop. Args: task (what to do), context (optional background). Returns the subagent's final answer.",
+            riskLevel = 2, category = "task"
+        ) { args, _ ->
+            val task = args["task"] as? String ?: return@AgentTool "Error: no task"
+            val context = (args["context"] as? String)?.takeIf { it.isNotBlank() }
+            runSubagent(task, context, depth = 1)
+        })
+
         // request_permission - ask the user to grant a system permission & jump to Settings
         tools.add(AgentTool(
             name = "request_permission",
-            description = "Ask the user to grant a system permission. Use when a needed permission is missing. Args: permission (accessibility|overlay|storage|projection|notification|mic|calendar|alarm), reason (why it is needed)",
+            description = "Ask the user to grant a system permission. Use when a needed permission is missing. Args: permission (accessibility|overlay|storage|projection|notification|mic|calendar|alarm|location), reason (why it is needed)",
             riskLevel = 1, category = "system"
         ) { args, _ ->
             val permission = (args["permission"] as? String ?: "storage").lowercase()
@@ -1720,6 +1868,70 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
         })
     }
 
+    /**
+     * Mini tool loop for run_subagent: a fresh model round gets the subtask and the
+     * tool list, may call tools for up to [maxRounds] rounds, then answers in prose.
+     * Depth-capped so a subagent cannot spawn sub-subagents forever.
+     */
+    private suspend fun runSubagent(task: String, context: String?, depth: Int): String {
+        if (depth > 2) return "Error: subagent nesting too deep"
+        val maxRounds = 4
+        val apiMessages = mutableListOf<com.zhibai.app.data.model.Message>(
+            com.zhibai.app.data.model.Message(role = "system", content = """
+You are a focused subagent of a phone assistant. Complete the EXACT subtask you are given.
+Use tools when needed (reply with the tool_calls JSON schema), then answer with a concise
+final result in plain text — the parent agent will use it directly.
+
+Available tools:
+${getToolsDescription()}
+""".trimIndent()),
+            com.zhibai.app.data.model.Message(role = "user", content = buildString {
+                append(task)
+                if (!context.isNullOrBlank()) append("\n\nBackground:\n").append(context)
+            })
+        )
+        for (round in 0 until maxRounds) {
+            val request = com.zhibai.app.data.model.ChatRequest(
+                model = "mimo-v2.6-flash",
+                messages = apiMessages,
+                maxCompletionTokens = 8192,
+                temperature = 0.3f,
+                stream = false,
+                thinking = com.zhibai.app.data.model.ThinkingConfig(type = "disabled"),
+                responseFormat = ToolCallSchema.toResponseFormat()
+            )
+            val raw = try {
+                apiService.chatCompletionStructured(request).choices.firstOrNull()?.message?.content?.toString() ?: ""
+            } catch (e: Exception) {
+                return "Error: subagent request failed: ${e.message}"
+            }
+            val parsed = ToolCallSchema.parse(raw) ?: ToolCallSchema.parse(
+                raw.substringAfter("{", "").let { if (it.isEmpty()) raw else "{$it" }
+            )
+            val calls = parsed?.toolCalls.orEmpty()
+            if (calls.isEmpty()) {
+                return (parsed?.response ?: raw).ifBlank { "Error: subagent returned empty result" }
+            }
+            val results = mutableListOf<String>()
+            calls.forEach { tc ->
+                val tcArgs = tc.args ?: emptyMap<String, Any>()
+                if (tc.tool == "run_subagent") {
+                    results.add("[tool result: run_subagent]\nError: subagents cannot spawn subagents")
+                    return@forEach
+                }
+                val out = try {
+                    executeTool(tc.tool, tcArgs, MODE_DEFAULT)
+                } catch (e: Exception) {
+                    "Error: ${e.message}"
+                }
+                results.add("[tool result: ${tc.tool}]\n${out.take(4000)}")
+            }
+            apiMessages.add(com.zhibai.app.data.model.Message(role = "assistant", content = raw))
+            apiMessages.add(com.zhibai.app.data.model.Message(role = "user", content = results.joinToString("\n\n")))
+        }
+        return "Error: subagent hit the tool-round limit before answering"
+    }
+
     suspend fun executeTool(toolName: String, args: Map<String, Any>, mode: Int): String {
         val tool = tools.find { it.name == toolName }
             ?: return "Error: unknown tool '$toolName'"
@@ -1921,8 +2133,18 @@ Reply with EXACTLY one word: APPROVE or DENY."""
         val process = try { Runtime.getRuntime().exec(cmd) } catch (e: Exception) { return null }
         val stdout = StringBuilder()
         val stderr = StringBuilder()
-        val outThread = Thread { process.inputStream.bufferedReader().use { r -> r.forEachLine { stdout.appendLine(it) } } }
-        val errThread = Thread { process.errorStream.bufferedReader().use { r -> r.forEachLine { stderr.appendLine(it) } } }
+        val outThread = Thread {
+            process.inputStream.bufferedReader().use { r -> r.forEachLine {
+                stdout.appendLine(it)
+                emitOutput(it)
+            } }
+        }
+        val errThread = Thread {
+            process.errorStream.bufferedReader().use { r -> r.forEachLine {
+                stderr.appendLine(it)
+                emitOutput(it)
+            } }
+        }
         outThread.start(); errThread.start()
         val finished = try {
             process.waitFor(timeoutSec.coerceIn(1, 300), java.util.concurrent.TimeUnit.SECONDS)

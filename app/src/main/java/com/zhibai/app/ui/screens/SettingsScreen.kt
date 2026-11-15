@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.sp
 import com.zhibai.app.ui.theme.MiMoColors
 
 private enum class SettingsPage {
-    MAIN, API_KEY, VOICE, FONT_SIZE, AGENT, ABOUT, FORBIDDEN, TOOL_PERMISSIONS, INPUT_STYLE, PREFERENCES, WIRELESS_ADB, ISLAND, AUTOGLM
+    MAIN, API_KEY, VOICE, FONT_SIZE, AGENT, ABOUT, FORBIDDEN, TOOL_PERMISSIONS, INPUT_STYLE, PREFERENCES, WIRELESS_ADB, ISLAND, AUTOGLM, ARTIFACTS
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -80,6 +80,8 @@ fun SettingsScreen(
     prefAgentThinkLevel: Int = 2,
     prefAutoCompress: Boolean = false,
     prefAutoCompressThreshold: Int = 800000,
+    prefAutoSaveImages: String = "ask",
+    workspaceDir: java.io.File = java.io.File(""),
     prefLongTermMemory: Boolean = false,
     prefMemoryAutoWrite: Boolean = false,
     prefModelHabit: String = "",
@@ -90,6 +92,7 @@ fun SettingsScreen(
     onPrefAgentThinkLevelChange: (Int) -> Unit = {},
     onPrefAutoCompressChange: (Boolean) -> Unit = {},
     onPrefAutoCompressThresholdChange: (Int) -> Unit = {},
+    onPrefAutoSaveImagesChange: (String) -> Unit = {},
     onPrefLongTermMemoryChange: (Boolean) -> Unit = {},
     onPrefMemoryAutoWriteChange: (Boolean) -> Unit = {},
     onPrefModelHabitChange: (String) -> Unit = {},
@@ -197,6 +200,10 @@ fun SettingsScreen(
                 onNavigateToForbidden = { currentPage = SettingsPage.FORBIDDEN; pageTitle = "隐藏设置" },
                 modifier = Modifier.padding(paddingValues)
             )
+            SettingsPage.ARTIFACTS -> ArtifactsScreen(
+                workspaceDir = workspaceDir,
+                onBack = { currentPage = SettingsPage.MAIN; pageTitle = "设置" }
+            )
             SettingsPage.FORBIDDEN -> ForbiddenPage(
                 forceNewSession = forceNewSessionOnModelSwitch,
                 strictFaithful = strictFaithful,
@@ -251,6 +258,8 @@ fun SettingsScreen(
                 prefAutoCompressThreshold = prefAutoCompressThreshold,
                 onPrefAutoCompressChange = onPrefAutoCompressChange,
                 onPrefAutoCompressThresholdChange = onPrefAutoCompressThresholdChange,
+                prefAutoSaveImages = prefAutoSaveImages,
+                onPrefAutoSaveImagesChange = onPrefAutoSaveImagesChange,
                 prefLongTermMemory = prefLongTermMemory,
                 prefMemoryAutoWrite = prefMemoryAutoWrite,
                 onPrefLongTermMemoryChange = onPrefLongTermMemoryChange,
@@ -357,6 +366,16 @@ private fun SettingsMainMenu(
             )
             HorizontalDivider()
         }
+
+        // Artifacts hub
+        ListItem(
+            headlineContent = { Text("产物中心") },
+            supportingContent = { Text("查看 Agent 产出的文件、图片、视频与音频") },
+            leadingContent = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
+            trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
+            modifier = Modifier.clickable { onNavigate(SettingsPage.ARTIFACTS, "产物中心") }
+        )
+        HorizontalDivider()
 
         // About
         ListItem(
@@ -849,6 +868,40 @@ private fun AgentSettingsPage(
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp)
             )
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    "小米TokenPlanAPI" to "https://token-plan-cn.xiaomimimo.com/v1",
+                    "MiMoAPI" to "https://api.xiaomimimo.com/v1"
+                ).forEach { (label, preset) ->
+                    val selected = agentUrlInput.trim() == preset
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.surface
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (selected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.outline,
+                                shape = RoundedCornerShape(50)
+                            )
+                            .clickable { agentUrlInput = preset }
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            label,
+                            fontSize = 12.sp,
+                            color = if (selected) MaterialTheme.colorScheme.background
+                            else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(8.dp))
 
             localAiSection()

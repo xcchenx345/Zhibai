@@ -389,7 +389,7 @@ private fun AnnotatedString.Builder.parseInlineMarkdown(
                     i++
                 }
             }
-            // Link [text](url)
+            // Link [text](url) — highlighted + clickable (leave-app confirm upstream)
             text[i] == '[' -> {
                 val closeBracket = text.indexOf(']', i + 1)
                 if (closeBracket != -1 && closeBracket + 1 < text.length && text[closeBracket + 1] == '(') {
@@ -397,14 +397,27 @@ private fun AnnotatedString.Builder.parseInlineMarkdown(
                     if (closeParen != -1) {
                         val linkText = text.substring(i + 1, closeBracket)
                         val url = text.substring(closeBracket + 2, closeParen)
-                        pushStringAnnotation(tag = "URL", annotation = url)
-                        pushStyle(SpanStyle(
-                            color = baseColor.copy(alpha = 0.8f),
-                            textDecoration = TextDecoration.Underline
-                        ))
-                        append(linkText)
-                        pop()
-                        pop()
+                        if (onOpenUrl != null) {
+                            withLink(LinkAnnotation.Url(url) { _ -> onOpenUrl(url) }) {
+                                pushStyle(SpanStyle(
+                                    color = baseColor,
+                                    background = baseColor.copy(alpha = 0.16f),
+                                    textDecoration = TextDecoration.Underline
+                                ))
+                                append(linkText)
+                                pop()
+                            }
+                        } else {
+                            pushStringAnnotation(tag = "URL", annotation = url)
+                            pushStyle(SpanStyle(
+                                color = baseColor,
+                                background = baseColor.copy(alpha = 0.16f),
+                                textDecoration = TextDecoration.Underline
+                            ))
+                            append(linkText)
+                            pop()
+                            pop()
+                        }
                         i = closeParen + 1
                     } else {
                         append(text[i])
@@ -414,6 +427,26 @@ private fun AnnotatedString.Builder.parseInlineMarkdown(
                     append(text[i])
                     i++
                 }
+            }
+            // Bare URL — highlighted + clickable
+            (text.startsWith("http://", i) || text.startsWith("https://", i)) && (i == 0 || text[i - 1] == ' ' || text[i - 1] == '(' || text[i - 1] == '（') -> {
+                var end = i
+                while (end < text.length && !text[end].isWhitespace() && text[end] != ')' && text[end] != '）') end++
+                val url = text.substring(i, end).trimEnd('.', ',', '。', '，')
+                if (onOpenUrl != null && url.length > 8) {
+                    withLink(LinkAnnotation.Url(url) { _ -> onOpenUrl(url) }) {
+                        pushStyle(SpanStyle(
+                            color = baseColor,
+                            background = baseColor.copy(alpha = 0.16f),
+                            textDecoration = TextDecoration.Underline
+                        ))
+                        append(url)
+                        pop()
+                    }
+                } else {
+                    append(url)
+                }
+                i += url.length
             }
             // Strikethrough ~~text~~
             i + 1 < text.length && text[i] == '~' && text[i + 1] == '~' -> {

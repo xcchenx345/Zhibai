@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Refresh
@@ -77,15 +78,16 @@ fun MessageBubble(
     onCopy: ((String) -> Unit)? = null,
     onReadAloud: ((String) -> Unit)? = null,
     onRegenerate: (() -> Unit)? = null,
-    isSpeaking: Boolean = false
+    isSpeaking: Boolean = false,
+    onUndoFileChanges: (() -> Unit)? = null
 ) {
     val isUser = message.role == "user"
     val isTool = message.role == "tool"
     val isToolGroup = message.role == "tool_group"
     val isStep = message.role == "step"
+    val isFileChanges = message.role == "tool_files"
     var showContextMenu by remember { mutableStateOf(false) }
     var showRawTextDialog by remember { mutableStateOf(false) }
-    var toolExpanded by remember { mutableStateOf(false) }
     var groupExpanded by remember { mutableStateOf(false) }
     var expandedStepIndex by remember { mutableStateOf(-1) }
     var copied by remember { mutableStateOf(false) }
@@ -96,15 +98,6 @@ fun MessageBubble(
     fun requestOpenUrl(url: String) {
         pendingLeaveUrl = url
     }
-
-    // Parse tool message: "[tool_name] result"
-    val toolName = if (isTool) {
-        val match = Regex("^\\[([^\\]]+)\\]").find(message.content)
-        match?.groupValues?.get(1) ?: "Tool"
-    } else ""
-    val toolResult = if (isTool) {
-        message.content.replaceFirst(Regex("^\\[[^\\]]+\\]\\s*"), "")
-    } else ""
 
     // Parse tool_group message: JSON array of {tool, result[, oldText, newText]}
     val toolSteps = if (isToolGroup) {
@@ -133,6 +126,13 @@ fun MessageBubble(
     // 「已深度思考」「搜索 N 个关键词，参考 M 篇资料」「浏览页面，参考了 N 篇资料」「正在思考」
     if (isStep) {
         ProcessStepRow(message = message, fontSize = fontSize, isDarkTheme = isDarkTheme)
+        return
+    }
+
+    // Compressed-conversation summary (ChatViewModel.compressConversation) gets
+    // its own card so it never reads like a normal assistant reply.
+    if (isSessionSummary(message)) {
+        SessionSummaryCard(message = message, fontSize = fontSize, isDarkTheme = isDarkTheme)
         return
     }
 
@@ -229,50 +229,20 @@ fun MessageBubble(
         return
     }
 
-    // Tool message: collapsible block above the answer, like thinking
+    // File-change summary card (end of an agent run)
+    if (isFileChanges) {
+        FileChangesCard(
+            message = message,
+            fontSize = fontSize,
+            isDarkTheme = isDarkTheme,
+            onUndo = onUndoFileChanges
+        )
+        return
+    }
+
+    // Tool message: icon + live running title, glow while running, tap to expand
     if (isTool) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.Start
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(vertical = 2.dp)
-                    .fillMaxWidth(0.85f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (isDarkTheme) MiMoColors.ThinkingBgDark else MiMoColors.ThinkingBg)
-                    .clickable { toolExpanded = !toolExpanded }
-                    .padding(12.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = toolName,
-                        fontSize = (fontSize - 3).sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (isDarkTheme) MiMoColors.ThinkingTextDark else MiMoColors.ThinkingText,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Icon(
-                        if (toolExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = if (isDarkTheme) MiMoColors.ThinkingTextDark else MiMoColors.ThinkingText
-                    )
-                }
-                if (toolExpanded && toolResult.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        toolResult,
-                        fontSize = (fontSize - 2).sp,
-                        color = if (isDarkTheme) MiMoColors.ThinkingTextDark.copy(alpha = 0.8f) else MiMoColors.ThinkingText.copy(alpha = 0.8f),
-                        lineHeight = (fontSize + 3).sp
-                    )
-                }
-            }
-        }
+        ToolCard(message = message, fontSize = fontSize, isDarkTheme = isDarkTheme)
         return
     }
 
@@ -284,7 +254,7 @@ fun MessageBubble(
             text = if (isUser) "You" else "MiMo",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+            modifier = Modifier.padding(vertical = 2.dp)
         )
 
         if (message.imageUri != null) {
@@ -454,7 +424,6 @@ fun MessageBubble(
                     }
                     Column(
                         modifier = Modifier
-                            .padding(start = 4.dp)
                             .graphicsLayer { alpha = inkAlpha }
                             .combinedClickable(onClick = {}, onLongClick = { showContextMenu = true })
                     ) {
@@ -573,10 +542,10 @@ fun MessageBubble(
         val url = pendingLeaveUrl!!
         AlertDialog(
             onDismissRequest = { pendingLeaveUrl = null },
-            title = { Text("即将离开应用") },
+            title = { Text("即将跳转站外链接") },
             text = {
                 Text(
-                    "将打开外部浏览器访问：\n\n$url\n\n是否继续？",
+                    "该链接将离开本应用，在外部浏览器打开：\n\n$url\n\n是否继续？",
                     fontSize = 13.sp,
                     lineHeight = 18.sp
                 )
@@ -655,6 +624,7 @@ private fun ProcessStepRow(
     isDarkTheme: Boolean
 ) {
     var open by remember(message.id) { mutableStateOf(false) }
+    var detailFull by remember(message.id) { mutableStateOf(false) }
     val textColor = if (isDarkTheme) MiMoColors.ThinkingTextDark else MiMoColors.ThinkingText
     val secondaryColor = textColor.copy(alpha = 0.65f)
     val icon = when {
@@ -695,13 +665,67 @@ private fun ProcessStepRow(
             )
         }
         if (open && message.reasoningContent.isNotBlank()) {
-            Text(
-                message.reasoningContent,
-                fontSize = (fontSize - 3).sp,
-                color = secondaryColor,
-                lineHeight = (fontSize + 2).sp,
-                modifier = Modifier.padding(start = 22.dp, end = 8.dp, bottom = 7.dp)
-            )
+            val detail = message.reasoningContent
+            val detailLong = detail.length > 260 || detail.lineSequence().count() > 6
+            if (detailFull && detailLong) {
+                Box(
+                    modifier = Modifier
+                        .padding(start = 22.dp, end = 8.dp)
+                        .heightIn(max = 300.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        detail,
+                        fontSize = (fontSize - 3).sp,
+                        color = secondaryColor,
+                        lineHeight = (fontSize + 2).sp
+                    )
+                }
+            } else if (detailLong) {
+                Box(modifier = Modifier.padding(start = 22.dp, end = 8.dp)) {
+                    Text(
+                        detail,
+                        fontSize = (fontSize - 3).sp,
+                        color = secondaryColor,
+                        lineHeight = (fontSize + 2).sp,
+                        maxLines = 5,
+                        overflow = TextOverflow.Clip
+                    )
+                    // Fade at the fold — same color as the chat background
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(22.dp)
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color.Transparent, MaterialTheme.colorScheme.background)
+                                )
+                            )
+                    )
+                }
+            } else {
+                Text(
+                    detail,
+                    fontSize = (fontSize - 3).sp,
+                    color = secondaryColor,
+                    lineHeight = (fontSize + 2).sp,
+                    modifier = Modifier.padding(start = 22.dp, end = 8.dp)
+                )
+            }
+            if (detailLong) {
+                Text(
+                    text = if (detailFull) "收起" else "展开全部",
+                    fontSize = (fontSize - 4).sp,
+                    fontWeight = FontWeight.Medium,
+                    color = secondaryColor,
+                    modifier = Modifier
+                        .padding(start = 22.dp, bottom = 7.dp)
+                        .clickable { detailFull = !detailFull }
+                )
+            } else {
+                Spacer(modifier = Modifier.height(7.dp))
+            }
         } else if (open) {
             Text(
                 if (message.isStreaming) "进行中…" else "无详情",
@@ -714,6 +738,145 @@ private fun ProcessStepRow(
             thickness = 0.5.dp,
             color = textColor.copy(alpha = 0.12f)
         )
+    }
+}
+
+/** Compressed-conversation message written by ChatViewModel.compressConversation. */
+private fun isSessionSummary(message: ChatMessage): Boolean =
+    message.role == "assistant" && message.content.startsWith("[会话摘要")
+
+/**
+ * Session-summary card: distinct from normal replies, title row with 展开/收起,
+ * long bodies preview a few lines behind a fade with 展开全文 → scrollable full text.
+ */
+@Composable
+private fun SessionSummaryCard(
+    message: ChatMessage,
+    fontSize: Int,
+    isDarkTheme: Boolean
+) {
+    val body = remember(message.id, message.content) {
+        val c = message.content
+        if (c.startsWith("[会话摘要")) {
+            val end = c.indexOf(']')
+            (if (end >= 0) c.substring(end + 1) else c).trim()
+        } else c.trim()
+    }
+    var open by remember(message.id) { mutableStateOf(true) }
+    var full by remember(message.id) { mutableStateOf(false) }
+    val bg = if (isDarkTheme) MiMoColors.ThinkingBgDark else MiMoColors.ThinkingBg
+    val textColor = if (isDarkTheme) MiMoColors.ThinkingTextDark else MiMoColors.ThinkingText
+    val secondaryColor = textColor.copy(alpha = 0.7f)
+    val bodyLong = body.length > 220 || body.lineSequence().count() > 5
+
+    Column(
+        modifier = Modifier
+            .padding(vertical = 2.dp)
+            .fillMaxWidth(0.92f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(bg)
+            .padding(vertical = 4.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    open = !open
+                    if (!open) full = false
+                }
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            Icon(
+                Icons.Default.History,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = secondaryColor
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "会话摘要",
+                fontSize = (fontSize - 3).sp,
+                fontWeight = FontWeight.SemiBold,
+                color = textColor,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = if (open) "收起" else "展开",
+                fontSize = (fontSize - 4).sp,
+                color = secondaryColor,
+                modifier = Modifier.padding(end = 4.dp)
+            )
+            Icon(
+                if (open) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = secondaryColor
+            )
+        }
+        if (open) {
+            HorizontalDivider(
+                thickness = 0.5.dp,
+                color = textColor.copy(alpha = 0.12f)
+            )
+            if (full && bodyLong) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    MarkdownText(
+                        markdown = body,
+                        color = textColor.copy(alpha = 0.85f),
+                        fontSize = fontSize - 2,
+                        lineHeight = fontSize + 3
+                    )
+                }
+            } else if (bodyLong) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        body,
+                        fontSize = (fontSize - 2).sp,
+                        color = textColor.copy(alpha = 0.85f),
+                        lineHeight = (fontSize + 3).sp,
+                        maxLines = 5,
+                        overflow = TextOverflow.Clip
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(24.dp)
+                            .background(Brush.verticalGradient(listOf(Color.Transparent, bg)))
+                    )
+                }
+            } else {
+                MarkdownText(
+                    markdown = body,
+                    color = textColor.copy(alpha = 0.85f),
+                    fontSize = fontSize - 2,
+                    lineHeight = fontSize + 3,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                )
+            }
+            if (bodyLong) {
+                Text(
+                    text = if (full) "收起全文" else "展开全文",
+                    fontSize = (fontSize - 4).sp,
+                    fontWeight = FontWeight.Medium,
+                    color = secondaryColor,
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .clickable { full = !full }
+                )
+            }
+        }
     }
 }
 
@@ -730,11 +893,10 @@ private fun ProcessFlowCard(
     if (!hasThink && !hasSearch) return
 
     var thinkOpen by remember(message.id) { mutableStateOf(message.isStreaming) }
+    var thinkFull by remember(message.id) { mutableStateOf(false) }
     var searchOpen by remember(message.id) { mutableStateOf(false) }
     var pagesOpen by remember(message.id) { mutableStateOf(false) }
-    LaunchedEffect(message.isStreaming) {
-        if (!message.isStreaming) thinkOpen = false
-    }
+    // Think stays open after streaming ends — collapse only via the title toggle.
 
     // Live timer while thinking streams; final duration after done.
     var liveMs by remember { mutableLongStateOf(message.reasoningDurationMs) }
@@ -777,7 +939,10 @@ private fun ProcessFlowCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { thinkOpen = !thinkOpen }
+                    .clickable {
+                        thinkOpen = !thinkOpen
+                        if (!thinkOpen) thinkFull = false
+                    }
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Icon(
@@ -800,6 +965,12 @@ private fun ProcessFlowCard(
                     fontFamily = FontFamily.Monospace,
                     color = secondaryColor,
                     modifier = Modifier.padding(end = 6.dp)
+                )
+                Text(
+                    text = if (thinkOpen) "收起" else "展开",
+                    fontSize = (fontSize - 4).sp,
+                    color = secondaryColor,
+                    modifier = Modifier.padding(end = 4.dp)
                 )
                 Icon(
                     if (thinkOpen) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
@@ -830,13 +1001,67 @@ private fun ProcessFlowCard(
                         )
                     }
                 } else {
-                    Text(
-                        message.reasoningContent,
-                        fontSize = (fontSize - 2).sp,
-                        color = textColor.copy(alpha = 0.8f),
-                        lineHeight = (fontSize + 3).sp,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                    )
+                    val fullText = message.reasoningContent
+                    val thinkLong = fullText.length > 260 || fullText.lineSequence().count() > 6
+                    if (thinkFull && thinkLong) {
+                        // Full text — scrollable so nothing is truncated
+                        val screenHeightDp = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp
+                        val maxH = (screenHeightDp * 0.45f).coerceIn(180f, 520f).dp
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp)
+                                .heightIn(max = maxH)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Text(
+                                fullText,
+                                fontSize = (fontSize - 2).sp,
+                                color = textColor.copy(alpha = 0.8f),
+                                lineHeight = (fontSize + 3).sp
+                            )
+                        }
+                    } else if (thinkLong) {
+                        // Preview: first few lines + gradient fade at the fold
+                        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                            Text(
+                                fullText,
+                                fontSize = (fontSize - 2).sp,
+                                color = textColor.copy(alpha = 0.8f),
+                                lineHeight = (fontSize + 3).sp,
+                                maxLines = 6,
+                                overflow = TextOverflow.Clip
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .height(28.dp)
+                                    .background(
+                                        Brush.verticalGradient(listOf(Color.Transparent, bg))
+                                    )
+                            )
+                        }
+                    } else {
+                        Text(
+                            fullText,
+                            fontSize = (fontSize - 2).sp,
+                            color = textColor.copy(alpha = 0.8f),
+                            lineHeight = (fontSize + 3).sp,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                    }
+                    if (thinkLong) {
+                        Text(
+                            text = if (thinkFull) "收起" else "展开全部",
+                            fontSize = (fontSize - 4).sp,
+                            fontWeight = FontWeight.Medium,
+                            color = secondaryColor,
+                            modifier = Modifier
+                                .padding(horizontal = 12.dp, vertical = 4.dp)
+                                .clickable { thinkFull = !thinkFull }
+                        )
+                    }
                 }
             }
         }

@@ -30,6 +30,8 @@ fun PreferencesPage(
     prefAutoCompressThreshold: Int,
     onPrefAutoCompressChange: (Boolean) -> Unit,
     onPrefAutoCompressThresholdChange: (Int) -> Unit,
+    prefAutoSaveImages: String,
+    onPrefAutoSaveImagesChange: (String) -> Unit,
     prefLongTermMemory: Boolean,
     prefMemoryAutoWrite: Boolean,
     onPrefLongTermMemoryChange: (Boolean) -> Unit,
@@ -153,6 +155,21 @@ fun PreferencesPage(
                 modifier = Modifier.padding(horizontal = 16.dp)
             ) { Text("保存阈值") }
         }
+        HorizontalDivider()
+
+        // === Agent 上传图片存本地 ===
+        val saveImgLabels = mapOf("ask" to "每次询问", "always" to "总是保存", "never" to "从不保存")
+        ListItem(
+            headlineContent = { Text("Agent 上传图片存本地") },
+            supportingContent = { Text("上传图片时复制一份到工作目录 uploads（当前：${saveImgLabels[prefAutoSaveImages] ?: "每次询问"}）") },
+            leadingContent = { Icon(Icons.Default.SaveAlt, contentDescription = null) },
+            modifier = Modifier.clickable {
+                val next = when (prefAutoSaveImages) {
+                    "ask" -> "always"; "always" -> "never"; else -> "ask"
+                }
+                onPrefAutoSaveImagesChange(next)
+            }
+        )
         HorizontalDivider()
 
         // === 长期记忆 ===

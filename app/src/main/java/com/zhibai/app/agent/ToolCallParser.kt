@@ -32,12 +32,118 @@ fun describeToolCall(tool: String, args: Map<String, Any>): String {
         "download_file" -> "从网络下载文件到工作目录。"
         "view_media" -> "查看/分析媒体文件「$target」的内容。"
         "open_app" -> "启动应用「${arg("package")}」。"
+        "open_file" -> "用系统查看器打开「$target」。"
+        "open_url" -> "在浏览器打开「$target」。"
         "list_apps" -> "列出手机上已安装的应用。"
         "fetch_url" -> "访问并读取网页「$target」的内容。"
         "run_adb" -> "以 shell 权限执行命令「${arg("command")}」，影响面较大。"
         "request_permission" -> "请求「${arg("permission")}」系统权限。"
         "create_questionnaire" -> "向用户展示一张问卷并等待填写。"
         else -> "执行 $tool。"
+    }
+}
+
+/**
+ * Icon key for a tool — the UI maps keys to Material icons (see MessageBubble).
+ * Keys: shell / android / file / file_edit / file_del / web / search / device /
+ * time / skill / task / media / security / info / fun
+ */
+fun toolIconKey(tool: String): String = when (tool) {
+    "run_shell", "run_adb", "run_python", "run_node", "run_java", "install_rootfs", "execute_shell" -> "shell"
+    "open_app", "list_apps", "close_app", "install_apk", "uninstall_app", "download_and_install",
+    "get_app_info", "execute_phone_action" -> "android"
+    "read_file", "list_files", "search_files", "get_file_info", "grep", "extract_archive",
+    "copy_file", "view_media" -> "file"
+    "write_file", "edit_file", "move_file", "save_skill" -> "file_edit"
+    "delete_file" -> "file_del"
+    "fetch_url", "download_file" -> "web"
+    "web_search" -> "search"
+    "get_location", "get_device_info", "get_device_details", "get_battery_info", "get_network_info",
+    "get_screen_state", "set_screen_timeout", "set_volume", "get_volume", "set_brightness",
+    "set_sound_mode", "get_sound_mode", "toggle_flashlight", "vibrate", "get_step_count",
+    "clipboard_read", "clipboard_write", "share_text", "open_settings", "current_time",
+    "get_device_state" -> "device"
+    "set_alarm", "set_timer", "get_alarms" -> "time"
+    "read_skill", "list_skills" -> "skill"
+    "add_task", "update_task", "strike_task", "create_questionnaire", "switch_phase" -> "task"
+    "make_call", "search_contacts" -> "phone"
+    "request_permission" -> "security"
+    "let_it_snow" -> "fun"
+    else -> "info"
+}
+
+/**
+ * One-line human-readable action title shown as the collapsed card title,
+ * replacing the old generic "Tool" label. Runs use it while executing so the
+ * card reads 「写入文件 xxx」/「执行命令 …」 instead of 「Tool」.
+ */
+fun toolActionTitle(tool: String, args: Map<String, Any>): String {
+    fun arg(key: String): String = args[key]?.toString()?.trim().orEmpty()
+    val path = arg("path").ifBlank { arg("source") }
+    val name = path.substringAfterLast('/').ifBlank { path }
+    return when (tool) {
+        "read_file" -> "读取文件 $name"
+        "write_file" -> "写入文件 $name"
+        "edit_file" -> "编辑文件 $name"
+        "delete_file" -> "删除 $name"
+        "move_file" -> "移动 ${arg("source").substringAfterLast('/')}"
+        "copy_file" -> "复制 ${arg("source").substringAfterLast('/')}"
+        "list_files" -> "列出目录 ${arg("path").ifBlank { "工作目录" }}"
+        "search_files" -> "搜索文件 ${arg("pattern")}"
+        "grep" -> "搜索内容 ${arg("pattern")}"
+        "extract_archive" -> "解压 $name"
+        "download_file" -> "下载 ${arg("url").substringAfterLast('/').take(30)}"
+        "view_media" -> "查看媒体 $name"
+        "open_app" -> "启动应用 ${arg("package").takeLast(30)}"
+        "open_file" -> "打开文件 $name"
+        "open_url" -> "打开网页 ${arg("url").substringAfter("://").take(40)}"
+        "list_apps" -> "列出已安装应用"
+        "close_app" -> "停止应用 ${arg("package").takeLast(30)}"
+        "install_apk" -> "安装 ${name}"
+        "uninstall_app" -> "卸载 ${arg("package").takeLast(30)}"
+        "get_app_info" -> "查看应用信息"
+        "fetch_url" -> "访问网页 ${arg("url").substringAfter("://").take(40)}"
+        "web_search" -> "搜索「${arg("query").take(30)}」"
+        "run_shell", "run_adb" -> "执行命令 ${arg("command").take(48)}"
+        "run_python" -> "运行 Python"
+        "run_node" -> "运行 Node.js"
+        "run_java" -> "运行 Java"
+        "install_rootfs" -> "安装 Linux 环境"
+        "get_location" -> "获取当前位置"
+        "get_device_info", "get_device_details" -> "读取设备信息"
+        "get_battery_info" -> "读取电量"
+        "get_network_info" -> "读取网络状态"
+        "get_step_count" -> "读取步数"
+        "get_screen_state" -> "读取屏幕状态"
+        "set_screen_timeout" -> "设置息屏时间"
+        "set_volume" -> "设置音量 ${arg("level")}"
+        "get_volume" -> "读取音量"
+        "set_brightness" -> "设置亮度 ${arg("level")}"
+        "set_sound_mode" -> "设置声音模式"
+        "get_sound_mode" -> "读取声音模式"
+        "toggle_flashlight" -> "手电筒 ${arg("state")}"
+        "vibrate" -> "震动"
+        "clipboard_read" -> "读取剪贴板"
+        "clipboard_write" -> "写入剪贴板"
+        "share_text" -> "分享内容"
+        "open_settings" -> "打开设置 ${arg("page")}"
+        "current_time" -> "读取当前时间"
+        "set_alarm" -> "设置闹钟 ${arg("hour")}:${arg("minute")}"
+        "set_timer" -> "设置计时器 ${arg("seconds")}秒"
+        "get_alarms" -> "读取闹钟列表"
+        "make_call" -> "拨号 ${arg("number")}"
+        "search_contacts" -> "搜索联系人 ${arg("query")}"
+        "request_permission" -> "申请权限 ${arg("permission")}"
+        "save_skill" -> "保存技能 ${arg("name")}"
+        "read_skill" -> "读取技能 ${arg("name")}"
+        "list_skills" -> "列出技能"
+        "add_task" -> "添加任务"
+        "update_task" -> "更新任务"
+        "strike_task" -> "完成任务"
+        "create_questionnaire" -> "创建问卷"
+        "switch_phase" -> "切换阶段"
+        "let_it_snow" -> "下雪"
+        else -> tool
     }
 }
 

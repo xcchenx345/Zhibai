@@ -5,6 +5,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -1140,6 +1141,38 @@ private fun AgentApiStep(
                 shape = RoundedCornerShape(12.dp),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
             )
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    "小米TokenPlanAPI" to "https://token-plan-cn.xiaomimimo.com/v1",
+                    "MiMoAPI" to "https://api.xiaomimimo.com/v1"
+                ).forEach { (label, preset) ->
+                    val selected = url.trim() == preset
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.surface
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (selected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.outline,
+                                shape = RoundedCornerShape(50)
+                            )
+                            .clickable { url = preset }
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            label,
+                            fontSize = 12.sp,
+                            color = if (selected) MaterialTheme.colorScheme.background
+                            else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(16.dp))
             OutlinedTextField(
                 value = key,

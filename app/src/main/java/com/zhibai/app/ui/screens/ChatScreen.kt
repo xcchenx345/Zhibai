@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import com.zhibai.app.data.model.ChatSession
 import com.zhibai.app.ui.components.MessageBubble
 import com.zhibai.app.ui.theme.MiMoColors
 import com.zhibai.app.viewmodel.ChatViewModel
@@ -694,9 +695,14 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
             }
 
             val filteredSessions = remember(sessions, searchQuery) {
+                // Sort key: most recent conversation activity (message time covers
+                // old sessions whose lastActiveAt was never refreshed).
+                val activityAt: (ChatSession) -> Long = {
+                    maxOf(it.lastActiveAt, it.createdAt, it.messages.lastOrNull()?.timestamp ?: 0L)
+                }
                 val validSessions = sessions.filter { it.messages.isNotEmpty() && !it.archived }
                 if (searchQuery.isBlank()) {
-                    validSessions.sortedByDescending { it.lastActiveAt.coerceAtLeast(it.createdAt) }
+                    validSessions.sortedByDescending(activityAt)
                 } else {
                     val query = searchQuery.lowercase()
                     validSessions.filter { sess ->
@@ -705,7 +711,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                             msg.content.lowercase().contains(query) ||
                             msg.reasoningContent.lowercase().contains(query)
                         }
-                    }.sortedByDescending { it.lastActiveAt.coerceAtLeast(it.createdAt) }
+                    }.sortedByDescending(activityAt)
                 }
             }
 
@@ -1218,15 +1224,11 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                         onRegenerate = if (message.role == "assistant" && !message.isStreaming) {
                                             { viewModel.regenerate() }
                                         } else null,
+                                        onUndoFileChanges = if (message.role == "tool_files") {
+                                            { viewModel.undoFileChanges(message.id) }
+                                        } else null,
                                         isSpeaking = isSpeaking
                                     )
-                                    // AI reply mentions a support hotline — one-tap dial card
-                                    if (message.role == "assistant" && !message.isStreaming) {
-                                        val matched = remember(message.content, message.id) {
-                                            com.zhibai.app.ui.components.findHotlinesInText(message.content)
-                                        }
-                                        com.zhibai.app.ui.components.HotlineSuggestionCard(hotlines = matched)
-                                    }
                                 }
                             }
                         }
@@ -1346,6 +1348,84 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                             // to compose before the bar, so flakes fell behind it and
                             // vanished (「飞入输入框看不见」).
                             modifier = Modifier.matchParentSize().zIndex(5f)
+                        )
+                    }
+
+                    // Mental-health support card — raised by the mental_health_support
+                    // tool in any mode (replaces the old scan of every AI reply).
+                    val mentalHealthTrigger by viewModel.mentalHealthRequest.collectAsState()
+                    if (mentalHealthTrigger > 0) {
+                        androidx.compose.foundation.layout.Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 96.dp)
+                                .zIndex(6f)
+                        ) {
+                            com.zhibai.app.ui.components.HotlineSuggestionCard(
+                                hotlines = com.zhibai.app.ui.components.YouthSupportHotlines
+                            )
+                        }
+                    }
+
+                    // "协议" jailbreak-attempt warning
+                    val protocolWarning by viewModel.protocolWarning.collectAsState()
+                    if (protocolWarning) {
+                        AlertDialog(
+                            onDismissRequest = { viewModel.dismissProtocolWarning() },
+                            title = { Text("安全警告") },
+                            text = {
+                                Text(
+                                    "您可能正在进行未经许可的破甲行为。\n\n" +
+                                    "此类行为可能触犯《中华人民共和国网络安全法》《中华人民共和国刑法》等相关法律法规，" +
+                                    "情节严重者将承担相应法律责任。\n\n" +
+                                    "我们极度反感这种毫无道德底线的行为！",
+                                    fontSize = 13.sp,
+                                    lineHeight = 19.sp
+                                )
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { viewModel.dismissProtocolWarning() }) {
+                                    Text("我知道了", fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        )
+                    }
+
+                    // Agent uploads → ask whether to keep a local copy (first time)
+                    val imageSaveReq by viewModel.pendingImageSave.collectAsState()
+                    if (imageSaveReq != null) {
+                        var rememberChoice by remember { mutableStateOf(false) }
+                        AlertDialog(
+                            onDismissRequest = { viewModel.resolveImageSave(false, false) },
+                            title = { Text("保存到本地") },
+                            text = {
+                                Column {
+                                    Text(
+                                        "本次上传了 ${imageSaveReq!!.paths.size} 张图片。是否复制一份到本地工作目录（uploads 文件夹）？",
+                                        fontSize = 13.sp,
+                                        lineHeight = 19.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = rememberChoice,
+                                            onCheckedChange = { rememberChoice = it }
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("下次默认该选项，不再询问", fontSize = 12.sp)
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { viewModel.resolveImageSave(true, rememberChoice) }) {
+                                    Text("保存", fontWeight = FontWeight.SemiBold)
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { viewModel.resolveImageSave(false, rememberChoice) }) {
+                                    Text("不保存")
+                                }
+                            }
                         )
                     }
 
@@ -2541,10 +2621,14 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
             prefDefaultModel = viewModel.prefDefaultModel.collectAsState().value,
             prefStartupMode = viewModel.prefStartupMode.collectAsState().value,
             prefStartupSession = viewModel.prefStartupSession.collectAsState().value,
-            prefSessions = sessions.map { it.id to it.title },
+            prefSessions = sessions.sortedByDescending {
+                maxOf(it.lastActiveAt, it.createdAt, it.messages.lastOrNull()?.timestamp ?: 0L)
+            }.map { it.id to it.title },
             prefAgentThinkLevel = viewModel.prefAgentThinkLevel.collectAsState().value,
             prefAutoCompress = viewModel.prefAutoCompress.collectAsState().value,
             prefAutoCompressThreshold = viewModel.prefAutoCompressThreshold.collectAsState().value,
+            prefAutoSaveImages = viewModel.prefAutoSaveImages.collectAsState().value,
+            workspaceDir = viewModel.agentEngine?.workspaceDir ?: java.io.File(""),
             prefLongTermMemory = viewModel.prefLongTermMemory.collectAsState().value,
             prefMemoryAutoWrite = viewModel.prefMemoryAutoWrite.collectAsState().value,
             prefModelHabit = viewModel.prefModelHabit.collectAsState().value,
@@ -2555,6 +2639,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
             onPrefAgentThinkLevelChange = { viewModel.setPrefAgentThinkLevel(it) },
             onPrefAutoCompressChange = { viewModel.setPrefAutoCompress(it) },
             onPrefAutoCompressThresholdChange = { viewModel.setPrefAutoCompressThreshold(it) },
+            onPrefAutoSaveImagesChange = { viewModel.setPrefAutoSaveImages(it) },
             onPrefLongTermMemoryChange = { viewModel.setPrefLongTermMemory(it) },
             onPrefMemoryAutoWriteChange = { viewModel.setPrefMemoryAutoWrite(it) },
             onPrefModelHabitChange = { viewModel.setPrefModelHabit(it) },
@@ -2786,16 +2871,21 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                 Text("Agent 需要「${viewModel.permissionLabel(perm.type)}」权限才能继续：\n\n${perm.reason}\n\n是否前往系统设置授权？授权后回来告诉 Agent 继续即可")
             },
             confirmButton = {
-                TextButton(onClick = {
-                    viewModel.openPermissionSettings(perm.type)
-                    viewModel.dismissPermissionRequest()
-                }) {
-                    Text("去授权", fontWeight = FontWeight.SemiBold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.dismissPermissionRequest() }) {
-                    Text("暂不")
+                Row {
+                    TextButton(onClick = {
+                        viewModel.openPermissionSettings(perm.type)
+                        viewModel.dismissPermissionRequest()
+                    }) {
+                        Text("去授权", fontWeight = FontWeight.SemiBold)
+                    }
+                    TextButton(onClick = {
+                        viewModel.resolvePermissionGranted()
+                    }) {
+                        Text("我已授权", fontWeight = FontWeight.SemiBold)
+                    }
+                    TextButton(onClick = { viewModel.dismissPermissionRequest() }) {
+                        Text("取消")
+                    }
                 }
             }
         )

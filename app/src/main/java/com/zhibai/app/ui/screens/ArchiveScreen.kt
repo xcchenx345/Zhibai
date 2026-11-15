@@ -45,7 +45,9 @@ fun ArchiveScreen(
     val context = LocalContext.current
     val archivedSessions = remember(sessions) {
         sessions.filter { it.archived }
-            .sortedByDescending { it.lastActiveAt.coerceAtLeast(it.createdAt) }
+            .sortedByDescending {
+                maxOf(it.lastActiveAt, it.createdAt, it.messages.lastOrNull()?.timestamp ?: 0L)
+            }
     }
 
     // Multi-select state
@@ -261,7 +263,7 @@ fun ArchiveScreen(
                                 Text(sess.title, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    "${df.format(Date(sess.lastActiveAt.coerceAtLeast(sess.createdAt)))} · ${sess.messages.size} 条消息",
+                                    "${df.format(Date(maxOf(sess.lastActiveAt, sess.createdAt, sess.messages.lastOrNull()?.timestamp ?: 0L)))} · ${sess.messages.size} 条消息",
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

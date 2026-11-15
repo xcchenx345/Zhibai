@@ -643,6 +643,31 @@ $convoText
     private val _toolExecuting = MutableStateFlow(false)
     val toolExecuting: StateFlow<Boolean> = _toolExecuting.asStateFlow()
 
+    // File-change cards this process can undo: card message id → pre-mutation snapshots.
+    private val fileUndoStore = java.util.concurrent.ConcurrentHashMap<String, List<com.zhibai.app.data.model.FileChange>>()
+
+    /** Restore every file a run changed back to its pre-run content (undo card action). */
+    fun undoFileChanges(cardMessageId: String) {
+        val changes = fileUndoStore.remove(cardMessageId) ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            changes.reversed().forEach { c ->
+                try {
+                    val f = java.io.File(c.path)
+                    when {
+                        c.oldContent != null -> {
+                            f.parentFile?.mkdirs()
+                            f.writeText(c.oldContent)
+                        }
+                        // null snapshot = the file was created by this run → undo deletes it
+                        else -> f.delete()
+                    }
+                } catch (e: Exception) {
+                    AppLog.e("undoFileChanges failed for ${c.path}", e)
+                }
+            }
+        }
+    }
+
     /** Incremented by the model's let_it_snow tool and the agent celebration —
      *  ChatScreen mounts the snow layer while this is above zero (it never stops). */
     private val _manualSnowRequest = MutableStateFlow(0)
@@ -651,6 +676,68 @@ $convoText
     fun snowNow() {
         _manualSnowRequest.value = _manualSnowRequest.value + 1
         AppLog.d("snow: triggered #${_manualSnowRequest.value}")
+    }
+
+    /** Mental-health support card trigger — any mode's mental_health_support tool
+     *  bumps this; ChatScreen shows the hotline card while it is above zero.
+     *  Replaces the old proactive scan of every AI reply. */
+    private val _mentalHealthRequest = MutableStateFlow(0)
+    val mentalHealthRequest: StateFlow<Int> = _mentalHealthRequest.asStateFlow()
+
+    fun showMentalHealthSupport() {
+        _mentalHealthRequest.value = _mentalHealthRequest.value + 1
+        AppLog.d("mental_health: support card triggered #${_mentalHealthRequest.value}")
+    }
+
+    /** User message contains "协议" — warn about unauthorized prompt-jailbreak attempts. */
+    private val _protocolWarning = MutableStateFlow(false)
+    val protocolWarning: StateFlow<Boolean> = _protocolWarning.asStateFlow()
+
+    fun dismissProtocolWarning() {
+        _protocolWarning.value = false
+    }
+
+    // === Agent upload → local copy preference (ask / always / never) ===
+    private val PREF_AUTO_SAVE_IMAGES = stringPreferencesKey("pref_auto_save_images")
+    private val _prefAutoSaveImages = MutableStateFlow("ask")
+    val prefAutoSaveImages: StateFlow<String> = _prefAutoSaveImages.asStateFlow()
+
+    /** Pending dialog: agent-mode uploads and the app asks whether to keep a local copy. */
+    data class ImageSaveRequest(val paths: List<String>)
+    private val _pendingImageSave = MutableStateFlow<ImageSaveRequest?>(null)
+    val pendingImageSave: StateFlow<ImageSaveRequest?> = _pendingImageSave.asStateFlow()
+
+    fun setPrefAutoSaveImages(mode: String) {
+        _prefAutoSaveImages.value = if (mode in listOf("ask", "always", "never")) mode else "ask"
+        viewModelScope.launch { context.dataStore.edit { it[PREF_AUTO_SAVE_IMAGES] = _prefAutoSaveImages.value } }
+    }
+
+    /** Dialog result. rememberChoice=true persists the answer as the new default. */
+    fun resolveImageSave(save: Boolean, rememberChoice: Boolean) {
+        val req = _pendingImageSave.value ?: return
+        _pendingImageSave.value = null
+        if (rememberChoice) setPrefAutoSaveImages(if (save) "always" else "never")
+        if (save) copyUploadsToLocal(req.paths)
+    }
+
+    /** Copy agent uploads into the workspace uploads dir (visible in the file manager). */
+    private fun copyUploadsToLocal(paths: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val destDir = File(agentEngine?.workspaceDir ?: File(context.filesDir, "mimo_agent"), "uploads").apply { mkdirs() }
+            var copied = 0
+            paths.forEach { p ->
+                try {
+                    val src = File(p)
+                    if (src.exists()) {
+                        src.copyTo(File(destDir, src.name), overwrite = true)
+                        copied++
+                    }
+                } catch (e: Exception) {
+                    AppLog.e("image local copy failed: $p", e)
+                }
+            }
+            AppLog.d("agent uploads copied locally: $copied/${paths.size} -> ${destDir.absolutePath}")
+        }
     }
 
     private val _speedStats = MutableStateFlow<SpeedStats?>(null)
@@ -750,6 +837,7 @@ $convoText
                 prefs[PREF_AGENT_THINK_LEVEL]?.let { _prefAgentThinkLevel.value = it.toIntOrNull() ?: 2 }
                 prefs[PREF_AUTO_COMPRESS]?.let { _prefAutoCompress.value = it == "true" }
                 prefs[PREF_AUTO_COMPRESS_THRESHOLD]?.let { _prefAutoCompressThreshold.value = it.toIntOrNull() ?: 800000 }
+                prefs[PREF_AUTO_SAVE_IMAGES]?.let { _prefAutoSaveImages.value = it }
                 prefs[PREF_LONG_TERM_MEMORY]?.let { _prefLongTermMemory.value = it == "true" }
                 prefs[PREF_MEMORY_AUTO_WRITE]?.let { _prefMemoryAutoWrite.value = it == "true" }
                 prefs[PREF_MODEL_HABIT]?.let { _prefModelHabit.value = it }
@@ -2108,6 +2196,27 @@ AI：$assistantReply
             return
         }
 
+        // "/skill <name>" — run a saved skill: its content becomes the instruction
+        // prefix for this message (all modes).
+        var skillPrefix = ""
+        val skillMatch = Regex("^/skill\\s+(.+)$").find(text.trim())
+        if (skillMatch != null) {
+            val skillName = skillMatch.groupValues[1].trim()
+            val skillContent = agentEngine?.readSkillContent(skillName)
+            if (skillContent == null) {
+                _error.value = "未找到技能「$skillName」。可用：${agentEngine?.listSkillsDetailed()?.joinToString("、") { it.name } ?: "（无）"}"
+                return
+            }
+            skillPrefix = "[skill: $skillName]\n$skillContent\n\n[task]\n"
+            AppLog.d("skill invoked: $skillName (${skillContent.length} chars)")
+        }
+
+        // "协议" in the user's text — flag possible unauthorized jailbreak attempts
+        // and raise the warning dialog immediately (the message still goes through).
+        if (text.contains("协议")) {
+            _protocolWarning.value = true
+        }
+
         // Context limit check
         if (isContextLimitReached) {
             _error.value = "上下文已达 ${MAX_CONTEXT_TOKENS / 1000}K Token 上限。请开启新对话，或长按进度圆圈压缩会话。"
@@ -2126,6 +2235,14 @@ AI：$assistantReply
             try {
                 // Persist picker URIs first — content:// dies after process kill.
                 val persistedImages = imageUris.mapNotNull { persistImage(it) }
+                // Agent-mode uploads → local copy policy (default: ask once)
+                if (persistedImages.isNotEmpty() && _currentModel.value.contains("agent")) {
+                    when (_prefAutoSaveImages.value) {
+                        "always" -> copyUploadsToLocal(persistedImages)
+                        "ask" -> _pendingImageSave.value = ImageSaveRequest(persistedImages)
+                        // "never" — no copy
+                    }
+                }
                 // Commit the user's turn BEFORE any file/image network work: a cancel
                 // or failure below must never swallow the message itself.
                 val userMessage = ChatMessage(
@@ -2184,6 +2301,7 @@ AI：$assistantReply
                 }
 
                 val fullUserContent = buildString {
+                    if (skillPrefix.isNotBlank()) append(skillPrefix)
                     if (text.isNotBlank()) append(text)
                     if (fileContent.isNotBlank()) {
                         if (isNotBlank()) append("\n\n")
@@ -2359,6 +2477,8 @@ AI：$assistantReply
         val liveSession = _sessions.value.find { it.id == session.id } ?: session
         val runStartIdx = (liveSession.messages.size).coerceAtLeast(1) - 1
         val toolSteps = mutableListOf<Map<String, String>>()
+        // File mutations this run (write/edit/delete) → end-of-run summary card + undo.
+        val runFileChanges = mutableListOf<com.zhibai.app.data.model.FileChange>()
         // Search results in call order → attached as message annotations so the
         // [reference:N] chips and the 搜索 card work exactly like official search did.
         val searchAnnotations = mutableListOf<com.zhibai.app.data.model.Annotation>()
@@ -2499,7 +2619,10 @@ AI：$assistantReply
                                     updateSessionById(session.id) { s ->
                                         if (s.messages.any { it.id == cardId }) s
                                         else s.copy(messages = s.messages + ChatMessage(
-                                            id = cardId, role = "tool", content = "⏳ $name 调用中..."
+                                            id = cardId, role = "tool", content = "",
+                                            toolTitle = com.zhibai.app.agent.toolActionTitle(name, emptyMap()),
+                                            toolIcon = com.zhibai.app.agent.toolIconKey(name),
+                                            toolStatus = "running"
                                         ))
                                     }
                                     toolCardCount++
@@ -2731,7 +2854,7 @@ AI：$assistantReply
                     // Collapsing into a new message here made the LazyColumn key
                     // change → the finished answer flashed and re-rendered.
                     val msgs = s.messages.filterNot {
-                        it.id.startsWith(cardTag) && it.content.contains("调用中")
+                        it.id.startsWith(cardTag) && (it.toolStatus == "running" || it.content.contains("调用中"))
                     }.toMutableList()
                     val i = msgs.indexOfFirst { it.id == placeholderId }
                     if (i >= 0) {
@@ -2800,16 +2923,44 @@ AI：$assistantReply
                 val runningMsgId = if (hasStreamCard) streamCardId
                     else java.util.UUID.randomUUID().toString()
                 if (!searchOnly) {
+                    val runTitle = com.zhibai.app.agent.toolActionTitle(tc.tool, tcArgs)
+                    val runIcon = com.zhibai.app.agent.toolIconKey(tc.tool)
                     updateSessionById(session.id) { s ->
                         val msgs = s.messages.toMutableList()
                         val i = msgs.indexOfFirst { it.id == runningMsgId }
-                        if (i >= 0) msgs[i] = msgs[i].copy(content = "⏳ ${tc.tool} 运行中...")
-                        else msgs.add(ChatMessage(id = runningMsgId, role = "tool", content = "⏳ ${tc.tool} 运行中..."))
+                        if (i >= 0) msgs[i] = msgs[i].copy(
+                            content = "", toolTitle = runTitle, toolIcon = runIcon, toolStatus = "running", toolLive = ""
+                        )
+                        else msgs.add(ChatMessage(
+                            id = runningMsgId, role = "tool", content = "",
+                            toolTitle = runTitle, toolIcon = runIcon, toolStatus = "running", toolLive = ""
+                        ))
                         s.copy(messages = msgs)
                     }
                 }
+                // Live output accumulators — declared outside the try so the final
+                // back-fill below can flush the tail after the tool finishes.
+                val liveBuf = StringBuilder()
+                var lastLiveFlush = 0L
                 var toolResult = try {
                     _toolExecuting.value = true
+                    // Real-time tool output → live card text (throttled: flush at most
+                    // every 300ms — updateSessionById saves sessions, no per-line writes).
+                    engine?.liveOutputSink = { line ->
+                        synchronized(liveBuf) { liveBuf.appendLine(line) }
+                        val now = System.currentTimeMillis()
+                        if (now - lastLiveFlush > 300) {
+                            lastLiveFlush = now
+                            val snapshot = synchronized(liveBuf) { liveBuf.toString() }.takeLast(2000)
+                            updateSessionById(session.id) { s ->
+                                val msgs = s.messages.toMutableList()
+                                val i = msgs.indexOfFirst { it.id == runningMsgId }
+                                if (i >= 0) msgs[i] = msgs[i].copy(toolLive = snapshot)
+                                s.copy(messages = msgs)
+                            }
+                        }
+                    }
+                    engine?.fileChangeSink = { fc -> runFileChanges.add(fc) }
                     islandService.showAgentTaskNotification(
                         taskTitle = "运行中",
                         taskStatus = "执行 ${tc.tool}",
@@ -2819,8 +2970,9 @@ AI：$assistantReply
                     updateSessionById(session.id) { s ->
                         val msgs = s.messages.toMutableList()
                         val i = msgs.indexOfFirst { it.id == runningMsgId }
-                        if (i >= 0) msgs[i] = msgs[i].copy(content = "⏳ ${tc.tool} 运行中...")
-                        else msgs.add(ChatMessage(id = runningMsgId, role = "tool", content = "⏳ ${tc.tool} 运行中..."))
+                        if (i >= 0) msgs[i] = msgs[i].copy(
+                            content = "", toolStatus = "running", toolLive = ""
+                        )
                         s.copy(messages = msgs)
                     }
                     // Built-in fun tool — handled here so normal chat and Agent both
@@ -2828,6 +2980,11 @@ AI：$assistantReply
                     if (tc.tool == "let_it_snow") {
                         snowNow()
                         "雪已经下了起来。"
+                    } else if (tc.tool == "mental_health_support") {
+                        // Built-in support tool — every mode can raise the hotline card
+                        // (replaces the old scan of each AI reply).
+                        showMentalHealthSupport()
+                        "已为用户展示心理健康支持卡片，包含心理援助热线。"
                     } else if (searchOnly) {
                         // Network-only tools, executed directly — no engine, no approval.
                         when (tc.tool) {
@@ -2856,7 +3013,7 @@ AI：$assistantReply
                                 else try { BingSearch.fetch(u, maxLen) }
                                 catch (e: Exception) { "Error: fetch failed: ${e.message}" }
                             }
-                            else -> "Error: tool '${tc.tool}' is not available in normal chat. Available: web_search, fetch_url, let_it_snow."
+                            else -> "Error: tool '${tc.tool}' is not available in normal chat. Available: web_search, fetch_url, let_it_snow, mental_health_support."
                         }
                     } else {
                         engine!!.executeTool(tc.tool, tcArgs, _agentPermissionMode.value)
@@ -2866,6 +3023,8 @@ AI：$assistantReply
                 } finally {
                     _toolExecuting.value = false
                     _pendingToolCall.value = null
+                    engine?.liveOutputSink = null
+                    engine?.fileChangeSink = null
                 }
                 AppLog.d("tool <- ${tc.tool} ${System.currentTimeMillis() - toolStartMs}ms: ${toolResult.take(120).replace('\n', ' ')}")
                 // Tool reported a missing system permission → suspend, jump to Settings,
@@ -2919,13 +3078,18 @@ AI：$assistantReply
                     }
                 }
                 val displayResult = toolResult
+                val finalStatus = if (displayResult.startsWith("Error") || displayResult.startsWith("DENIED")) "error" else "ok"
                 // Single card per tool call: back-fill the placeholder/stream card with the
                 // FINAL result (after any permission retry) instead of appending a second one.
                 updateSessionById(session.id) { s ->
                     val msgs = s.messages.toMutableList()
                     val idx2 = msgs.indexOfFirst { it.id == runningMsgId }
                     if (idx2 >= 0) {
-                        msgs[idx2] = msgs[idx2].copy(content = "[${tc.tool}] ${displayResult.take(2000)}")
+                        msgs[idx2] = msgs[idx2].copy(
+                            content = "[${tc.tool}] ${displayResult.take(2000)}",
+                            toolStatus = finalStatus,
+                            toolLive = synchronized(liveBuf) { liveBuf.toString() }.takeLast(2000)
+                        )
                     }
                     s.copy(messages = msgs)
                 }
@@ -2977,7 +3141,7 @@ AI：$assistantReply
             // text inside args values that the stream detector picked up).
             updateSessionById(session.id) { s ->
                 s.copy(messages = s.messages.filterNot {
-                    it.id.startsWith(cardTag) && it.content.contains("调用中")
+                    it.id.startsWith(cardTag) && (it.toolStatus == "running" || it.content.contains("调用中"))
                 })
             }
             // Continue loop for next round of tool calls
@@ -3007,6 +3171,20 @@ AI：$assistantReply
         }
 
         streamResponse(activeApi, finalRequest, isFirstMessage, session.id, text, searchAnnotations.toList(), expectSchemaLeak = true)
+        // End-of-run file-change summary card (after the answer, at the very end):
+        // 「已更改 N 个文件，+X -Y」 with undo / review actions.
+        if (runFileChanges.isNotEmpty()) {
+            val cardId = java.util.UUID.randomUUID().toString()
+            val payload = gson.toJson(runFileChanges.map {
+                mapOf("path" to it.path, "added" to it.added, "removed" to it.removed)
+            })
+            fileUndoStore[cardId] = runFileChanges.toList()
+            updateSessionById(session.id) { s ->
+                s.copy(messages = s.messages + ChatMessage(
+                    id = cardId, role = "tool_files", content = payload
+                ))
+            }
+        }
         agentTaskManager.endSession()
         islandService.cancelNotification()
         // Notify user: agent output finished
@@ -3459,6 +3637,7 @@ AI：$assistantReply
         "mic" -> "麦克风"
         "calendar" -> "日历日程"
         "alarm" -> "闹钟与提醒"
+        "location" -> "位置信息"
         else -> type
     }
 
@@ -3503,6 +3682,13 @@ AI：$assistantReply
                             android.net.Uri.parse("package:$pkg")
                         )
                     }
+                "location" ->
+                    // App details page → permissions → location (there is no direct
+                    // location-grant page jumpable from an app).
+                    android.content.Intent(
+                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.parse("package:$pkg")
+                    )
                 // calendar / projection / mic / anything else: app detail page
                 // (closest jumpable surface for runtime permissions).
                 else ->
@@ -3625,7 +3811,9 @@ AI：$assistantReply
     /** Update a session by ID without touching _currentSession (safe during streaming when user switches). */
     private fun updateSessionById(sessionId: String, transform: (ChatSession) -> ChatSession) {
         val target = _sessions.value.find { it.id == sessionId } ?: return
-        val updated = transform(target)
+        // Any message mutation is conversation activity — refresh lastActiveAt so the
+        // chat list sorts by most recent conversation instead of creation order.
+        val updated = transform(target).copy(lastActiveAt = System.currentTimeMillis())
         _sessions.value = _sessions.value.map { if (it.id == sessionId) updated else it }
         if (_currentSession.value?.id == sessionId) {
             _currentSession.value = updated
@@ -3761,7 +3949,9 @@ ${phoneToolDoc}- read_file: {"path":"file path"}
   Use on any image/audio/video file to see, transcribe, or analyze its content autonomously.
 - open_app: {"package":"com.package.name"}
 - list_apps: {}
-- request_permission: {"permission":"accessibility|overlay|storage|projection|notification|mic|calendar|alarm","reason":"why it is needed"}
+- open_file: {"path":"file path"} — open a file (image/doc/audio/video) with the system viewer
+- open_url: {"url":"https://..."} — open a web page in the default browser
+- request_permission: {"permission":"accessibility|overlay|storage|projection|notification|mic|calendar|alarm|location","reason":"why it is needed"}
   Use when you are blocked by a missing system permission or a tool reports NEED_PERMISSION. The user will be offered a jump to system Settings.
 - get_location: {} — Get GPS coordinates
 - set_alarm: {"hour":8,"minute":30,"label":"起床"} — Set alarm clock
@@ -3808,6 +3998,7 @@ ${phoneToolDoc}- read_file: {"path":"file path"}
 - switch_phase: {"phase":"build"} — Send the user a confirmation card to switch phase (values: plan | build). plan→build once the plan is ready; build→plan when a re-plan is needed. The phase changes ONLY after the user confirms on the card.
 
 - let_it_snow: {} — make it snow on the screen (decorative). Call it when the user asks for snow, winter vibes, or a celebration.
+- mental_health_support: {} — show the mental-health support card with crisis hotlines. Call it whenever the user expresses emotional distress, hopelessness, or asks for psychological help.
 
 Workspace: ${agentEngine?.workspaceDir?.absolutePath ?: "/sdcard/知白/"}
 """.trimIndent()
@@ -3877,6 +4068,9 @@ Tools — only these three exist here:
 - fetch_url: {"url":"https://..."} — returns that page as readable text (~5000 chars).
 - let_it_snow: {} — make it snow on the screen (decorative). Call it when the user
   asks for snow, winter vibes, or a celebration.
+- mental_health_support: {} — show the mental-health support card with crisis hotlines.
+  Call it whenever the user expresses emotional distress, hopelessness, or asks for
+  psychological help.
 Rules: at most 4 tool calls total. When finished, set tool_calls to [] and put your FULL
 final answer in "response" as plain text (shown directly to the user — not JSON), citing
 sources inline as [reference:N]."""

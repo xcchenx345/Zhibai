@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -265,8 +266,10 @@ fun MarkdownTable(tableText: String, isDarkTheme: Boolean) {
     val altRowBg = if (isDarkTheme) Color(0xFF333333) else Color(0xFFF5F5F5)
     val textColor = if (isDarkTheme) Color(0xFFE0E0E0) else Color(0xFF1A1A1A)
 
-    // Fixed column widths from content — weight() collapses to 0 inside
-    // horizontalScroll (unbounded max width), which made the whole table vanish.
+    // Content-driven natural widths. When they fit, each column takes a
+    // weighted share of the full width so the table never leaves blank space
+    // on the right; weight() is safe here because the row width is bounded.
+    // Overflowing tables keep fixed widths inside horizontalScroll.
     val charWidthDp = 8
     val padH = 10
     val colWidthsDp = (0 until colCount).map { col ->
@@ -276,24 +279,32 @@ fun MarkdownTable(tableText: String, isDarkTheme: Boolean) {
         (maxChars * charWidthDp + padH * 2).dp
     }
 
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(rowBg)
             .border(0.5.dp, borderColor, RoundedCornerShape(8.dp))
     ) {
+        val availDp = maxWidth
+        val fits = colWidthsDp.fold(0.dp) { acc, w -> acc + w } <= availDp
+        val colWeights = colWidthsDp.map { it.value.coerceAtLeast(1f) }
+
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState())
         ) {
-            Column {
+            Column(
+                modifier = if (fits) Modifier.width(availDp) else Modifier
+            ) {
                 // Header
-                Row(modifier = Modifier.background(headerBg)) {
+                Row(
+                    modifier = if (fits) Modifier.fillMaxWidth().background(headerBg)
+                    else Modifier.background(headerBg)
+                ) {
                     for (col in 0 until colCount) {
                         val cellText = headerCells.getOrElse(col) { "" }.trim()
                         Box(
-                            modifier = Modifier
-                                .width(colWidthsDp[col])
+                            modifier = tableCell(fits, colWeights[col], colWidthsDp[col])
                                 .border(0.5.dp, borderColor)
                         ) {
                             Text(
@@ -312,12 +323,14 @@ fun MarkdownTable(tableText: String, isDarkTheme: Boolean) {
                 dataLines.forEachIndexed { rowIdx, line ->
                     val cells = parseTableRow(line)
                     val bg = if (rowIdx % 2 == 0) rowBg else altRowBg
-                    Row(modifier = Modifier.background(bg)) {
+                    Row(
+                        modifier = if (fits) Modifier.fillMaxWidth().background(bg)
+                        else Modifier.background(bg)
+                    ) {
                         for (col in 0 until colCount) {
                             val cellText = cells.getOrElse(col) { "" }.trim()
                             Box(
-                                modifier = Modifier
-                                    .width(colWidthsDp[col])
+                                modifier = tableCell(fits, colWeights[col], colWidthsDp[col])
                                     .border(0.5.dp, borderColor)
                             ) {
                                 Text(
@@ -336,6 +349,10 @@ fun MarkdownTable(tableText: String, isDarkTheme: Boolean) {
         }
     }
 }
+
+/** Fills the row width by column weight when the table fits; fixed width otherwise. */
+private fun RowScope.tableCell(fits: Boolean, weight: Float, width: Dp): Modifier =
+    if (fits) Modifier.weight(weight, fill = true) else Modifier.width(width)
 
 private fun parseTableRow(line: String): List<String> {
     var s = normalizeTableChars(line.trim())
