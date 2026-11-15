@@ -177,7 +177,10 @@ class MiMoApiService(
                 val err = streamError
                 if (err != null) {
                     if (!sawDone) trySend(StreamChunk.Done(usage))
-                    close(err)
+                    // A tail error frame after finish_reason carries no signal — the
+                    // content is already complete. Closing with err here made callers
+                    // treat a finished answer as a failure and re-stream over it.
+                    if (sawFinish) close() else close(err)
                     return
                 }
                 // EOF without [DONE] — finalize anyway

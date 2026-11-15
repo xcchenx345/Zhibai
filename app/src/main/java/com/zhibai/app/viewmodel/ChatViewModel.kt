@@ -608,7 +608,13 @@ $convoText
                 ))
                 compressedMsgs.addAll(keepLast)
 
-                updateSession(session.copy(messages = compressedMsgs))
+                // Replace only the messages the snapshot covered — anything appended
+                // while the summary request was in flight stays put.
+                val snapshotIds = session.messages.map { it.id }.toSet()
+                updateSessionById(session.id) { live ->
+                    val added = live.messages.filterNot { it.id in snapshotIds }
+                    live.copy(messages = compressedMsgs + added)
+                }
                 _compressionProgress.value = 1f
                 recalcTokens()
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -646,6 +652,8 @@ $convoText
     val agentTaskManager = com.zhibai.app.agent.AgentTaskManager()
 
     private var streamingJob: Job? = null
+    /** Model route change that arrived mid-generation; applied when the run ends. */
+    private var pendingRouteModel: String? = null
     private var currentAudioTrack: android.media.AudioTrack? = null
 
     init {
@@ -657,10 +665,15 @@ $convoText
             context.dataStore.data.first().let { prefs ->
                 val savedKey = prefs[API_KEY] ?: ""
                 if (savedKey.isNotBlank()) {
-                    _apiKey.value = savedKey
-                    _apiKeyConfigured.value = true
-                    apiService.updateApiKey(MmKeyCodec.resolve(savedKey))
-                    ttsService.updateApiKey(MmKeyCodec.resolve(savedKey))
+                    val resolvedKey = MmKeyCodec.resolve(savedKey)
+                    _apiKey.value = savedKey.trim()
+                    _apiKeyConfigured.value = resolvedKey.isNotBlank()
+                    apiService.updateApiKey(resolvedKey)
+                    cloudListService.updateApiKey(resolvedKey)
+                    ttsService.updateApiKey(resolvedKey)
+                    if (resolvedKey.isBlank()) {
+                        _error.value = "密钥解析失败（mm-密文损坏），请到设置页重新粘贴密钥"
+                    }
                 }
                 val savedVoice = prefs[TTS_VOICE_KEY]
                 if (!savedVoice.isNullOrBlank()) {
@@ -809,7 +822,9 @@ $convoText
                 // Single TTS entry; sub-modes live inside TTSScreen
                 _modelIds.value = cloudPart + localIds + listOf("tts")
                 val cur = _currentModel.value
-                if (cur != "asr" && !cur.startsWith("tts") && !isLocalModelId(cur)) {
+                // Never auto-switch models while a run is live — the collector would
+                // re-point the endpoints mid-stream and the run dies.
+                if (!_isGenerating.value && cur != "asr" && !cur.startsWith("tts") && !isLocalModelId(cur)) {
                     val base = cur.removeSuffix("-agent")
                     if (base !in cloudPart && cur !in cloudPart) {
                         cloudPart.firstOrNull()?.let { _currentModel.value = it }
@@ -861,14 +876,19 @@ $convoText
 
     fun setApiKey(key: String) {
         // Raw value (sk- or mm-) stays in DataStore/UI; services get the real key.
-        apiService.updateApiKey(MmKeyCodec.resolve(key))
-        cloudListService.updateApiKey(MmKeyCodec.resolve(key))
-        ttsService.updateApiKey(MmKeyCodec.resolve(key))
-        _apiKey.value = key
-        _apiKeyConfigured.value = key.isNotBlank()
+        val raw = key.trim()
+        val resolved = MmKeyCodec.resolve(raw)
+        apiService.updateApiKey(resolved)
+        cloudListService.updateApiKey(resolved)
+        ttsService.updateApiKey(resolved)
+        _apiKey.value = raw
+        _apiKeyConfigured.value = resolved.isNotBlank()
+        if (raw.isNotBlank() && resolved.isBlank()) {
+            _error.value = "密钥解析失败（mm-密文损坏），请重新复制粘贴密钥"
+        }
         viewModelScope.launch {
             context.dataStore.edit { prefs ->
-                prefs[API_KEY] = key
+                prefs[API_KEY] = raw
             }
         }
     }
@@ -1055,6 +1075,12 @@ $convoText
      * ids restore the normal endpoints. Called by the _currentModel collector.
      */
     private fun routeForModel(model: String) {
+        // Re-pointing baseUrl/key mid-run sends the next tool round to a different
+        // endpoint and the run dies with no output. Defer until the run ends.
+        if (_isGenerating.value) {
+            pendingRouteModel = model
+            return
+        }
         if (isLocalModelId(model)) {
             apiService.updateBaseUrl(com.zhibai.app.localai.LocalAiManager.LOCAL_BASE_URL)
             apiService.updateApiKey(com.zhibai.app.localai.LocalAiManager.LOCAL_API_KEY)
@@ -1075,7 +1101,8 @@ $convoText
             }
         } else {
             apiService.updateBaseUrl("https://api.xiaomimimo.com/v1")
-            apiService.updateApiKey(MmKeyCodec.resolve(_apiKey.value))
+            val resolvedKey = MmKeyCodec.resolve(_apiKey.value)
+            apiService.updateApiKey(resolvedKey)
             val key = MmKeyCodec.resolve(
                 if (_agentApiKey.value.isNotBlank()) _agentApiKey.value else _apiKey.value
             )
@@ -1085,8 +1112,15 @@ $convoText
             agentChatService.updateBaseUrl(url)
             agentToolService?.updateApiKey(key)
             agentToolService?.updateBaseUrl(url)
-            _apiKeyConfigured.value = _apiKey.value.isNotBlank()
+            _apiKeyConfigured.value = resolvedKey.isNotBlank()
         }
+    }
+
+    /** Apply a route change that arrived while a generation was running. */
+    private fun flushPendingRoute() {
+        val pending = pendingRouteModel ?: return
+        pendingRouteModel = null
+        routeForModel(pending)
     }
 
     fun setTtsVoice(voice: String) {
@@ -1185,6 +1219,9 @@ $convoText
         super.onCleared()
         com.zhibai.app.data.api.AgentIslandBridge.approve = null
         com.zhibai.app.data.api.AgentIslandBridge.deny = null
+        // viewModelScope is gone by now — the debounced writer would lose the last
+        // edits, so flush on a plain thread.
+        Thread { writeSessionsNow() }.start()
     }
 
     fun setAgentEnabled(enabled: Boolean) {
@@ -1524,9 +1561,13 @@ AI：$assistantReply
     }
 
     fun setAgentApiKey(key: String) {
-        _agentApiKey.value = key
-        val effectiveKey = MmKeyCodec.resolve(if (key.isNotBlank()) key else _apiKey.value)
-        val effectiveUrl = if (key.isNotBlank()) _agentBaseUrl.value else "https://api.xiaomimimo.com/v1"
+        val raw = key.trim()
+        _agentApiKey.value = raw
+        val effectiveKey = MmKeyCodec.resolve(if (raw.isNotBlank()) raw else _apiKey.value)
+        if (raw.isNotBlank() && effectiveKey.isBlank()) {
+            _error.value = "Agent 密钥解析失败（mm-密文损坏），请重新复制粘贴"
+        }
+        val effectiveUrl = if (raw.isNotBlank()) _agentBaseUrl.value else "https://api.xiaomimimo.com/v1"
         agentChatService.updateApiKey(effectiveKey)
         agentChatService.updateBaseUrl(effectiveUrl)
         agentEngine?.let {
@@ -1538,7 +1579,7 @@ AI：$assistantReply
         }
         viewModelScope.launch {
             context.dataStore.edit { prefs ->
-                prefs[AGENT_API_KEY] = key
+                prefs[AGENT_API_KEY] = raw
             }
         }
     }
@@ -1833,6 +1874,7 @@ AI：$assistantReply
     fun editAndResend(messageId: String, newText: String) {
         val session = _currentSession.value ?: return
         if (newText.isBlank()) return
+        if (_isGenerating.value) return
 
         val msgIndex = session.messages.indexOfFirst { it.id == messageId }
         if (msgIndex < 0 || session.messages[msgIndex].role != "user") return
@@ -1846,7 +1888,7 @@ AI：$assistantReply
         val assistantMsg = ChatMessage(role = "assistant", content = "", isStreaming = true)
 
         val updatedMessages = messagesBefore + editedUserMsg + assistantMsg + messagesAfter
-        updateSession(session.copy(messages = updatedMessages))
+        updateSessionById(session.id) { s -> s.copy(messages = updatedMessages) }
 
         // Now trigger the API call
         streamingJob = viewModelScope.launch(Dispatchers.IO) {
@@ -1898,11 +1940,13 @@ AI：$assistantReply
                         kotlinx.coroutines.delay(10_000)
                         if (System.currentTimeMillis() - lastDataTime > 300_000) {
                             _isGenerating.value = false
-                            val current = _currentSession.value
-                            if (current != null) {
-                                updateSession(current.copy(messages = current.messages.map {
-                                    if (it.isStreaming) it.copy(isStreaming = false) else it
-                                }))
+                            updateSessionById(session.id) { s ->
+                                s.copy(messages = s.messages.map {
+                                    if (it.isStreaming) it.copy(
+                                        isStreaming = false,
+                                        content = it.content.ifBlank { "响应超时（300 秒无数据）" }
+                                    ) else it
+                                })
                             }
                             break
                         }
@@ -1921,16 +1965,17 @@ AI：$assistantReply
                                 highRiskRejected = true
                             }
                             chunk.annotations?.let { allAnnotations.addAll(it) }
-                            val current = _currentSession.value ?: return@collect
-                            val updatedMsgs = current.messages.toMutableList()
-                            val lastIdx = updatedMsgs.indexOfLast { it.isStreaming }
-                            if (lastIdx >= 0) {
-                                updatedMsgs[lastIdx] = updatedMsgs[lastIdx].copy(
-                                    content = if (highRiskFalsePositive) fullContent else sanitizeHighRisk(fullContent),
-                                    reasoningContent = fullReasoning,
-                                    annotations = if (allAnnotations.isNotEmpty()) allAnnotations.toList() else null
-                                )
-                                updateSession(current.copy(messages = updatedMsgs))
+                            updateSessionById(session.id) { s ->
+                                val updatedMsgs = s.messages.toMutableList()
+                                val lastIdx = updatedMsgs.indexOfLast { it.isStreaming }
+                                if (lastIdx >= 0) {
+                                    updatedMsgs[lastIdx] = updatedMsgs[lastIdx].copy(
+                                        content = if (highRiskFalsePositive) fullContent else sanitizeHighRisk(fullContent),
+                                        reasoningContent = fullReasoning,
+                                        annotations = if (allAnnotations.isNotEmpty()) allAnnotations.toList() else null
+                                    )
+                                    s.copy(messages = updatedMsgs)
+                                } else s
                             }
                         }
                         is StreamChunk.Done -> {
@@ -1941,18 +1986,20 @@ AI：$assistantReply
                                 taskTitle = "输出完成",
                                 result = fullContent.takeLast(80).ifBlank { "回复已完成，点击查看" }
                             )
-                            val current = _currentSession.value ?: return@collect
-                            chunk.usage?.let { calibrateTokenBias(it, current.messages) }
-                            val updatedMsgs = current.messages.toMutableList()
-                            val lastIdx = updatedMsgs.indexOfLast { it.isStreaming }
-                            if (lastIdx >= 0) {
-                                val anns = if (allAnnotations.isNotEmpty()) allAnnotations.toList() else null
-                                updatedMsgs[lastIdx] = updatedMsgs[lastIdx].copy(
-                                    isStreaming = false,
-                                    content = withReferenceFallback(updatedMsgs[lastIdx].content, anns),
-                                    annotations = anns
-                                )
-                                updateSession(current.copy(messages = updatedMsgs))
+                            val cur = _sessions.value.find { it.id == session.id }
+                            chunk.usage?.let { calibrateTokenBias(it, cur?.messages ?: emptyList()) }
+                            updateSessionById(session.id) { s ->
+                                val updatedMsgs = s.messages.toMutableList()
+                                val lastIdx = updatedMsgs.indexOfLast { it.isStreaming }
+                                if (lastIdx >= 0) {
+                                    val anns = if (allAnnotations.isNotEmpty()) allAnnotations.toList() else null
+                                    updatedMsgs[lastIdx] = updatedMsgs[lastIdx].copy(
+                                        isStreaming = false,
+                                        content = withReferenceFallback(updatedMsgs[lastIdx].content, anns),
+                                        annotations = anns
+                                    )
+                                    s.copy(messages = updatedMsgs)
+                                } else s
                             }
                             recalcTokens()
                         }
@@ -1971,6 +2018,7 @@ AI：$assistantReply
                 }
             } finally {
                 _isGenerating.value = false
+                flushPendingRoute()
             }
         }
     }
@@ -1990,7 +2038,9 @@ AI：$assistantReply
         val before = msgs.take(userIdx)
         val after = msgs.drop(assistantIdx + 1)
         val streamingMsg = ChatMessage(role = "assistant", content = "", isStreaming = true)
-        updateSession(session.copy(messages = before + userMsg + streamingMsg + after))
+        updateSessionById(session.id) { s ->
+            s.copy(messages = before + userMsg + streamingMsg + after)
+        }
 
         streamingJob = viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -2031,15 +2081,15 @@ AI：$assistantReply
                 // user pressed stop
             } catch (e: Exception) {
                 _error.value = e.message ?: "Unknown error"
-                val cur = _currentSession.value
-                if (cur != null) {
-                    updateSession(cur.copy(messages = cur.messages
+                updateSessionById(session.id) { s ->
+                    s.copy(messages = s.messages
                         .filterNot { it.role == "assistant" && it.content.isBlank() && it.isStreaming }
                         .map { if (it.isStreaming) it.copy(isStreaming = false) else it }
-                    ))
+                    )
                 }
             } finally {
                 _isGenerating.value = false
+                flushPendingRoute()
             }
         }
     }
@@ -2047,6 +2097,13 @@ AI：$assistantReply
     fun sendMessage(text: String, imageUris: List<Uri> = emptyList(), fileUri: Uri? = null, fileName: String? = null) {
         val session = _currentSession.value ?: return
         if (text.isBlank() && imageUris.isEmpty() && fileUri == null) return
+        // No overlapping generation jobs: _isGenerating is set synchronously below,
+        // before any suspension, so a second send can't start a parallel run.
+        if (_isGenerating.value) return
+        if (_isCompressing.value) {
+            _error.value = "正在压缩会话，请稍候再发送"
+            return
+        }
 
         // "/压缩" command — must be exact match (only the command, nothing before/after)
         if (text.trim() == "/压缩") {
@@ -2065,8 +2122,27 @@ AI：$assistantReply
             _sessions.value = _sessions.value + session
             saveSessions()
         }
+        _isGenerating.value = true
+        _error.value = null
+        lastStreamCompleted = false
         streamingJob = viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Persist picker URIs first — content:// dies after process kill.
+                val persistedImages = imageUris.mapNotNull { persistImage(it) }
+                // Commit the user's turn BEFORE any file/image network work: a cancel
+                // or failure below must never swallow the message itself.
+                val userMessage = ChatMessage(
+                    role = "user",
+                    content = text.ifBlank { fileName?.let { "[附件] $it" } ?: "[附件]" },
+                    imageUri = persistedImages.joinToString("|").ifBlank { null },
+                    fileName = fileName
+                )
+                val assistantMessage = ChatMessage(role = "assistant", content = "", isStreaming = true)
+                val userMsgId = userMessage.id
+                updateSessionById(session.id) { s ->
+                    s.copy(messages = s.messages + userMessage + assistantMessage)
+                }
+
                 var fileContent = ""
                 var audioBase64: String? = null
                 var audioMimeType: String? = null
@@ -2096,7 +2172,6 @@ AI：$assistantReply
 
                 // Non-vision models can't consume image_url parts — extract to text first
                 if (imageBase64List.isNotEmpty() && !supportsVision(_currentModel.value)) {
-                    _isGenerating.value = true
                     islandService.showAgentTaskNotification(
                         taskTitle = "运行中",
                         taskStatus = "正在提取图片内容...",
@@ -2120,26 +2195,14 @@ AI：$assistantReply
                     if (extractedNote.isNotBlank()) append(extractedNote)
                 }
 
-                // Persist picker URIs into app storage — content:// dies after process kill
-                val persistedImages = imageUris.mapNotNull { persistImage(it) }
-                val userMessage = ChatMessage(
-                    role = "user",
-                    content = fullUserContent,
-                    imageUri = persistedImages.joinToString("|").ifBlank { null },
-                    fileName = fileName
-                )
-                val assistantMessage = ChatMessage(role = "assistant", content = "", isStreaming = true)
-
-                // Append against the LIVE session — the `session` snapshot was taken
-                // before file/image work (seconds of network) and would wipe any
-                // concurrent finalize (Done handler) if we copied from it.
-                updateSessionById(session.id) { s ->
-                    s.copy(messages = s.messages + userMessage + assistantMessage)
+                // Enrich the committed user message with the file/extracted content.
+                if (fullUserContent != userMessage.content) {
+                    updateSessionById(session.id) { s ->
+                        s.copy(messages = s.messages.map {
+                            if (it.id == userMsgId) it.copy(content = fullUserContent) else it
+                        })
+                    }
                 }
-
-                _isGenerating.value = true
-                _error.value = null
-                lastStreamCompleted = false
 
                 val isAgent = _currentModel.value.contains("agent") && agentEngine != null
 
@@ -2177,6 +2240,7 @@ AI：$assistantReply
                     islandService.cancelNotification()
                 }
                 lastStreamCompleted = false
+                flushPendingRoute()
             }
         }
     }
@@ -2244,7 +2308,7 @@ AI：$assistantReply
             )
             streamResponse(activeApi, request, isFirstMessage, session.id, text)
         } catch (e: Exception) {
-            if (isBalanceError(e) && _agentApiKey.value.isNotBlank()) {
+            if (isBalanceError(e) && MmKeyCodec.resolve(_agentApiKey.value).isNotBlank()) {
                 val fallbackApi = agentChatService
                 streamResponse(fallbackApi, request, isFirstMessage, session.id, text)
             } else {
@@ -2419,9 +2483,13 @@ AI：$assistantReply
                             val msgs = s.messages.toMutableList()
                             val i = msgs.indexOfFirst { it.id == placeholderId }
                             if (i >= 0) {
+                                // Never write an empty field over shown content: each
+                                // round resets respOut/thinkOut at entry, and the first
+                                // chunk of a retry would blank a finished answer
+                                // (「先消失再重新答」).
                                 msgs[i] = msgs[i].copy(
-                                    content = sanitizeHighRisk(respOut),
-                                    reasoningContent = thinkOut
+                                    content = if (respOut.isNotBlank()) sanitizeHighRisk(respOut) else msgs[i].content,
+                                    reasoningContent = if (thinkOut.isNotBlank()) thinkOut else msgs[i].reasoningContent
                                 )
                             }
                             s.copy(messages = msgs)
@@ -2450,11 +2518,22 @@ AI：$assistantReply
             }
 
             var streamFailure = runStreamRound(activeApi)
-            if (streamFailure != null && isBalanceError(streamFailure) && _agentApiKey.value.isNotBlank()) {
+            // A round that already produced content is a success — a tail error must
+            // not trigger a re-stream over the finished answer. Only a truly empty
+            // round may fall back to the agent key, and only when that key resolves.
+            if (streamFailure != null && streamBuf.isBlank() && isBalanceError(streamFailure) &&
+                MmKeyCodec.resolve(_agentApiKey.value).isNotBlank()
+            ) {
                 streamFailure = runStreamRound(agentChatService)
+            }
+            if (streamFailure != null && streamBuf.isNotBlank()) {
+                streamFailure = null
             }
             if (streamFailure != null) {
                 _error.value = "Agent request failed: ${streamFailure.message}"
+                // Surface the failure in the bubble too — a bare banner (or a blank
+                // bubble) reads as「对话就结束」with no clue why.
+                val errText = "请求失败：${streamFailure.message ?: "未知错误"}"
                 updateSessionById(session.id) { s ->
                     val msgs = s.messages.toMutableList()
                     // remove this round's pending tool cards
@@ -2463,8 +2542,11 @@ AI：$assistantReply
                     val i = msgs.indexOfFirst { it.id == placeholderId }
                     if (i >= 0) {
                         val m = msgs[i]
-                        if (m.content.isBlank() && m.reasoningContent.isBlank()) msgs.removeAt(i)
-                        else msgs[i] = m.copy(isStreaming = false)
+                        if (m.content.isBlank() && m.reasoningContent.isBlank()) {
+                            msgs[i] = m.copy(content = errText, isStreaming = false)
+                        } else {
+                            msgs[i] = m.copy(isStreaming = false)
+                        }
                     }
                     s.copy(messages = msgs)
                 }
@@ -2941,7 +3023,10 @@ AI：$assistantReply
                     }
                     updateSessionById(sessionId) { s ->
                         s.copy(messages = s.messages.map {
-                            if (it.isStreaming) it.copy(isStreaming = false) else it
+                            if (it.isStreaming) it.copy(
+                                isStreaming = false,
+                                content = it.content.ifBlank { "响应超时（90 秒无数据）" }
+                            ) else it
                         })
                     }
                     break
@@ -3128,8 +3213,10 @@ AI：$assistantReply
             // User pressed stop — stopGeneration already cleaned UI; do not show an error
             throw e
         } catch (e: Exception) {
-            // Mid-stream failure: keep whatever partial content arrived, just stop the spinner
-            _error.value = e.message ?: "连接中断"
+            // Mid-stream failure: keep whatever partial content arrived, just stop the spinner.
+            // Content already delivered means the answer is done — a tail error is not
+            // an error worth a banner (and must never trigger a re-stream).
+            if (fullContent.isBlank()) _error.value = e.message ?: "连接中断"
             watchdogJob.cancel()
             if (trackSpeed) {
                 val prev = _speedStats.value
@@ -3180,14 +3267,10 @@ AI：$assistantReply
                     val rawTitle = resp.choices.firstOrNull()?.message?.content?.toString() ?: ""
                     val title = rawTitle.trim().replace("\"", "").replace("'", "").take(20)
                     if (title.isNotBlank()) {
-                        val current = _sessions.value.find { it.id == sessionId }
-                        if (current != null && current.title != title) {
-                            val updated = current.copy(title = title)
-                            _sessions.value = _sessions.value.map { if (it.id == sessionId) updated else it }
-                            if (_currentSession.value?.id == sessionId) {
-                                _currentSession.value = updated
-                            }
-                            saveSessions()
+                        // Live transform — a read-modify-write of a snapshot here raced
+                        // the streaming writer and rolled messages back.
+                        updateSessionById(sessionId) { s ->
+                            if (s.title == title) s else s.copy(title = title)
                         }
                     }
                 }
@@ -3205,10 +3288,12 @@ AI：$assistantReply
         _pendingQuestionnaire.value = null
         islandService.cancelNotification()
         val current = _currentSession.value ?: return
-        val updatedMessages = current.messages.map {
-            if (it.isStreaming) it.copy(isStreaming = false) else it
+        updateSessionById(current.id) { s ->
+            s.copy(messages = s.messages.map {
+                if (it.isStreaming) it.copy(isStreaming = false) else it
+            })
         }
-        updateSession(current.copy(messages = updatedMessages))
+        flushPendingRoute()
     }
 
     fun approveToolCall() {
@@ -3395,14 +3480,6 @@ AI：$assistantReply
         } catch (_: Exception) {}
         currentAudioTrack = null
         _isSpeaking.value = false
-    }
-
-    private fun updateSession(session: ChatSession) {
-        _currentSession.value = session
-        _sessions.value = _sessions.value.map {
-            if (it.id == session.id) session else it
-        }
-        saveSessions()
     }
 
     /** Update a session by ID without touching _currentSession (safe during streaming when user switches). */
@@ -3821,30 +3898,54 @@ sources inline as [reference:N]."""
     }
 
     private fun getActiveApiService(): MiMoApiService {
-        return if (_currentModel.value.contains("agent") && _agentApiKey.value.isNotBlank()) {
+        // A raw mm- agent key that fails to unwrap must not route requests to the
+        // agent service — it would send an empty Bearer and 401 the run.
+        return if (_currentModel.value.contains("agent") &&
+            MmKeyCodec.resolve(_agentApiKey.value).isNotBlank()
+        ) {
             agentChatService
         } else {
             apiService
         }
     }
 
+    @Volatile
+    private var saveSessionsPending = false
+
     private fun saveSessions() {
+        // Called on every streaming chunk — coalesce bursts into one write. The old
+        // launch-per-call fired concurrent writeText calls that tore the JSON file,
+        // and a torn file made loadSessions drop ALL history on the next cold start.
+        if (saveSessionsPending) return
+        saveSessionsPending = true
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                // Clean up: remove empty streaming messages and reset streaming state
-                val cleanSessions = _sessions.value.map { session ->
-                    session.copy(messages = session.messages
-                        .filterNot { it.isStreaming && it.content.isBlank() }
-                        .map { if (it.isStreaming) it.copy(isStreaming = false) else it }
-                    )
-                }
-                val json = gson.toJson(cleanSessions)
-                val file = File(context.filesDir, "mimo_sessions.json")
-                file.writeText(json)
-                // Also write encrypted backup to external storage
-                com.zhibai.app.data.ChatBackupManager.backup(context, json)
-            } catch (_: Exception) {}
+            kotlinx.coroutines.delay(400)
+            saveSessionsPending = false
+            writeSessionsNow()
         }
+    }
+
+    private fun writeSessionsNow() {
+        try {
+            // Clean up: remove empty streaming messages and reset streaming state
+            val cleanSessions = _sessions.value.map { session ->
+                session.copy(messages = session.messages
+                    .filterNot { it.isStreaming && it.content.isBlank() }
+                    .map { if (it.isStreaming) it.copy(isStreaming = false) else it }
+                )
+            }
+            val json = gson.toJson(cleanSessions)
+            val file = File(context.filesDir, "mimo_sessions.json")
+            // Atomic replace: the old file stays intact if the write is interrupted.
+            val tmp = File(context.filesDir, "mimo_sessions.json.tmp")
+            tmp.writeText(json)
+            if (!tmp.renameTo(file)) {
+                file.writeText(json)
+                tmp.delete()
+            }
+            // Also write encrypted backup to external storage
+            com.zhibai.app.data.ChatBackupManager.backup(context, json)
+        } catch (_: Exception) {}
     }
 
     private suspend fun loadSessions(): List<ChatSession>? {
@@ -3864,7 +3965,10 @@ sources inline as [reference:N]."""
             if (file.exists()) {
                 val json = file.readText()
                 if (json.isNotBlank()) {
-                    parseAndClean(json)
+                    // A torn/corrupt file must fall back to the backup instead of
+                    // wiping history (the old code returned null and dropped it all).
+                    val parsed = try { parseAndClean(json) } catch (_: Exception) { null }
+                    parsed ?: tryRestoreFromBackup(file, parseAndClean)
                 } else {
                     // File empty → try backup
                     tryRestoreFromBackup(file, parseAndClean)

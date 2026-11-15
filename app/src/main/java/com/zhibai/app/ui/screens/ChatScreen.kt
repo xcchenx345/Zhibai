@@ -1238,7 +1238,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
 
                         itemsIndexed(
                             session?.messages ?: emptyList(),
-                            key = { index, msg -> "${index}_${msg.id}" }
+                            key = { _, msg -> msg.id }
                         ) { _, message ->
                             val msgEasing = CubicBezierEasing(0.0f, 0.0f, 0.2f, 1f)
                             val entered = remember { mutableStateOf(false) }

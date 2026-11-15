@@ -521,7 +521,7 @@ private fun ApiKeyPage(
         )
 
         Button(
-            onClick = { onSave(apiKeyInput) },
+            onClick = { onSave(apiKeyInput.trim()) },
             modifier = Modifier.fillMaxWidth(),
             enabled = apiKeyInput.isNotBlank(),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
