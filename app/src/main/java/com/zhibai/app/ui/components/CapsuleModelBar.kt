@@ -4,9 +4,9 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -54,13 +55,12 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 /**
- * Capsule segmented model switcher — the Android-clock style: one big white
- * capsule shell, four bold icon-over-label segments, and the selection shown as
- * a gray rounded slab behind the whole icon+label block (not a dot under it).
+ * Capsule segmented model switcher — Apple's capsule language (UISegmentedControl /
+ * iPadOS floating tab bar): everything is a true capsule (radius = half the height,
+ * concentric rings), a translucent gray track holds an elevated white capsule thumb,
+ * and the thumb springs between segments with a squash while dragged.
  *
- * Interactions: tap-to-jump with spring, drag the slab 1:1 with velocity squash
- * and snap-to-nearest on release. Landing on Chat / Agent pops the model list;
- * ASR / TTS switch directly.
+ * Landing on Chat / Agent pops the model list; ASR / TTS switch directly.
  */
 @Composable
 fun CapsuleModelBar(
@@ -71,6 +71,7 @@ fun CapsuleModelBar(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
+    val isDark = isSystemInDarkTheme()
 
     val segments = listOf("Chat", "Agent", "ASR", "TTS")
     val selectedIndex = when {
@@ -87,11 +88,15 @@ fun CapsuleModelBar(
     var trackWidthPx by remember { mutableFloatStateOf(0f) }
     val segCount = segments.size
     val density = LocalDensity.current
-    val insetPx = with(density) { 6.dp.toPx() }
+    val insetPx = with(density) { 5.dp.toPx() }
     fun segCenterPx(i: Int): Float =
         if (trackWidthPx <= 0f) 0f else trackWidthPx * (i + 0.5f) / segCount
     fun slabWidthPx(): Float =
-        if (trackWidthPx <= 0f) 0f else trackWidthPx / segCount
+        if (trackWidthPx <= 0f) 0f else trackWidthPx / segCount - insetPx * 2
+
+    // Apple segmented-control palette: gray track, elevated light thumb.
+    val trackColor = if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.08f)
+    val thumbColor = if (isDark) Color(0xFF3A3A3C) else Color.White
 
     // ---- indicator slab position + squash ----
     val slabX = remember { Animatable(0f) }
@@ -123,21 +128,16 @@ fun CapsuleModelBar(
                 }
             }
     ) {
-        // ---- shell: big rounded capsule, hairline border ----
+        // ---- shell: translucent gray capsule track ----
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(64.dp)
-                .clip(RoundedCornerShape(32.dp))
-                .background(MaterialTheme.colorScheme.surface)
-                .border(
-                    1.dp,
-                    MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
-                    RoundedCornerShape(32.dp)
-                )
+                .clip(RoundedCornerShape(percent = 50))
+                .background(trackColor)
         )
 
-        // ---- selection slab: rounded slab behind icon+label (radius ≈ 1/3 height) ----
+        // ---- selection thumb: elevated white capsule (concentric with the track) ----
         Box(
             modifier = Modifier
                 .align(Alignment.CenterStart)
@@ -145,12 +145,23 @@ fun CapsuleModelBar(
                     translationX = slabX.value - slabWidthPx() / 2f
                     scaleX = slabScaleX
                     scaleY = slabScaleY
+                    shadowElevation = 6f
+                    shape = RoundedCornerShape(percent = 50)
+                    clip = true
                 }
                 .width(with(density) { slabWidthPx().toDp() })
-                .fillMaxHeight(0.82f)
-                .clip(RoundedCornerShape(percent = 33))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f))
-        )
+                .fillMaxHeight(0.84f)
+                .background(thumbColor)
+        ) {
+            // Liquid-Glass style specular: a faint bright line on the thumb's top edge
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .align(Alignment.TopCenter)
+                    .background(Color.White.copy(alpha = if (isDark) 0.18f else 0.55f))
+            )
+        }
 
         // ---- segments: big filled icon over bold label ----
         Row(modifier = Modifier.fillMaxWidth().height(64.dp)) {
