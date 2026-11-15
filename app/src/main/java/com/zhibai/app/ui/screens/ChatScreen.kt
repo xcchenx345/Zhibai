@@ -160,6 +160,9 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
     var batchSelectedIds by remember { mutableStateOf(setOf<String>()) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
+    // 产物中心: full viewer for a file path, and leave-app confirm for URL rows
+    var artifactViewFile by remember { mutableStateOf<String?>(null) }
+    var pendingLeaveUrl by remember { mutableStateOf<String?>(null) }
 
     // ---- Input bar redesign state ----
     var plusExpanded by remember { mutableStateOf(false) }
@@ -673,6 +676,21 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                 shape = RoundedCornerShape(12.dp),
                 textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
             )
+
+            // ---- 产物中心 panel (中间产物 / 参考, task-list style accordion) ----
+            session?.artifacts?.let { arts ->
+                com.zhibai.app.ui.components.ArtifactsPanel(
+                    artifacts = arts,
+                    onOpenFile = { path ->
+                        artifactViewFile = path
+                        coroutineScope.launch { drawerState.close() }
+                    },
+                    onOpenUrl = { url ->
+                        pendingLeaveUrl = url
+                        coroutineScope.launch { drawerState.close() }
+                    }
+                )
+            }
 
             // ---- Section label: 对话列表 ----
             Row(
@@ -2693,6 +2711,58 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
         ArchiveScreen(
             viewModel = viewModel,
             onBack = { viewModel.toggleArchivePage() }
+        )
+    }
+
+    // 产物中心 viewer — opened from a drawer artifact row
+    AnimatedVisibility(
+        visible = artifactViewFile != null,
+        enter = slideInHorizontally(
+            initialOffsetX = { it },
+            animationSpec = tween(380, easing = pageEasing)
+        ) + fadeIn(tween(380, easing = pageEasing)),
+        exit = slideOutHorizontally(
+            targetOffsetX = { it },
+            animationSpec = tween(320, easing = pageEasing)
+        ) + fadeOut(tween(320, easing = pageEasing))
+    ) {
+        ArtifactsScreen(
+            workspaceDir = viewModel.agentEngine?.workspaceDir ?: java.io.File(""),
+            initialFile = artifactViewFile,
+            onBack = { artifactViewFile = null }
+        )
+    }
+
+    // Leave-app confirm for artifact URL rows (联网搜索)
+    if (pendingLeaveUrl != null) {
+        val url = pendingLeaveUrl!!
+        AlertDialog(
+            onDismissRequest = { pendingLeaveUrl = null },
+            title = { Text("即将跳转站外链接") },
+            text = {
+                Text(
+                    "该链接将离开本应用，在外部浏览器打开：\n\n$url\n\n是否继续？",
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingLeaveUrl = null
+                    try {
+                        context.startActivity(
+                            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                        )
+                    } catch (_: Exception) {}
+                }) {
+                    Text("继续", fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingLeaveUrl = null }) {
+                    Text("取消")
+                }
+            }
         )
     }
     } // end Box

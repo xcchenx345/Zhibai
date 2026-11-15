@@ -84,7 +84,8 @@ import java.util.Locale
 @Composable
 fun ArtifactsScreen(
     workspaceDir: File,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    initialFile: String? = null
 ) {
     var files by remember { mutableStateOf(listOf<File>()) }
     var openFile by remember { mutableStateOf<File?>(null) }
@@ -96,6 +97,9 @@ fun ArtifactsScreen(
             .sortedByDescending { it.lastModified() }
             .take(300)
             .toList()
+        if (initialFile != null) {
+            openFile = File(initialFile).takeIf { it.exists() }
+        }
     }
 
     if (openFile != null) {

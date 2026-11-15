@@ -2479,6 +2479,33 @@ AI：$assistantReply
         val toolSteps = mutableListOf<Map<String, String>>()
         // File mutations this run (write/edit/delete) → end-of-run summary card + undo.
         val runFileChanges = mutableListOf<com.zhibai.app.data.model.FileChange>()
+        // Artifact trail this run: 中间产物 (made) / 参考 (read or searched).
+        val runProduced = mutableListOf<com.zhibai.app.data.model.ArtifactEntry>()
+        val runReferenced = mutableListOf<com.zhibai.app.data.model.ArtifactEntry>()
+        val runSearches = mutableListOf<com.zhibai.app.data.model.ArtifactEntry>()
+        fun recordArtifact(tool: String, args: Map<String, Any>) {
+            fun arg(k: String) = args[k]?.toString()?.trim().orEmpty()
+            val p = arg("path").ifBlank { arg("source").ifBlank { arg("url").ifBlank {
+                arg("query").ifBlank { arg("pattern") }
+            } } }
+            val name = p.substringAfterLast('/').ifBlank { p }.take(60)
+            when (tool) {
+                "write_file", "edit_file", "copy_file", "move_file", "download_file",
+                "extract_archive", "save_skill" ->
+                    if (p.isNotBlank()) runProduced.add(
+                        com.zhibai.app.data.model.ArtifactEntry(name = name, path = p, kind = "produced")
+                    )
+                "read_file", "view_media", "get_file_info", "grep", "open_file",
+                "search_files", "list_files" ->
+                    if (p.isNotBlank()) runReferenced.add(
+                        com.zhibai.app.data.model.ArtifactEntry(name = name, path = p, kind = "ref")
+                    )
+                "web_search", "fetch_url", "open_url" ->
+                    if (p.isNotBlank()) runSearches.add(
+                        com.zhibai.app.data.model.ArtifactEntry(name = name, path = p, kind = "url")
+                    )
+            }
+        }
         // Search results in call order → attached as message annotations so the
         // [reference:N] chips and the 搜索 card work exactly like official search did.
         val searchAnnotations = mutableListOf<com.zhibai.app.data.model.Annotation>()
@@ -2912,6 +2939,7 @@ AI：$assistantReply
                 // tool card appeared.
                 val tcArgs = tc.args ?: emptyMap<String, Any>()
                 AppLog.d("tool -> ${tc.tool} args=${tcArgs.keys} searchOnly=$searchOnly")
+                recordArtifact(tc.tool, tcArgs)
                 val toolStartMs = System.currentTimeMillis()
                 // Reuse the live "调用中" card inserted when this tool's name appeared in
                 // the stream; insert a fresh card only if detection missed it. Declared
@@ -3171,6 +3199,17 @@ AI：$assistantReply
         }
 
         streamResponse(activeApi, finalRequest, isFirstMessage, session.id, text, searchAnnotations.toList(), expectSchemaLeak = true)
+        // Merge this run's artifact trail into the session (产物中心 panel source).
+        if (runProduced.isNotEmpty() || runReferenced.isNotEmpty() || runSearches.isNotEmpty()) {
+            updateSessionById(session.id) { s ->
+                val old = s.artifacts ?: com.zhibai.app.data.model.SessionArtifacts()
+                s.copy(artifacts = com.zhibai.app.data.model.SessionArtifacts(
+                    produced = (old.produced + runProduced).distinctBy { it.path },
+                    referenced = (old.referenced + runReferenced).distinctBy { it.path },
+                    searches = (old.searches + runSearches).distinctBy { it.path }
+                ))
+            }
+        }
         // End-of-run file-change summary card (after the answer, at the very end):
         // 「已更改 N 个文件，+X -Y」 with undo / review actions.
         if (runFileChanges.isNotEmpty()) {

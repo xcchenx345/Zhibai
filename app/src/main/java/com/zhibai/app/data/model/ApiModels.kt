@@ -170,6 +170,20 @@ data class FileChange(
     val oldContent: String? = null
 )
 
+/** One tracked artifact row: produced file, referenced file, or searched URL. */
+data class ArtifactEntry(
+    val name: String = "",
+    val path: String = "",
+    val kind: String = "file" // produced | ref | url
+)
+
+/** A run's artifact trail: what was made (often unseen) and what was consulted. */
+data class SessionArtifacts(
+    val produced: List<ArtifactEntry> = emptyList(),
+    val referenced: List<ArtifactEntry> = emptyList(),
+    val searches: List<ArtifactEntry> = emptyList()
+)
+
 data class ChatMessage(
     val id: String = java.util.UUID.randomUUID().toString(),
     val role: String,
@@ -194,6 +208,8 @@ data class ChatMessage(
     val toolStatus: String? = null
 )
 
+/** ChatSession gains the artifact trail; null on legacy sessions (gson Unsafe default). */
+
 data class ChatSession(
     val id: String = java.util.UUID.randomUUID().toString(),
     val title: String = "New Chat",
@@ -201,5 +217,6 @@ data class ChatSession(
     val model: String = "mimo-v2.6-flash",
     val createdAt: Long = System.currentTimeMillis(),
     val archived: Boolean = false,
-    val lastActiveAt: Long = System.currentTimeMillis()
+    val lastActiveAt: Long = System.currentTimeMillis(),
+    val artifacts: SessionArtifacts? = null
 )

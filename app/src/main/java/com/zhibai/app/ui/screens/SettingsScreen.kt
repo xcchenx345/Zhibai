@@ -367,16 +367,6 @@ private fun SettingsMainMenu(
             HorizontalDivider()
         }
 
-        // Artifacts hub
-        ListItem(
-            headlineContent = { Text("产物中心") },
-            supportingContent = { Text("查看 Agent 产出的文件、图片、视频与音频") },
-            leadingContent = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
-            trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
-            modifier = Modifier.clickable { onNavigate(SettingsPage.ARTIFACTS, "产物中心") }
-        )
-        HorizontalDivider()
-
         // About
         ListItem(
             headlineContent = { Text("关于") },
