@@ -57,4 +57,10 @@ object AppLog {
     fun dump(): String = synchronized(buffer) {
         if (buffer.isEmpty()) "(buffer empty)" else buffer.joinToString("\n")
     }
+
+    fun clear() {
+        synchronized(buffer) { buffer.clear() }
+    }
+
+    fun size(): Int = synchronized(buffer) { buffer.size }
 }

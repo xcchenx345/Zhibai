@@ -36,7 +36,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -78,13 +77,7 @@ fun AgentTaskPanel(
     val tasks by taskManager.tasks.collectAsState()
     var expanded by remember { mutableStateOf(true) }
 
-    // Auto-collapse when session ends successfully
-    LaunchedEffect(result) {
-        if (result == AgentSessionResult.SUCCESS || result == AgentSessionResult.FAILED) {
-            expanded = false
-        }
-    }
-
+    // Completed tasks stay in the list with their checkmarks — no auto-collapse.
     if (tasks.isEmpty()) return
 
     val doneCount = tasks.count { it.status == CheckTaskStatus.DONE }

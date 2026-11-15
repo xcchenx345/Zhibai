@@ -1124,6 +1124,19 @@ private fun ForbiddenPage(
         )
         HorizontalDivider()
 
+        ListItem(
+            headlineContent = { Text("清除日志缓冲") },
+            supportingContent = { Text("清空内存里的 ${com.zhibai.app.util.AppLog.size()} 条诊断日志，不影响导出历史") },
+            leadingContent = { Icon(Icons.Default.DeleteSweep, contentDescription = null) },
+            modifier = Modifier.clickable {
+                com.zhibai.app.util.AppLog.clear()
+                com.zhibai.app.util.AppLog.d("log buffer cleared by user")
+                logExportPath = "日志缓冲已清空"
+                showLogExported = true
+            }
+        )
+        HorizontalDivider()
+
         // === Manual crash test (3-step confirmation) ===
         var crashTestStep by remember { mutableIntStateOf(0) } // 0=off, 1=confirm1, 2=confirm2, 3=mode select
         ListItem(

@@ -1,24 +1,46 @@
 package com.zhibai.app.ui.components
 
-import androidx.compose.animation.core.*
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.platform.LocalContext
 import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * Full-screen continuous snowfall with input-bar pile.
- * - Snow covers the entire screen (top to bottom)
- * - Color adapts: white in dark mode, dark in light mode
- * - Pile on input bar grows over time; clears on [pileRequest]
+ * Physics snow celebration.
+ *
+ * - Flakes fall under gravity and settle into a heightmap pile at the BOTTOM of
+ *   the screen (not the input bar).
+ * - Device tilt (gravity sensor) is a lateral wind: falling flakes drift and the
+ *   settled pile avalanches toward the low side, so the snow moves around as the
+ *   phone is tilted.
+ * - Hard caps: [SnowPhysics.MAX_PILE_FRACTION] of screen height and
+ *   [SnowPhysics.SPAWN_BUDGET] flakes per celebration.
+ * - Auto-stops spawning after 15s; the pile melts on [pileRequest] (user typing).
  */
 @Composable
 fun SnowCelebration(
@@ -32,119 +54,192 @@ fun SnowCelebration(
     val flakeColor = if (isDark) Color.White else Color(0xFF333333)
     val pileColor = if (isDark) Color.White else Color(0xFF555555)
 
-    val infiniteTransition = rememberInfiniteTransition(label = "snowFall")
-    val progress by infiniteTransition.animateFloat(
+    // Tilt = gravity.x / g, roughly -1..1. Falls back to the accelerometer on
+    // devices without a gravity sensor.
+    val context = LocalContext.current
+    val tilt = remember { mutableFloatStateOf(0f) }
+    DisposableEffect(Unit) {
+        val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val sensor = sm.getDefaultSensor(Sensor.TYPE_GRAVITY)
+            ?: sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(e: SensorEvent) {
+                tilt.floatValue = (e.values[0] / SensorManager.GRAVITY_EARTH).coerceIn(-1f, 1f)
+            }
+            override fun onAccuracyChanged(s: Sensor?, accuracy: Int) {}
+        }
+        if (sensor != null) sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)
+        onDispose { sm.unregisterListener(listener) }
+    }
+
+    val sim = remember { SnowPhysics() }
+    // Frame ticker: read inside the draw lambda → per-frame redraw only.
+    val tick by rememberInfiniteTransition(label = "snowFall").animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearEasing),
+            animation = tween(1000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "fallProgress"
+        label = "snowTick"
     )
 
-    // Accumulated pile height (grows continuously)
-    var pilePx by remember { mutableFloatStateOf(0f) }
-    var lastTick by remember { mutableLongStateOf(0L) }
-    var elapsed by remember { mutableLongStateOf(0L) }
-
-    // Auto-stop snow after 15 seconds
-    LaunchedEffect(active) {
-        lastTick = System.currentTimeMillis()
-        elapsed = 0
-        while (active && elapsed < 15000) {
-            kotlinx.coroutines.delay(1000)
-            elapsed += 1000
-            val now = System.currentTimeMillis()
-            val dt = (now - lastTick) / 1000f
-            lastTick = now
-            pilePx += dt * 10f
-            pilePx = pilePx.coerceAtMost(100f)
-        }
-    }
-
     LaunchedEffect(pileRequest) {
-        if (pileRequest > 0) {
-            val start = pilePx
-            val startTime = System.currentTimeMillis()
-            while (pilePx > 0f) {
-                val t = (System.currentTimeMillis() - startTime) / 400f
-                pilePx = (start * (1f - t)).coerceAtLeast(0f)
-                kotlinx.coroutines.delay(16)
-            }
-        }
-    }
-
-    val snowflakes = remember {
-        List(120) {
-            SnowflakeData(
-                x = Random.nextFloat(),
-                startY = Random.nextFloat(), // spread across full screen height
-                speed = 0.2f + Random.nextFloat() * 0.8f,
-                size = 1.5f + Random.nextFloat() * 4f,
-                drift = (Random.nextFloat() - 0.5f) * 0.3f,
-                phase = Random.nextFloat() * 6.28f,
-                alpha = 0.3f + Random.nextFloat() * 0.7f
-            )
-        }
+        if (pileRequest > 0) sim.melt()
     }
 
     Canvas(modifier = modifier.fillMaxSize()) {
-        val w = size.width
-        val h = size.height
-        val inputBarTop = h * 0.88f
-        val pileH = pilePx
-
-        // Snow pile on input bar
-        if (pileH > 0.5f) {
-            drawSnowPile(w, inputBarTop, pileH, pileColor)
-        }
-
-        // Falling snowflakes — full screen
-        for (flake in snowflakes) {
-            // Each flake starts at a random vertical position and wraps around
-            val rawY = flake.startY + progress * flake.speed
-            val yPos = (rawY % 1f) * h
-            val xOffset = sin((progress * 3f + flake.phase).toDouble()).toFloat() * flake.drift * w * 0.1f
-            val xPos = flake.x * w + xOffset
-            val pileSurface = inputBarTop - pileH
-            val alpha = flake.alpha * (0.4f + 0.6f * (1f - yPos / h))
-
-            // Don't draw flakes that have landed on the pile
-            if (yPos < pileSurface) {
-                drawCircle(
-                    color = flakeColor.copy(alpha = alpha),
-                    radius = flake.size,
-                    center = Offset(xPos, yPos)
-                )
-            }
-        }
+        // `tick` must be read in the draw phase to invalidate once per frame.
+        sim.step(
+            nowMs = System.currentTimeMillis(),
+            tilt = tilt.floatValue,
+            w = size.width,
+            h = size.height,
+            phase = tick
+        )
+        sim.draw(this, flakeColor, pileColor)
     }
 }
 
-private data class SnowflakeData(
-    val x: Float,
-    val startY: Float,
-    val speed: Float,
-    val size: Float,
-    val drift: Float,
-    val phase: Float,
-    val alpha: Float
-)
-
-private fun DrawScope.drawSnowPile(width: Float, topY: Float, maxH: Float, color: Color) {
-    val pile = Path().apply {
-        moveTo(0f, topY)
-        val steps = 24
-        for (i in 0..steps) {
-            val t = i.toFloat() / steps
-            val x = t * width
-            val wave = sin(t * 6.28f * 2.5).toFloat() * maxH * 0.15f
-            val baseY = topY - maxH + wave
-            lineTo(x, baseY)
-        }
-        lineTo(width, topY)
-        close()
+private class SnowPhysics {
+    companion object {
+        const val COLS = 64
+        /** Settled snow never covers more than this fraction of screen height. */
+        const val MAX_PILE_FRACTION = 0.22f
+        /** Hard cap on how many flakes one celebration may ever spawn. */
+        const val SPAWN_BUDGET = 220
+        private const val SPAWN_PER_SEC = 55f
+        private const val GRAVITY = 420f
+        private const val TERMINAL_VY = 420f
+        private const val WIND_GAIN = 150f
     }
-    drawPath(pile, color = color.copy(alpha = 0.92f), style = Fill)
+
+    private val height = FloatArray(COLS)
+    private val flakes = ArrayList<Flake>(SPAWN_BUDGET)
+    private val rng = Random(7)
+    private var lastMs = -1L
+    private var spawnAcc = 0f
+    private var spawnBudget = SPAWN_BUDGET
+    private var melting = false
+
+    private class Flake(
+        var x: Float, var y: Float,
+        var vx: Float, var vy: Float,
+        val r: Float, val alpha: Float
+    )
+
+    fun step(nowMs: Long, tilt: Float, w: Float, h: Float, phase: Float) {
+        if (w <= 0f || h <= 0f) return
+        val dt = if (lastMs < 0) 0.016f else ((nowMs - lastMs) / 1000f).coerceIn(0f, 0.05f)
+        lastMs = nowMs
+        val maxPile = h * MAX_PILE_FRACTION
+
+        // Melt (user typing): pile decays quickly, flakes keep falling.
+        if (melting) {
+            val k = 1f - 4f * dt
+            var alive = false
+            for (i in height.indices) {
+                height[i] *= k
+                if (height[i] > 0.5f) alive = true else height[i] = 0f
+            }
+            if (!alive) melting = false
+        }
+
+        // Spawn, budget-capped.
+        if (spawnBudget > 0) {
+            spawnAcc += dt * SPAWN_PER_SEC
+            while (spawnAcc >= 1f && spawnBudget > 0) {
+                spawnAcc -= 1f
+                spawnBudget--
+                flakes.add(
+                    Flake(
+                        x = rng.nextFloat() * w,
+                        y = -10f - rng.nextFloat() * h * 0.35f,
+                        vx = 0f,
+                        vy = 20f + rng.nextFloat() * 60f,
+                        r = 1.5f + rng.nextFloat() * 4f,
+                        alpha = 0.35f + rng.nextFloat() * 0.65f
+                    )
+                )
+            }
+        }
+
+        // Integrate falling flakes.
+        val wind = tilt * WIND_GAIN
+        var i = 0
+        while (i < flakes.size) {
+            val f = flakes[i]
+            f.vy = (f.vy + GRAVITY * dt).coerceAtMost(TERMINAL_VY)
+            f.vx += (wind - f.vx) * 2.2f * dt
+            f.x += f.vx * dt + sin((phase * 6.28f + f.y * 0.02f).toDouble()).toFloat() * 8f * dt
+            f.y += f.vy * dt
+            if (f.x < -10f) f.x += w + 20f
+            if (f.x > w + 10f) f.x -= w + 20f
+            val col = ((f.x / w) * COLS).toInt().coerceIn(0, COLS - 1)
+            if (f.y >= h - height[col]) {
+                // Settle into the heightmap (respecting the cap), flake is consumed.
+                if (height[col] < maxPile && !melting) {
+                    height[col] = height[col] + f.r * 1.2f
+                    if (height[col] > maxPile) height[col] = maxPile
+                }
+                flakes.removeAt(i)
+            } else {
+                i++
+            }
+        }
+
+        // Avalanche: settled snow slides toward the tilt direction.
+        val dir = when {
+            tilt > 0.12f -> 1
+            tilt < -0.12f -> -1
+            else -> 0
+        }
+        if (dir != 0 && !melting) {
+            val gain = (0.25f + kotlin.math.abs(tilt) * 0.6f) * (dt * 60f).coerceAtMost(2f)
+            var k = 0
+            while (k < COLS - 1) {
+                val a = if (dir > 0) k else COLS - 1 - k
+                val b = a + dir
+                if (b in 0 until COLS) {
+                    val diff = height[a] - height[b]
+                    if (diff > 2.2f) {
+                        val move = (diff - 2.2f) * 0.35f * gain
+                        height[a] -= move
+                        height[b] += move
+                    }
+                }
+                k++
+            }
+        }
+    }
+
+    fun melt() {
+        melting = true
+    }
+
+    fun draw(scope: DrawScope, flakeColor: Color, pileColor: Color) = with(scope) {
+        val w = size.width
+        val h = size.height
+        // Settled pile — heightmap across the full screen bottom.
+        var hasPile = false
+        for (c in height.indices) if (height[c] > 0.5f) { hasPile = true; break }
+        if (hasPile) {
+            val path = Path().apply {
+                moveTo(0f, h)
+                for (c in 0 until COLS) {
+                    lineTo(c * w / (COLS - 1), h - height[c])
+                }
+                lineTo(w, h)
+                close()
+            }
+            drawPath(path, color = pileColor.copy(alpha = 0.92f), style = Fill)
+        }
+        for (f in flakes) {
+            drawCircle(
+                color = flakeColor.copy(alpha = f.alpha),
+                radius = f.r,
+                center = Offset(f.x, f.y)
+            )
+        }
+    }
 }

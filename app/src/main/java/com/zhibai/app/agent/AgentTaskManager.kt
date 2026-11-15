@@ -1,5 +1,6 @@
 package com.zhibai.app.agent
 
+import com.zhibai.app.util.AppLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,12 +42,46 @@ class AgentTaskManager {
     var sessionId: Int = 0
         private set
 
+    /** Last session whose finish celebration already played — survives leaving
+     *  the Agent screen, unlike a `remember` in composition (which reset to -1 on
+     *  re-entering Agent mode and re-triggered the snow every time). */
+    private var celebratedSessionId = 0
+
+    /** Session the UI is currently watching run — celebration only fires for a
+     *  finish the user actually saw, never for a stale session discovered later. */
+    private var watchingSessionId = 0
+
+    /** Call while the UI observes an active run (agentActive true). */
+    fun armCelebration() {
+        if (_isActive.value) {
+            watchingSessionId = sessionId
+            AppLog.d("agentSession watching: #$sessionId")
+        }
+    }
+
+    /**
+     * One-shot celebration gate: true exactly once per finished session, and only
+     * for a run the UI watched AND that checked off its whole checklist. A run
+     * that created no tasks — or finished with anything still unchecked — never
+     * snows.
+     */
+    fun consumeCelebration(): Boolean {
+        val id = sessionId
+        if (_isActive.value || id == 0 || id == celebratedSessionId || id != watchingSessionId) return false
+        celebratedSessionId = id
+        val taskList = _tasks.value
+        val allChecked = taskList.isNotEmpty() && taskList.all { it.status == CheckTaskStatus.DONE }
+        AppLog.d("agentSession celebrate gate: #$id tasks=${taskList.size} allChecked=$allChecked")
+        return allChecked
+    }
+
     fun startSession() {
         _tasks.value = emptyList()
         nextId = 1
         hasFailure = false
         sessionId++
         _isActive.value = true
+        AppLog.d("agentSession start: #$sessionId")
     }
 
     fun addTask(title: String): CheckTask {
@@ -83,6 +118,7 @@ class AgentTaskManager {
     }
 
     fun endSession() {
+        if (_isActive.value) AppLog.d("agentSession end: #$sessionId result=${getSessionResult()}")
         _isActive.value = false
     }
 }

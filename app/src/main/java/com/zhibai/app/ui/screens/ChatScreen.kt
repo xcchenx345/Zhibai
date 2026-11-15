@@ -1378,13 +1378,15 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
 
                         // Snow: triggers every time agent output finishes (once per run)
                         var snowActive by remember { mutableStateOf(false) }
-                        var celebratedSession by remember { mutableIntStateOf(-1) }
                         var pileClearRequest by remember { mutableIntStateOf(0) }
-                        val currentSession = viewModel.agentTaskManager.sessionId
-                        // Trigger when agent goes from active → inactive (output finished)
-                        LaunchedEffect(agentActive, currentSession) {
-                            if (!agentActive && currentSession > 0 && celebratedSession != currentSession) {
-                                celebratedSession = currentSession
+                        // Trigger when agent goes from active → inactive (output finished).
+                        // The one-shot gate lives in AgentTaskManager: a remember'd flag
+                        // reset every time the Agent screen re-entered composition and
+                        // re-played the celebration (「一进 Agent 就下雪」).
+                        LaunchedEffect(agentActive) {
+                            if (agentActive) {
+                                viewModel.agentTaskManager.armCelebration()
+                            } else if (viewModel.agentTaskManager.consumeCelebration()) {
                                 snowActive = true
                             }
                         }

@@ -1618,6 +1618,7 @@ AI：$assistantReply
 
     fun setModel(model: String) {
         if (_currentModel.value != model) {
+            AppLog.d("model switch: ${_currentModel.value} -> $model")
             _currentModel.value = model
             // Route endpoints follow the selection (init collector → routeForModel).
             if (_forceNewSessionOnModelSwitch.value) {
@@ -1711,12 +1712,14 @@ AI：$assistantReply
     fun createNewSession() {
         val session = ChatSession(model = _currentModel.value)
         _currentSession.value = session
+        AppLog.d("session new: ${session.id.take(8)} model=${session.model}")
         resetAgentPhase()
     }
 
     fun selectSession(sessionId: String) {
         val target = _sessions.value.find { it.id == sessionId } ?: return
         _currentSession.value = target
+        AppLog.d("session select: ${sessionId.take(8)} msgs=${target.messages.size} model=${target.model}")
         // Restore this session's own model (each session keeps its selection)
         val sessionModel = target.model
         if (sessionModel.isNotBlank() && _currentModel.value != sessionModel) {
@@ -1855,6 +1858,7 @@ AI：$assistantReply
         val session = _currentSession.value ?: return
         if (newText.isBlank()) return
         if (_isGenerating.value) return
+        AppLog.d("editAndResend: msg=${messageId.take(8)} len=${newText.length}")
 
         val msgIndex = session.messages.indexOfFirst { it.id == messageId }
         if (msgIndex < 0 || session.messages[msgIndex].role != "user") return
@@ -2007,6 +2011,7 @@ AI：$assistantReply
     fun regenerate() {
         val session = _currentSession.value ?: return
         if (_isGenerating.value) return
+        AppLog.d("regenerate: session=${session.id.take(8)}")
         val msgs = session.messages
         // Find last assistant message that is not streaming
         val assistantIdx = msgs.indexOfLast { it.role == "assistant" && !it.isStreaming && it.content.isNotBlank() }
@@ -2976,6 +2981,7 @@ AI：$assistantReply
         // Speed sampling (Ultra models only)
         val trackSpeed = _currentModel.value.contains("ultraspeed")
         val streamStart = System.currentTimeMillis()
+        AppLog.d("streamResponse start: model=${request.model} msgs=${request.messages.size} schemaLeak=$expectSchemaLeak")
         var lastSampleTime = 0L
         var lastSampleContent = 0
         var lastSampleReasoning = 0
@@ -3290,6 +3296,7 @@ AI：$assistantReply
     }
 
     fun stopGeneration() {
+        AppLog.d("stopGeneration")
         streamingJob?.cancel()
         _isGenerating.value = false
         _error.value = null
