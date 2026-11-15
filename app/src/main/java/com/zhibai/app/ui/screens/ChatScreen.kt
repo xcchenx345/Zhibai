@@ -1349,8 +1349,8 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     }
 
                     // Agent task panel + snowflake indicator (above input bar)
+                    val agentActive by viewModel.agentTaskManager.isActive.collectAsState()
                     if (isAgent) {
-                        val agentActive by viewModel.agentTaskManager.isActive.collectAsState()
                         val agentTasks by viewModel.agentTaskManager.tasks.collectAsState()
                         val agentResult = remember(agentTasks, agentActive) {
                             viewModel.agentTaskManager.getSessionResult()
@@ -1375,36 +1375,48 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                     .padding(bottom = 100.dp)
                             )
                         }
+                    }
 
-                        // Snow: triggers every time agent output finishes (once per run)
-                        var snowActive by remember { mutableStateOf(false) }
-                        var celebrateKey by remember { mutableIntStateOf(0) }
-                        var pileClearRequest by remember { mutableIntStateOf(0) }
-                        // Trigger when agent goes from active → inactive (output finished).
-                        // The one-shot gate lives in AgentTaskManager: a remember'd flag
-                        // reset every time the Agent screen re-entered composition and
-                        // re-played the celebration (「一进 Agent 就下雪」).
-                        LaunchedEffect(agentActive) {
-                            if (agentActive) {
-                                viewModel.agentTaskManager.armCelebration()
-                            } else if (viewModel.agentTaskManager.consumeCelebration()) {
-                                snowActive = true
-                                celebrateKey++
-                            }
+                    // Snow layer — works in normal chat AND Agent. Two triggers:
+                    // 1. an Agent run whose whole checklist got checked (celebration)
+                    // 2. the model calling the let_it_snow tool (manual)
+                    var snowActive by remember { mutableStateOf(false) }
+                    var celebrateKey by remember { mutableIntStateOf(0) }
+                    var pileClearRequest by remember { mutableIntStateOf(0) }
+                    // Trigger when agent goes from active → inactive (output finished).
+                    // The one-shot gate lives in AgentTaskManager: a remember'd flag
+                    // reset every time the Agent screen re-entered composition and
+                    // re-played the celebration (「一进 Agent 就下雪」).
+                    LaunchedEffect(agentActive) {
+                        if (agentActive) {
+                            viewModel.agentTaskManager.armCelebration()
+                        } else if (viewModel.agentTaskManager.consumeCelebration()) {
+                            snowActive = true
+                            celebrateKey++
                         }
-                        if (snowActive) {
-                            com.zhibai.app.ui.components.SnowCelebration(
-                                active = snowActive,
-                                pileRequest = pileClearRequest,
-                                celebrateKey = celebrateKey,
-                                modifier = Modifier.matchParentSize()
-                            )
+                    }
+                    val manualSnow by viewModel.manualSnowRequest.collectAsState()
+                    LaunchedEffect(manualSnow) {
+                        if (manualSnow > 0) {
+                            snowActive = true
+                            celebrateKey++
                         }
-                        // Clear snow pile when user starts typing
-                        val inputFocused = inputText.isNotBlank()
-                        LaunchedEffect(inputFocused) {
-                            if (inputFocused && snowActive) pileClearRequest++
-                        }
+                    }
+                    if (snowActive) {
+                        com.zhibai.app.ui.components.SnowCelebration(
+                            active = snowActive,
+                            pileRequest = pileClearRequest,
+                            celebrateKey = celebrateKey,
+                            // zIndex: the snow draws ON TOP of the input bar — it used
+                            // to compose before the bar, so flakes fell behind it and
+                            // vanished (「飞入输入框看不见」).
+                            modifier = Modifier.matchParentSize().zIndex(5f)
+                        )
+                    }
+                    // Clear snow pile when user starts typing
+                    val inputFocused = inputText.isNotBlank()
+                    LaunchedEffect(inputFocused) {
+                        if (inputFocused && snowActive) pileClearRequest++
                     }
 
                     // Floating glass input bar + AI disclaimer + glow overlay

@@ -643,6 +643,10 @@ $convoText
     private val _toolExecuting = MutableStateFlow(false)
     val toolExecuting: StateFlow<Boolean> = _toolExecuting.asStateFlow()
 
+    /** Incremented by the model's let_it_snow tool — ChatScreen turns it into snow. */
+    private val _manualSnowRequest = MutableStateFlow(0)
+    val manualSnowRequest: StateFlow<Int> = _manualSnowRequest.asStateFlow()
+
     private val _speedStats = MutableStateFlow<SpeedStats?>(null)
     val speedStats: StateFlow<SpeedStats?> = _speedStats.asStateFlow()
 
@@ -2756,7 +2760,13 @@ AI：$assistantReply
                         else msgs.add(ChatMessage(id = runningMsgId, role = "tool", content = "⏳ ${tc.tool} 运行中..."))
                         s.copy(messages = msgs)
                     }
-                    if (searchOnly) {
+                    // Built-in fun tool — handled here so normal chat and Agent both
+                    // can snow without going through the engine or a network call.
+                    if (tc.tool == "let_it_snow") {
+                        _manualSnowRequest.value = _manualSnowRequest.value + 1
+                        AppLog.d("tool let_it_snow -> snow requested #${_manualSnowRequest.value}")
+                        "雪已经下了起来。"
+                    } else if (searchOnly) {
                         // Network-only tools, executed directly — no engine, no approval.
                         when (tc.tool) {
                             "web_search" -> {
@@ -2784,7 +2794,7 @@ AI：$assistantReply
                                 else try { BingSearch.fetch(u, maxLen) }
                                 catch (e: Exception) { "Error: fetch failed: ${e.message}" }
                             }
-                            else -> "Error: tool '${tc.tool}' is not available in normal chat. Available: web_search, fetch_url."
+                            else -> "Error: tool '${tc.tool}' is not available in normal chat. Available: web_search, fetch_url, let_it_snow."
                         }
                     } else {
                         engine!!.executeTool(tc.tool, tcArgs, _agentPermissionMode.value)
@@ -3689,6 +3699,8 @@ ${phoneToolDoc}- read_file: {"path":"file path"}
   If the user cancels/closes, returns {"_status":"USER_CANCELLED"}.
 - switch_phase: {"phase":"build"} — Send the user a confirmation card to switch phase (values: plan | build). plan→build once the plan is ready; build→plan when a re-plan is needed. The phase changes ONLY after the user confirms on the card.
 
+- let_it_snow: {} — make it snow on the screen (decorative). Call it when the user asks for snow, winter vibes, or a celebration.
+
 Workspace: ${agentEngine?.workspaceDir?.absolutePath ?: "/sdcard/知白/"}
 """.trimIndent()
 
@@ -3751,10 +3763,12 @@ Do NOT collect them, and do NOT paste a source list at the end of the answer."""
 [SEARCH TOOLS] This chat can search the web and open pages. To call a tool, reply with ONLY
 the schema JSON (the API response format enforces it):
 {"thinking":"...","tool_calls":[{"tool":"web_search","args":{"query":"keywords"},"reason":"why"}],"response":"one short sentence shown live"}
-Tools — only these two exist here:
+Tools — only these three exist here:
 - web_search: {"query":"..."} — searches cn.bing.com, returns up to 8 numbered results
   (title / URL / snippet). Result numbering CONTINUES across calls (first call starts at 1).
 - fetch_url: {"url":"https://..."} — returns that page as readable text (~5000 chars).
+- let_it_snow: {} — make it snow on the screen (decorative). Call it when the user
+  asks for snow, winter vibes, or a celebration.
 Rules: at most 4 tool calls total. When finished, set tool_calls to [] and put your FULL
 final answer in "response" as plain text (shown directly to the user — not JSON), citing
 sources inline as [reference:N]."""
