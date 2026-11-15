@@ -65,7 +65,9 @@ private fun displayRotation(context: Context): Int = try {
 @Composable
 fun SnowCelebration(
     active: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** True while the input box is focused — the whole snowfall melts away. */
+    melting: Boolean = false
 ) {
     if (!active) return
 
@@ -104,8 +106,9 @@ fun SnowCelebration(
         val gyro = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
         val gyroListener = object : SensorEventListener {
             override fun onSensorChanged(e: SensorEvent) {
-                // values[2] = rotation rate around the screen normal (spin).
-                sim.addSpin(e.values[2])
+                // values[2] = rotation rate around the screen normal (spin). Sign is
+                // inverted: the snow should blow the way the phone turns (陀螺仪左右反了).
+                sim.addSpin(-e.values[2])
             }
             override fun onAccuracyChanged(s: Sensor?, accuracy: Int) {}
         }
@@ -136,7 +139,8 @@ fun SnowCelebration(
             tilt = tilt.floatValue,
             w = size.width,
             h = size.height,
-            phase = tick
+            phase = tick,
+            melting = melting
         )
         sim.draw(this, flakeColor, pileColor)
     }
@@ -174,10 +178,10 @@ private class SnowPhysics {
     private class Flake(
         var x: Float, var y: Float,
         var vx: Float, var vy: Float,
-        val r: Float, val alpha: Float
+        val r: Float, var alpha: Float
     )
 
-    fun step(nowMs: Long, tilt: Float, w: Float, h: Float, phase: Float) {
+    fun step(nowMs: Long, tilt: Float, w: Float, h: Float, phase: Float, melting: Boolean = false) {
         if (w <= 0f || h <= 0f) return
         // Keyboard-open resizes shrink the canvas; without rescaling every falling
         // flake is suddenly below the pile surface and drops in one frame — the
@@ -196,6 +200,23 @@ private class SnowPhysics {
         val dt = if (lastMs < 0) 0.016f else ((nowMs - lastMs) / 1000f).coerceIn(0f, 0.05f)
         lastMs = nowMs
         val maxPile = h * MAX_PILE_FRACTION
+
+        // Melt (input box focused): the whole snowfall fades and sinks away — a
+        // gentle decay, not the old instant flash.
+        if (melting) {
+            val k = 1f - 0.9f * dt
+            for (i in height.indices) {
+                height[i] *= k
+                if (height[i] < 0.3f) height[i] = 0f
+            }
+            var i = 0
+            while (i < flakes.size) {
+                val f = flakes[i]
+                f.alpha *= 1f - 2.2f * dt
+                if (f.alpha < 0.03f) flakes.removeAt(i) else i++
+            }
+            return
+        }
 
         // Continuous spawn — it snows until the process dies. The only cap is how
         // many flakes may be airborne at once.

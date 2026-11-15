@@ -19,6 +19,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -1382,6 +1383,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     // 2. the model calling the let_it_snow tool (manual)
                     // Both bump the ViewModel counter; the layer mounts while it is
                     // above zero and then snows forever (counter survives rotation).
+                    var inputBoxFocused by remember { mutableStateOf(false) }
                     LaunchedEffect(agentActive) {
                         if (agentActive) {
                             viewModel.agentTaskManager.armCelebration()
@@ -1393,6 +1395,9 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     if (snowTrigger > 0) {
                         com.zhibai.app.ui.components.SnowCelebration(
                             active = true,
+                            // Clicking the input box melts the whole snowfall away
+                            // (gently); it starts snowing again when the box closes.
+                            melting = inputBoxFocused,
                             // zIndex: the snow draws ON TOP of the input bar — it used
                             // to compose before the bar, so flakes fell behind it and
                             // vanished (「飞入输入框看不见」).
@@ -1746,6 +1751,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .heightIn(min = inputMinH, max = inputMaxH)
+                                                .onFocusChanged { inputBoxFocused = it.isFocused }
                                                 .onSizeChanged { centerHeightPx = it.height }
                                                 .animateContentSize()
                                                 .background(
