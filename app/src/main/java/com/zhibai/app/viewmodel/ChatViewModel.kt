@@ -2551,17 +2551,17 @@ AI：$assistantReply
             // wrapped output. A third tier repairs JSON the stream cut at a structural
             // boundary (finish_reason=length / dropped connection mid-reply).
             var structured: com.zhibai.app.agent.StructuredToolCallResponse? = try {
-                gson.fromJson(rawText, com.zhibai.app.agent.StructuredToolCallResponse::class.java)
+                com.zhibai.app.agent.ToolCallSchema.parse(rawText)
             } catch (e: Exception) {
                 try {
-                    gson.fromJson(extractJson(rawText), com.zhibai.app.agent.StructuredToolCallResponse::class.java)
+                    com.zhibai.app.agent.ToolCallSchema.parse(extractJson(rawText))
                 } catch (e2: Exception) { null }
             }
             if (structured == null) {
                 val fixed = repairTruncatedJson(rawText)
                 if (fixed != null) {
                     structured = try {
-                        gson.fromJson(fixed, com.zhibai.app.agent.StructuredToolCallResponse::class.java)
+                        com.zhibai.app.agent.ToolCallSchema.parse(fixed)
                     } catch (e: Exception) { null }
                 }
             }
@@ -3139,7 +3139,7 @@ AI：$assistantReply
                         // answer once; null = normal content (unchanged behavior).
                         val leakFinal: String? = if (expectSchemaLeak && fullContent.contains("\"tool_calls\"")) {
                             (try {
-                                gson.fromJson(extractJson(fullContent), com.zhibai.app.agent.StructuredToolCallResponse::class.java)
+                                com.zhibai.app.agent.ToolCallSchema.parse(extractJson(fullContent))
                                     ?.response?.trim()
                             } catch (e: Exception) { null })?.takeIf { it.isNotBlank() }?.let { sanitizeHighRisk(it) }
                                 ?: "工具调用轮次已用尽，模型未给出最终回答。"

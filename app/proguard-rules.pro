@@ -1,6 +1,10 @@
 # Keep Gson serialized classes
 -keep class com.zhibai.app.data.model.** { *; }
 -keepclassmembers class com.zhibai.app.data.model.** { *; }
+# Gson-reflected agent DTOs (outside data.model.**) — R8 field renaming broke
+# reflective binding and the tool loop died with ClassCastException.
+-keep class com.zhibai.app.agent.StructuredToolCallResponse { *; }
+-keep class com.zhibai.app.agent.StructuredToolCall { *; }
 
 # OkHttp
 -dontwarn okhttp3.**
