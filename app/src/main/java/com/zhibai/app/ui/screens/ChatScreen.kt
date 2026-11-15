@@ -1318,6 +1318,14 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     // Both bump the ViewModel counter; the layer mounts while it is
                     // above zero and then snows forever (counter survives rotation).
                     var inputBoxFocused by remember { mutableStateOf(false) }
+                    // Every input interaction (focus gain, typing) is counted so the
+                    // melt only reacts to interactions that happen AFTER the snow
+                    // started — the field keeps focus after sending, and a steady
+                    // focus flag melted a fresh snowfall instantly (let_it_snow looked
+                    // dead in Agent mode).
+                    var inputInteractions by remember { mutableIntStateOf(0) }
+                    LaunchedEffect(inputBoxFocused) { if (inputBoxFocused) inputInteractions++ }
+                    LaunchedEffect(inputText) { if (inputText.isNotBlank()) inputInteractions++ }
                     LaunchedEffect(agentActive) {
                         if (agentActive) {
                             viewModel.agentTaskManager.armCelebration()
@@ -1327,11 +1335,13 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     }
                     val snowTrigger by viewModel.manualSnowRequest.collectAsState()
                     if (snowTrigger > 0) {
+                        var snowBaseInteraction by remember { mutableIntStateOf(inputInteractions) }
+                        LaunchedEffect(snowTrigger) { snowBaseInteraction = inputInteractions }
                         com.zhibai.app.ui.components.SnowCelebration(
                             active = true,
-                            // Clicking the input box melts the whole snowfall away
-                            // (gently); it starts snowing again when the box closes.
-                            melting = inputBoxFocused,
+                            // Clicking/typing in the input box melts the snowfall away;
+                            // the next trigger starts a fresh one.
+                            melting = inputInteractions > snowBaseInteraction,
                             // zIndex: the snow draws ON TOP of the input bar — it used
                             // to compose before the bar, so flakes fell behind it and
                             // vanished (「飞入输入框看不见」).

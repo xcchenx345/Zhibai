@@ -91,7 +91,7 @@ fun CapsuleModelBar(
     fun segCenterPx(i: Int): Float =
         if (trackWidthPx <= 0f) 0f else trackWidthPx * (i + 0.5f) / segCount
     fun slabWidthPx(): Float =
-        if (trackWidthPx <= 0f) 0f else trackWidthPx / segCount - insetPx
+        if (trackWidthPx <= 0f) 0f else trackWidthPx / segCount
 
     // ---- indicator slab position + squash ----
     val slabX = remember { Animatable(0f) }
@@ -137,7 +137,7 @@ fun CapsuleModelBar(
                 )
         )
 
-        // ---- selection slab: true capsule (stadium) behind icon+label ----
+        // ---- selection slab: rounded slab behind icon+label (radius ≈ 1/3 height) ----
         Box(
             modifier = Modifier
                 .align(Alignment.CenterStart)
@@ -148,7 +148,7 @@ fun CapsuleModelBar(
                 }
                 .width(with(density) { slabWidthPx().toDp() })
                 .fillMaxHeight(0.82f)
-                .clip(RoundedCornerShape(percent = 50))
+                .clip(RoundedCornerShape(percent = 33))
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f))
         )
 
@@ -173,7 +173,7 @@ fun CapsuleModelBar(
                             else -> Icons.Default.VolumeUp
                         },
                         contentDescription = label,
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(24.dp),
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(3.dp))
