@@ -1382,7 +1382,6 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     // 2. the model calling the let_it_snow tool (manual)
                     var snowActive by remember { mutableStateOf(false) }
                     var celebrateKey by remember { mutableIntStateOf(0) }
-                    var pileClearRequest by remember { mutableIntStateOf(0) }
                     // Trigger when agent goes from active → inactive (output finished).
                     // The one-shot gate lives in AgentTaskManager: a remember'd flag
                     // reset every time the Agent screen re-entered composition and
@@ -1405,18 +1404,12 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     if (snowActive) {
                         com.zhibai.app.ui.components.SnowCelebration(
                             active = snowActive,
-                            pileRequest = pileClearRequest,
                             celebrateKey = celebrateKey,
                             // zIndex: the snow draws ON TOP of the input bar — it used
                             // to compose before the bar, so flakes fell behind it and
                             // vanished (「飞入输入框看不见」).
                             modifier = Modifier.matchParentSize().zIndex(5f)
                         )
-                    }
-                    // Clear snow pile when user starts typing
-                    val inputFocused = inputText.isNotBlank()
-                    LaunchedEffect(inputFocused) {
-                        if (inputFocused && snowActive) pileClearRequest++
                     }
 
                     // Floating glass input bar + AI disclaimer + glow overlay

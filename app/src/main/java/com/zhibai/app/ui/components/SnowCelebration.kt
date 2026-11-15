@@ -19,7 +19,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -40,15 +39,14 @@ import kotlin.random.Random
  *   settled pile avalanches toward the low side, so the snow moves around as the
  *   phone is tilted.
  * - Hard caps: [SnowPhysics.MAX_PILE_FRACTION] of screen height and
- *   [SnowPhysics.SPAWN_BUDGET] flakes per celebration.
- * - Auto-stops spawning after 15s; the pile melts on [pileRequest] (user typing).
+ *   [SnowPhysics.MAX_ALIVE] concurrent flakes. Spawning runs for
+ *   [SnowPhysics.SPAWN_WINDOW_MS] so the snow covers a whole conversation.
  */
 @Composable
 fun SnowCelebration(
     active: Boolean,
-    pileRequest: Int,
     modifier: Modifier = Modifier,
-    /** Increments once per celebration — restarts the sim with a fresh budget. */
+    /** Increments once per celebration — restarts the sim with a fresh pile. */
     celebrateKey: Int = 0
 ) {
     if (!active) return
@@ -76,8 +74,7 @@ fun SnowCelebration(
     }
 
     val sim = remember { SnowPhysics() }
-    // A new celebration restarts the sim — otherwise the remembered budget is
-    // spent after the first one and later runs never snow.
+    // A new celebration restarts the sim — fresh pile and spawn window.
     LaunchedEffect(celebrateKey) {
         if (celebrateKey > 0) sim.reset()
     }
@@ -91,16 +88,6 @@ fun SnowCelebration(
         ),
         label = "snowTick"
     )
-
-    // Melt only on a fresh request: the effect also runs on composition entry,
-    // and a leftover counter from earlier typing used to melt the pile instantly.
-    val lastPileRequest = remember { mutableIntStateOf(pileRequest) }
-    LaunchedEffect(pileRequest) {
-        if (pileRequest > lastPileRequest.intValue) {
-            lastPileRequest.intValue = pileRequest
-            sim.melt()
-        }
-    }
 
     Canvas(modifier = modifier.fillMaxSize()) {
         // `tick` must be read in the draw phase to invalidate once per frame.
@@ -120,21 +107,23 @@ private class SnowPhysics {
         const val COLS = 64
         /** Settled snow never covers more than this fraction of screen height. */
         const val MAX_PILE_FRACTION = 0.22f
-        /** Hard cap on how many flakes one celebration may ever spawn. */
-        const val SPAWN_BUDGET = 220
-        private const val SPAWN_PER_SEC = 55f
+        /** Concurrent falling flakes (perf cap) — spawning is continuous, not budgeted. */
+        const val MAX_ALIVE = 180
+        private const val SPAWN_PER_SEC = 22f
+        private const val SPAWN_WINDOW_MS = 60_000L
         private const val GRAVITY = 420f
         private const val TERMINAL_VY = 420f
         private const val WIND_GAIN = 150f
     }
 
     private val height = FloatArray(COLS)
-    private val flakes = ArrayList<Flake>(SPAWN_BUDGET)
+    private val flakes = ArrayList<Flake>(MAX_ALIVE)
     private val rng = Random(7)
     private var lastMs = -1L
+    private var startMs = -1L
     private var spawnAcc = 0f
-    private var spawnBudget = SPAWN_BUDGET
-    private var melting = false
+    private var lastW = 0f
+    private var lastH = 0f
 
     private class Flake(
         var x: Float, var y: Float,
@@ -144,27 +133,32 @@ private class SnowPhysics {
 
     fun step(nowMs: Long, tilt: Float, w: Float, h: Float, phase: Float) {
         if (w <= 0f || h <= 0f) return
+        // Keyboard-open resizes shrink the canvas; without rescaling every falling
+        // flake is suddenly below the pile surface and drops in one frame — the
+        // snow looks like it bursts and vanishes when the input box opens.
+        if (lastW > 0f && (w != lastW || h != lastH)) {
+            val sx = w / lastW
+            val sy = h / lastH
+            for (f in flakes) {
+                f.x *= sx
+                f.y *= sy
+            }
+            for (i in height.indices) height[i] *= sy
+        }
+        lastW = w
+        lastH = h
         val dt = if (lastMs < 0) 0.016f else ((nowMs - lastMs) / 1000f).coerceIn(0f, 0.05f)
         lastMs = nowMs
+        if (startMs < 0) startMs = nowMs
         val maxPile = h * MAX_PILE_FRACTION
 
-        // Melt (user typing): pile decays quickly, flakes keep falling.
-        if (melting) {
-            val k = 1f - 4f * dt
-            var alive = false
-            for (i in height.indices) {
-                height[i] *= k
-                if (height[i] > 0.5f) alive = true else height[i] = 0f
-            }
-            if (!alive) melting = false
-        }
-
-        // Spawn, budget-capped.
-        if (spawnBudget > 0) {
+        // Continuous spawn while the celebration is young and the screen is not
+        // already full of falling flakes — the old 220-flake lifetime budget ran
+        // out after ~4s, so snow stopped during the conversation.
+        if (flakes.size < MAX_ALIVE && nowMs - startMs < SPAWN_WINDOW_MS) {
             spawnAcc += dt * SPAWN_PER_SEC
-            while (spawnAcc >= 1f && spawnBudget > 0) {
+            while (spawnAcc >= 1f && flakes.size < MAX_ALIVE) {
                 spawnAcc -= 1f
-                spawnBudget--
                 flakes.add(
                     Flake(
                         x = rng.nextFloat() * w,
@@ -194,10 +188,8 @@ private class SnowPhysics {
                 // Settle into the heightmap. Fill only what fits under the cap —
                 // clamping after the add used to destroy the overshoot, which read
                 // as the pile melting on its own once it got tall.
-                if (!melting) {
-                    val room = (maxPile - height[col]).coerceAtLeast(0f)
-                    height[col] += (f.r * 1.2f).coerceAtMost(room)
-                }
+                val room = (maxPile - height[col]).coerceAtLeast(0f)
+                height[col] += (f.r * 1.2f).coerceAtMost(room)
                 flakes.removeAt(i)
             } else {
                 i++
@@ -213,7 +205,7 @@ private class SnowPhysics {
             tilt < -0.12f -> -1
             else -> 0
         }
-        if (dir != 0 && !melting) {
+        if (dir != 0) {
             val gain = (0.25f + kotlin.math.abs(tilt) * 0.6f) * (dt * 60f).coerceAtMost(2f)
             val snapshot = height.clone()
             var k = 0
@@ -237,17 +229,12 @@ private class SnowPhysics {
         }
     }
 
-    /** Fresh celebration: new flake budget, empty pile. */
+    /** Fresh celebration: empty pile, new spawn window. */
     fun reset() {
         for (i in height.indices) height[i] = 0f
         flakes.clear()
-        spawnBudget = SPAWN_BUDGET
         spawnAcc = 0f
-        melting = false
-    }
-
-    fun melt() {
-        melting = true
+        startMs = -1L
     }
 
     fun draw(scope: DrawScope, flakeColor: Color, pileColor: Color) = with(scope) {
