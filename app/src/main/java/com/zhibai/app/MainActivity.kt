@@ -51,6 +51,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Language system: zh-cn.json is the default table; first launch follows a
+        // supported system language, later system switches raise a bilingual prompt.
+        com.zhibai.app.i18n.LangManager.init(this)
         Thread.setDefaultUncaughtExceptionHandler(
             com.zhibai.app.data.CrashHandler(applicationContext)
         )
@@ -196,6 +199,9 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        // Bilingual prompt when the system language changed
+                        com.zhibai.app.i18n.LanguageSwitchDialog()
+
                         // Old package found → prompt to delete
                         if (startupPhase == "oldapp") {
                             AlertDialog(
@@ -308,6 +314,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Covers a language switch made in system Settings while we were away.
+        com.zhibai.app.i18n.LangManager.onSystemLanguageMaybeChanged(this)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
