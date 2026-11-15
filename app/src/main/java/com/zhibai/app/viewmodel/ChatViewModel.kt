@@ -2322,6 +2322,10 @@ AI：$assistantReply
         AppLog.d("agentFlow enter: searchOnly=$searchOnly model=${_currentModel.value} engine=${engine != null} url=${activeApi.getBaseUrl()} key=${AppLog.keyShape(activeApi.getApiKey())}")
         val maxRounds = 5
         agentTaskManager.startSession()
+        // Tool-card ids must be unique across runs: leftover "stream-tc-1-0" cards
+        // from the previous run collide with the next run's round-1 cards and the
+        // LazyColumn crashes on duplicate keys.
+        val runTag = java.util.UUID.randomUUID().toString().replace("-", "").take(8)
 
         // Caller appended [user, streaming placeholder]; everything from here on is this run's output.
         // Use the LIVE session (by id) — the `session` param is a stale snapshot from before
@@ -2392,6 +2396,7 @@ AI：$assistantReply
         var malformedRecovery = 0
         while (round < maxRounds) {
             round++
+            val cardTag = "stream-tc-$runTag-$round-"
             AppLog.d("agentFlow round $round: msgs=${apiMessages.size} model=${getApiModel()}")
             // Streaming structured round: MiMo accepts stream + response_format
             // (json_schema) — JSON arrives token by token. Thinking streams natively
@@ -2461,10 +2466,11 @@ AI：$assistantReply
                             // Tool name fully present in the stream → pending card NOW.
                             val names = toolNameRegex.findAll(streamBuf).map { it.groupValues[1] }.toList()
                             while (names.size > toolCardCount) {
-                                val cardId = "stream-tc-$round-$toolCardCount"
+                                val cardId = "${cardTag}$toolCardCount"
                                 val name = names[toolCardCount]
                                 updateSessionById(session.id) { s ->
-                                    s.copy(messages = s.messages + ChatMessage(
+                                    if (s.messages.any { it.id == cardId }) s
+                                    else s.copy(messages = s.messages + ChatMessage(
                                         id = cardId, role = "tool", content = "⏳ $name 调用中..."
                                     ))
                                 }
@@ -2500,7 +2506,7 @@ AI：$assistantReply
                     // User pressed stop — drop this round's pending cards; stopGeneration
                     // already finalized the placeholder.
                     updateSessionById(session.id) { s ->
-                        s.copy(messages = s.messages.filterNot { it.id.startsWith("stream-tc-$round-") })
+                        s.copy(messages = s.messages.filterNot { it.id.startsWith(cardTag) })
                     }
                     throw e
                 } catch (e: Exception) {
@@ -2532,7 +2538,7 @@ AI：$assistantReply
                 updateSessionById(session.id) { s ->
                     val msgs = s.messages.toMutableList()
                     // remove this round's pending tool cards
-                    msgs.removeAll { it.id.startsWith("stream-tc-$round-") }
+                    msgs.removeAll { it.id.startsWith(cardTag) }
                     // finalize (or drop) the placeholder so nothing stays stuck streaming
                     val i = msgs.indexOfFirst { it.id == placeholderId }
                     if (i >= 0) {
@@ -2580,7 +2586,7 @@ AI：$assistantReply
                     // parse: show the model its own broken reply and ask for a resend.
                     malformedRecovery++
                     updateSessionById(session.id) { s ->
-                        s.copy(messages = s.messages.filterNot { it.id.startsWith("stream-tc-$round-") })
+                        s.copy(messages = s.messages.filterNot { it.id.startsWith(cardTag) })
                     }
                     apiMessages.add(Message(role = "assistant", content = rawText))
                     apiMessages.add(Message(
@@ -2600,7 +2606,7 @@ AI：$assistantReply
                         else "模型输出的 JSON 无法解析，本轮中止。"
                     updateSessionById(session.id) { s ->
                         val msgs = s.messages
-                            .filterNot { it.id.startsWith("stream-tc-$round-") }
+                            .filterNot { it.id.startsWith(cardTag) }
                             .toMutableList()
                         val i = msgs.indexOfFirst { it.id == placeholderId }
                         if (i >= 0) {
@@ -2623,7 +2629,7 @@ AI：$assistantReply
                 val shown = sanitizeHighRisk(rawText)
                 updateSessionById(session.id) { s ->
                     val msgs = s.messages
-                        .filterNot { it.id.startsWith("stream-tc-$round-") }
+                        .filterNot { it.id.startsWith(cardTag) }
                         .toMutableList()
                     val i = msgs.indexOfFirst { it.id == placeholderId }
                     if (i >= 0) {
@@ -2668,7 +2674,7 @@ AI：$assistantReply
                     // Collapsing into a new message here made the LazyColumn key
                     // change → the finished answer flashed and re-rendered.
                     val msgs = s.messages.filterNot {
-                        it.id.startsWith("stream-tc-$round-") && it.content.contains("调用中")
+                        it.id.startsWith(cardTag) && it.content.contains("调用中")
                     }.toMutableList()
                     val i = msgs.indexOfFirst { it.id == placeholderId }
                     if (i >= 0) {
@@ -2730,7 +2736,7 @@ AI：$assistantReply
                 // Reuse the live "调用中" card inserted when this tool's name appeared in
                 // the stream; insert a fresh card only if detection missed it. Declared
                 // outside the try — the result back-fill below needs the id.
-                val streamCardId = "stream-tc-$round-$idx"
+                val streamCardId = "${cardTag}$idx"
                 val hasStreamCard = _sessions.value.find { it.id == session.id }
                     ?.messages?.any { it.id == streamCardId } == true
                 val runningMsgId = if (hasStreamCard) streamCardId
@@ -2870,7 +2876,7 @@ AI：$assistantReply
             // text inside args values that the stream detector picked up).
             updateSessionById(session.id) { s ->
                 s.copy(messages = s.messages.filterNot {
-                    it.id.startsWith("stream-tc-$round-") && it.content.contains("调用中")
+                    it.id.startsWith(cardTag) && it.content.contains("调用中")
                 })
             }
             // Continue loop for next round of tool calls

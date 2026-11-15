@@ -1378,6 +1378,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
 
                         // Snow: triggers every time agent output finishes (once per run)
                         var snowActive by remember { mutableStateOf(false) }
+                        var celebrateKey by remember { mutableIntStateOf(0) }
                         var pileClearRequest by remember { mutableIntStateOf(0) }
                         // Trigger when agent goes from active → inactive (output finished).
                         // The one-shot gate lives in AgentTaskManager: a remember'd flag
@@ -1388,12 +1389,14 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                 viewModel.agentTaskManager.armCelebration()
                             } else if (viewModel.agentTaskManager.consumeCelebration()) {
                                 snowActive = true
+                                celebrateKey++
                             }
                         }
                         if (snowActive) {
                             com.zhibai.app.ui.components.SnowCelebration(
                                 active = snowActive,
                                 pileRequest = pileClearRequest,
+                                celebrateKey = celebrateKey,
                                 modifier = Modifier.matchParentSize()
                             )
                         }

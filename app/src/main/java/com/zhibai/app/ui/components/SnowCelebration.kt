@@ -19,6 +19,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -46,7 +47,9 @@ import kotlin.random.Random
 fun SnowCelebration(
     active: Boolean,
     pileRequest: Int,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Increments once per celebration — restarts the sim with a fresh budget. */
+    celebrateKey: Int = 0
 ) {
     if (!active) return
 
@@ -73,6 +76,11 @@ fun SnowCelebration(
     }
 
     val sim = remember { SnowPhysics() }
+    // A new celebration restarts the sim — otherwise the remembered budget is
+    // spent after the first one and later runs never snow.
+    LaunchedEffect(celebrateKey) {
+        if (celebrateKey > 0) sim.reset()
+    }
     // Frame ticker: read inside the draw lambda → per-frame redraw only.
     val tick by rememberInfiniteTransition(label = "snowFall").animateFloat(
         initialValue = 0f,
@@ -84,8 +92,14 @@ fun SnowCelebration(
         label = "snowTick"
     )
 
+    // Melt only on a fresh request: the effect also runs on composition entry,
+    // and a leftover counter from earlier typing used to melt the pile instantly.
+    val lastPileRequest = remember { mutableIntStateOf(pileRequest) }
     LaunchedEffect(pileRequest) {
-        if (pileRequest > 0) sim.melt()
+        if (pileRequest > lastPileRequest.intValue) {
+            lastPileRequest.intValue = pileRequest
+            sim.melt()
+        }
     }
 
     Canvas(modifier = modifier.fillMaxSize()) {
@@ -177,10 +191,12 @@ private class SnowPhysics {
             if (f.x > w + 10f) f.x -= w + 20f
             val col = ((f.x / w) * COLS).toInt().coerceIn(0, COLS - 1)
             if (f.y >= h - height[col]) {
-                // Settle into the heightmap (respecting the cap), flake is consumed.
-                if (height[col] < maxPile && !melting) {
-                    height[col] = height[col] + f.r * 1.2f
-                    if (height[col] > maxPile) height[col] = maxPile
+                // Settle into the heightmap. Fill only what fits under the cap —
+                // clamping after the add used to destroy the overshoot, which read
+                // as the pile melting on its own once it got tall.
+                if (!melting) {
+                    val room = (maxPile - height[col]).coerceAtLeast(0f)
+                    height[col] += (f.r * 1.2f).coerceAtMost(room)
                 }
                 flakes.removeAt(i)
             } else {
@@ -188,7 +204,10 @@ private class SnowPhysics {
             }
         }
 
-        // Avalanche: settled snow slides toward the tilt direction.
+        // Avalanche: settled snow slides toward the tilt direction. Relaxed from a
+        // snapshot (each pair sees the same pre-frame heights) and both sides are
+        // capped — a cascading in-place sweep used to drain the uphill columns into
+        // the downhill edge every frame (拆东墙补西墙).
         val dir = when {
             tilt > 0.12f -> 1
             tilt < -0.12f -> -1
@@ -196,21 +215,35 @@ private class SnowPhysics {
         }
         if (dir != 0 && !melting) {
             val gain = (0.25f + kotlin.math.abs(tilt) * 0.6f) * (dt * 60f).coerceAtMost(2f)
+            val snapshot = height.clone()
             var k = 0
             while (k < COLS - 1) {
                 val a = if (dir > 0) k else COLS - 1 - k
                 val b = a + dir
                 if (b in 0 until COLS) {
-                    val diff = height[a] - height[b]
+                    val diff = snapshot[a] - snapshot[b]
                     if (diff > 2.2f) {
-                        val move = (diff - 2.2f) * 0.35f * gain
-                        height[a] -= move
-                        height[b] += move
+                        var move = (diff - 2.2f) * 0.35f * gain
+                        move = move.coerceAtMost(snapshot[a] * 0.4f)
+                        move = move.coerceAtMost((maxPile - snapshot[b]).coerceAtLeast(0f))
+                        if (move > 0f) {
+                            height[a] -= move
+                            height[b] += move
+                        }
                     }
                 }
                 k++
             }
         }
+    }
+
+    /** Fresh celebration: new flake budget, empty pile. */
+    fun reset() {
+        for (i in height.indices) height[i] = 0f
+        flakes.clear()
+        spawnBudget = SPAWN_BUDGET
+        spawnAcc = 0f
+        melting = false
     }
 
     fun melt() {
