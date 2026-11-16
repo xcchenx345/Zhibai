@@ -2660,15 +2660,12 @@ AI：$assistantReply
                                 while (names.size > toolCardCount) {
                                     val cardId = "${cardTag}$toolCardCount"
                                     val name = names[toolCardCount]
-                                    updateSessionById(session.id) { s ->
-                                        if (s.messages.any { it.id == cardId }) s
-                                        else s.copy(messages = s.messages + ChatMessage(
-                                            id = cardId, role = "tool", content = "",
-                                            toolTitle = com.zhibai.app.agent.toolActionTitle(name, emptyMap()),
-                                            toolIcon = com.zhibai.app.agent.toolIconKey(name),
-                                            toolStatus = "running"
-                                        ))
-                                    }
+                                    insertStepBeforeAnswer(session.id, ChatMessage(
+                                        id = cardId, role = "tool", content = "",
+                                        toolTitle = com.zhibai.app.agent.toolActionTitle(name, emptyMap()),
+                                        toolIcon = com.zhibai.app.agent.toolIconKey(name),
+                                        toolStatus = "running"
+                                    ))
                                     toolCardCount++
                                 }
                             }
@@ -2983,16 +2980,16 @@ AI：$assistantReply
                 if (!searchOnly) {
                     val runTitle = com.zhibai.app.agent.toolActionTitle(tc.tool, tcArgs)
                     val runIcon = com.zhibai.app.agent.toolIconKey(tc.tool)
+                    insertStepBeforeAnswer(session.id, ChatMessage(
+                        id = runningMsgId, role = "tool", content = "",
+                        toolTitle = runTitle, toolIcon = runIcon, toolStatus = "running", toolLive = ""
+                    ))
                     updateSessionById(session.id) { s ->
                         val msgs = s.messages.toMutableList()
                         val i = msgs.indexOfFirst { it.id == runningMsgId }
                         if (i >= 0) msgs[i] = msgs[i].copy(
                             content = "", toolTitle = runTitle, toolIcon = runIcon, toolStatus = "running", toolLive = ""
                         )
-                        else msgs.add(ChatMessage(
-                            id = runningMsgId, role = "tool", content = "",
-                            toolTitle = runTitle, toolIcon = runIcon, toolStatus = "running", toolLive = ""
-                        ))
                         s.copy(messages = msgs)
                     }
                 }

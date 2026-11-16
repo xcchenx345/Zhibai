@@ -10,7 +10,11 @@ import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,8 +26,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhibai.app.data.api.TTSService
@@ -35,6 +47,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.abs
 
 enum class TTSMode(val label: String, val apiModel: String) {
     READ("原版", "mimo-v2.5-tts"),
@@ -56,6 +69,18 @@ val presetVoices = listOf(
     TTSVoice("Dean (EN)", "Dean")
 )
 
+private val tabTitles = listOf("语音合成", "音色设计", "音色克隆")
+
+private val synthFeatures = listOf(
+    Triple("丰富的多元表达", "方言、角色、唱歌", Icons.Default.RecordVoiceOver),
+    Triple("细粒度的情绪调节", "一句话多种情绪", Icons.Default.SentimentSatisfied),
+    Triple("强大的文本理解", "导演演绎、高级富文本", Icons.Default.AutoStories)
+)
+
+private val styleExamples = listOf("东北话", "四川话", "河南话", "广东话")
+private val designExamples = listOf("武侠小说", "高能广告", "新闻直播", "DJ 电台")
+private val tagModeLabels = listOf("风格标签", "音频标签", "唱歌")
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
@@ -63,6 +88,22 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
     val scope = rememberCoroutineScope()
     val apiKey by viewModel.apiKey.collectAsState()
 
+    var selectedTab by remember {
+        mutableStateOf(
+            when (initialMode) {
+                "design" -> 1
+                "clone" -> 2
+                else -> 0
+            }
+        )
+    }
+    var directorMode by remember { mutableStateOf(initialMode == "director") }
+    fun syncMode(): TTSMode = when {
+        selectedTab == 1 -> TTSMode.DESIGN
+        selectedTab == 2 -> TTSMode.CLONE
+        directorMode -> TTSMode.DIRECTOR
+        else -> TTSMode.READ
+    }
     var selectedMode by remember {
         mutableStateOf(
             when (initialMode) {
@@ -78,13 +119,14 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
     var stylePrompt by remember { mutableStateOf("") }
     // Director free-form: 【角色】…【场景】…【指导】… (user instruction) + inputText = lines to speak
     var directorText by remember { mutableStateOf("") }
+    var tagMode by remember { mutableStateOf(0) }
     var isGenerating by remember { mutableStateOf(false) }
     var audioData by remember { mutableStateOf<ByteArray?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
     var playProgress by remember { mutableStateOf(0f) }
     var audioTrack by remember { mutableStateOf<AudioTrack?>(null) }
     var showVoiceMenu by remember { mutableStateOf(false) }
-    var showModeMenu by remember { mutableStateOf(false) }
+    var showTagMenu by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var cloneAudioData by remember { mutableStateOf<ByteArray?>(null) }
     var cloneAudioName by remember { mutableStateOf<String?>(null) }
@@ -249,6 +291,43 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
         playProgress = 0f
     }
 
+    // Pause/resume on the live AudioTrack; falls back to a fresh play when the track is gone.
+    fun togglePlay(data: ByteArray) {
+        val track = audioTrack
+        if (track == null) {
+            playAudio(data)
+            return
+        }
+        if (isPlaying) {
+            try {
+                track.pause()
+            } catch (_: Exception) {}
+            isPlaying = false
+        } else {
+            try {
+                track.play()
+                isPlaying = true
+            } catch (_: Exception) {
+                stopPlayback()
+                playAudio(data)
+            }
+        }
+    }
+
+    // Relative seek while paused or playing (MODE_STATIC head position).
+    fun seekBy(data: ByteArray, deltaSec: Float) {
+        val track = audioTrack ?: return
+        val totalFrames = (data.size / 2).coerceAtLeast(1)
+        val target = (track.playbackHeadPosition + (deltaSec * 24000).toInt())
+            .coerceIn(0, totalFrames)
+        try {
+            if (isPlaying) track.pause()
+            track.setPlaybackHeadPosition(target)
+            playProgress = target.toFloat() / totalFrames
+            if (isPlaying) track.play()
+        } catch (_: Exception) {}
+    }
+
     fun generateTTS() {
         if (inputText.isBlank() && selectedMode != TTSMode.DESIGN) return
         if (selectedMode == TTSMode.DESIGN && stylePrompt.isBlank()) return
@@ -263,9 +342,17 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
 
             try {
                 val messages = when (selectedMode) {
-                    TTSMode.READ -> listOf(
-                        com.zhibai.app.data.model.Message(role = "assistant", content = inputText)
-                    )
+                    TTSMode.READ -> if (stylePrompt.isBlank()) {
+                        listOf(
+                            com.zhibai.app.data.model.Message(role = "assistant", content = inputText)
+                        )
+                    } else {
+                        // stylePrompt feeds the merged 语音合成 entry as the style instruction
+                        listOf(
+                            com.zhibai.app.data.model.Message(role = "user", content = stylePrompt),
+                            com.zhibai.app.data.model.Message(role = "assistant", content = inputText)
+                        )
+                    }
                     TTSMode.DESIGN -> listOf(
                         com.zhibai.app.data.model.Message(role = "user", content = stylePrompt),
                         com.zhibai.app.data.model.Message(role = "assistant", content = inputText.ifBlank { "请用这个声音说一句话。" })
@@ -359,6 +446,21 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
         }
     }
 
+    val canGenerate = when (selectedMode) {
+        TTSMode.READ -> inputText.isNotBlank()
+        TTSMode.DESIGN -> stylePrompt.isNotBlank()
+        TTSMode.CLONE -> inputText.isNotBlank() && cloneAudioData != null
+        TTSMode.DIRECTOR -> directorText.isNotBlank() && inputText.isNotBlank()
+    }
+    val waveformAmps = remember(audioData) { audioData?.let { computeWaveformAmps(it) } ?: emptyList() }
+    val fieldColors = TextFieldDefaults.colors(
+        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        focusedIndicatorColor = MaterialTheme.colorScheme.onSurface,
+        unfocusedIndicatorColor = MaterialTheme.colorScheme.outline,
+        cursorColor = MaterialTheme.colorScheme.onSurface
+    )
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -366,278 +468,926 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Mode selector
-        Text("模式", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TTSMode.entries.forEach { mode ->
-                FilterChip(
-                    onClick = { selectedMode = mode },
-                    label = { Text(mode.label, fontSize = 13.sp) },
-                    selected = selectedMode == mode,
-                    leadingIcon = {
-                            Icon(
-                                when (mode) {
-                                    TTSMode.READ -> Icons.Default.VolumeUp
-                                    TTSMode.DESIGN -> Icons.Default.Palette
-                                    TTSMode.CLONE -> Icons.Default.ContentCopy
-                                    TTSMode.DIRECTOR -> Icons.Default.Movie
-                                },
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                    }
-                )
-            }
-        }
-
-        // Voice selector (not for DESIGN or CLONE mode)
-        if (selectedMode != TTSMode.DESIGN && selectedMode != TTSMode.CLONE) {
-            Text("音色", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Box {
-                OutlinedCard(
-                    onClick = { showVoiceMenu = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(selectedVoice.name, fontSize = 15.sp)
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = null)
-                    }
-                }
-                DropdownMenu(expanded = showVoiceMenu, onDismissRequest = { showVoiceMenu = false }) {
-                    presetVoices.forEach { voice ->
-                        DropdownMenuItem(
-                            text = { Text(voice.name) },
-                            onClick = { selectedVoice = voice; showVoiceMenu = false }
-                        )
-                    }
-                }
-            }
-        }
-
-        // Clone mode: audio upload/record
-        if (selectedMode == TTSMode.CLONE) {
-            Text("语音样本", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(
-                    onClick = { audioPicker.launch("audio/*") },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("上传")
-                }
-                OutlinedButton(
-                    onClick = { if (isRecording) stopRecording() else startRecording() },
-                    modifier = Modifier.weight(1f),
-                    colors = if (isRecording) ButtonDefaults.outlinedButtonColors(
-                        containerColor = MiMoColors.Error.copy(alpha = 0.1f)
-                    ) else ButtonDefaults.outlinedButtonColors()
-                ) {
-                    Icon(
-                        if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = if (isRecording) MiMoColors.Error else MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(if (isRecording) "Stop" else "Record")
-                }
-            }
-            if (cloneAudioName != null) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MiMoColors.Primary.copy(alpha = 0.1f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MiMoColors.Primary, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(cloneAudioName!!, fontSize = 13.sp, color = MiMoColors.Primary, modifier = Modifier.weight(1f))
-                        IconButton(
-                            onClick = { cloneAudioData = null; cloneAudioName = null },
-                            modifier = Modifier.size(20.dp)
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = "Remove", modifier = Modifier.size(14.dp))
-                        }
-                    }
-                }
-            }
-        }
-
-        // Style prompt for DESIGN mode
-        if (selectedMode == TTSMode.DESIGN) {
-            Text("音色描述", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            OutlinedTextField(
-                value = stylePrompt,
-                onValueChange = { stylePrompt = it },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("例如：年轻女性，温暖温柔，略带气声……") },
-                minLines = 2,
-                maxLines = 4,
-                shape = RoundedCornerShape(12.dp)
-            )
-        }
-
-        // Director free-form instruction + spoken lines
-        if (selectedMode == TTSMode.DIRECTOR) {
-            Text("导演指令（自然语言）", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            OutlinedTextField(
-                value = directorText,
-                onValueChange = { directorText = it },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("【角色】青年男性，自信张扬…\n【场景】刚查到竞赛成绩，忍不住得意惊呼…\n【指导】语速偏快，高亢明亮…") },
-                minLines = 4,
-                maxLines = 12,
-                shape = RoundedCornerShape(12.dp)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                "也可以一句话描述，例如：用轻快上扬的语调向领导报喜，语速稍快，带着压抑不住的激动。",
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Text(
-            when (selectedMode) {
-                TTSMode.READ -> "要朗读的文本"
-                TTSMode.DESIGN -> "试听文本（可选）"
-                TTSMode.CLONE -> "要说的话"
-                TTSMode.DIRECTOR -> "台词"
-            },
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold
-        )
-        OutlinedTextField(
-            value = inputText,
-            onValueChange = { inputText = it },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = {
-                Text(when (selectedMode) {
-                    TTSMode.READ -> "输入要朗读的文字…"
-                    TTSMode.DESIGN -> "留空则自动预览…"
-                    TTSMode.CLONE -> "输入要合成的文字…"
-                    TTSMode.DIRECTOR -> "输入要演绎的台词…"
-                })
-            },
-            minLines = 3,
-            maxLines = 8,
-            shape = RoundedCornerShape(12.dp)
-        )
-
-        // Generate button
-        Button(
-            onClick = { generateTTS() },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isGenerating && when (selectedMode) {
-                TTSMode.READ -> inputText.isNotBlank()
-                TTSMode.DESIGN -> stylePrompt.isNotBlank()
-                TTSMode.CLONE -> inputText.isNotBlank() && cloneAudioData != null
-                TTSMode.DIRECTOR -> directorText.isNotBlank() && inputText.isNotBlank()
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+        // ── Page tabs ─────────────────────────────────────────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            if (isGenerating) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    color = MiMoColors.OnPrimary,
-                    strokeWidth = 2.dp
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("生成中……")
-            } else {
-                Icon(Icons.Default.PlayArrow, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("生成")
-            }
-        }
-
-        // Error
-        errorMsg?.let {
-            Surface(
-                color = MiMoColors.Error.copy(alpha = 0.1f),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Warning, contentDescription = null, tint = MiMoColors.Error, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(it, fontSize = 13.sp, color = MiMoColors.Error)
+            tabTitles.forEachIndexed { index, title ->
+                val selected = selectedTab == index
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            if (selected) MaterialTheme.colorScheme.primary
+                            else Color.Transparent
+                        )
+                        .clickable {
+                            selectedTab = index
+                            selectedMode = syncMode()
+                        }
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        title,
+                        fontSize = 13.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
 
-        // Audio player
-        audioData?.let { data ->
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("音频已就绪", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                "${data.size / 1024} KB · ${(data.size / 2.0 / 24000).toInt()}s",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            // Play/Pause
-                            FilledIconButton(
-                                onClick = {
-                                    if (isPlaying) stopPlayback()
-                                    else playAudio(data)
-                                }
+        when (selectedTab) {
+            0 -> {
+                // ── 语音合成 ──────────────────────────────────────
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Xiaomi MIMO 语音合成",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        Icons.Default.Lock,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    synthFeatures.forEach { (title, sub, icon) ->
+                        Surface(
+                            modifier = Modifier.width(170.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Icon(
-                                    if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                    contentDescription = null
+                                    icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(22.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    title,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    sub,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            // Download
-                            FilledIconButton(onClick = { saveAudio() }) {
-                                Icon(Icons.Default.Download, contentDescription = null)
+                        }
+                    }
+                }
+
+                SectionCard {
+                    Text("音频标签控制", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Style-control dropdown (drives stylePrompt semantics)
+                        Box(modifier = Modifier.weight(1f)) {
+                            Surface(
+                                onClick = { showTagMenu = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(tagModeLabels[tagMode], fontSize = 13.sp)
+                                    Icon(
+                                        Icons.Default.ArrowDropDown,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = showTagMenu,
+                                onDismissRequest = { showTagMenu = false }
+                            ) {
+                                tagModeLabels.forEachIndexed { i, label ->
+                                    DropdownMenuItem(
+                                        text = { Text(label) },
+                                        onClick = { tagMode = i; showTagMenu = false }
+                                    )
+                                }
+                            }
+                        }
+                        // Voice dropdown (presetVoices)
+                        Box(modifier = Modifier.weight(1f)) {
+                            Surface(
+                                onClick = { showVoiceMenu = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        selectedVoice.name,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    Icon(
+                                        Icons.Default.ArrowDropDown,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = showVoiceMenu,
+                                onDismissRequest = { showVoiceMenu = false }
+                            ) {
+                                presetVoices.forEach { voice ->
+                                    DropdownMenuItem(
+                                        text = { Text(voice.name) },
+                                        onClick = { selectedVoice = voice; showVoiceMenu = false }
+                                    )
+                                }
                             }
                         }
                     }
-                    if (isPlaying || playProgress > 0f) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        LinearProgressIndicator(
-                            progress = { playProgress },
-                            modifier = Modifier.fillMaxWidth().height(4.dp),
-                            color = MiMoColors.Primary,
-                            trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f),
-                            strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
-                            gapSize = 0.dp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        val totalSec = data.size / 2.0 / 24000.0
-                        val curSec = totalSec * playProgress
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("%.1fs".format(curSec), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("%.1fs".format(totalSec), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // Tag-type chips + director toggle
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        tagModeLabels.forEachIndexed { i, label ->
+                            ToggleChip(label = label, selected = tagMode == i) { tagMode = i }
+                        }
+                        ToggleChip(label = "导演演绎", selected = directorMode) {
+                            directorMode = !directorMode
+                            selectedMode = syncMode()
                         }
                     }
+                }
+
+                SectionCard {
+                    RequiredLabel("风格指令", required = false)
+                    OutlinedTextField(
+                        value = stylePrompt,
+                        onValueChange = { stylePrompt = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("请用 1-3 个短词描述", fontSize = 13.sp) },
+                        minLines = 2,
+                        maxLines = 4,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = fieldColors
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        styleExamples.forEach { ex ->
+                            ExampleChip(ex) { stylePrompt = ex }
+                        }
+                    }
+                    Text(
+                        "${stylePrompt.length}/1024",
+                        fontSize = 11.sp,
+                        color = if (stylePrompt.length > 1024) MiMoColors.Error
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End
+                    )
+
+                    if (directorMode) {
+                        RequiredLabel("导演指令", required = false)
+                        OutlinedTextField(
+                            value = directorText,
+                            onValueChange = { directorText = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = {
+                                Text(
+                                    "【角色】青年男性，自信张扬…\n【场景】刚查到竞赛成绩，忍不住得意惊呼…\n【指导】语速偏快，高亢明亮…",
+                                    fontSize = 12.sp
+                                )
+                            },
+                            minLines = 3,
+                            maxLines = 8,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = fieldColors
+                        )
+                        Text(
+                            "也可以一句话描述，例如：用轻快上扬的语调向领导报喜，语速稍快，带着压抑不住的激动。",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                SectionCard {
+                    RequiredLabel("播报文本")
+                    OutlinedTextField(
+                        value = inputText,
+                        onValueChange = { inputText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("输入要合成的文本，开启试听之旅吧", fontSize = 13.sp) },
+                        minLines = 3,
+                        maxLines = 8,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = fieldColors
+                    )
+                    Text(
+                        "${inputText.length} 字",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End
+                    )
+                }
+
+                ErrorBanner(errorMsg)
+
+                SynthesisResultPanel(
+                    audioData = audioData,
+                    amps = waveformAmps,
+                    isPlaying = isPlaying,
+                    isGenerating = isGenerating,
+                    playProgress = playProgress,
+                    generateEnabled = canGenerate,
+                    emptyHint = false,
+                    onGenerate = { generateTTS() },
+                    onTogglePlay = { audioData?.let { togglePlay(it) } },
+                    onSeek = { delta -> audioData?.let { seekBy(it, delta) } },
+                    onSave = { saveAudio() }
+                )
+            }
+
+            1 -> {
+                // ── 音色设计 ──────────────────────────────────────
+                Text(
+                    "Xiaomi MIMO 音色设计",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    "自然语言描绘理想声线，AI 一键定制专属音色，轻松拥有独特音质。",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                SectionCard {
+                    RequiredLabel("音色描述")
+                    OutlinedTextField(
+                        value = stylePrompt,
+                        onValueChange = { stylePrompt = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("例如：年轻女性，温暖温柔，略带气声……", fontSize = 13.sp) },
+                        minLines = 2,
+                        maxLines = 4,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = fieldColors
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        designExamples.forEach { ex ->
+                            ExampleChip(ex) { stylePrompt = ex }
+                        }
+                    }
+                    Button(
+                        onClick = { generateTTS() },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = stylePrompt.isNotBlank() && !isGenerating,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("生成")
+                    }
+                }
+
+                SectionCard {
+                    RequiredLabel("播报文本")
+                    OutlinedTextField(
+                        value = inputText,
+                        onValueChange = { inputText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("输入播报文本，开启试听之旅吧", fontSize = 13.sp) },
+                        minLines = 3,
+                        maxLines = 8,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = fieldColors
+                    )
+                    Text(
+                        "${inputText.length} 字",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End
+                    )
+                }
+
+                ErrorBanner(errorMsg)
+
+                SynthesisResultPanel(
+                    audioData = audioData,
+                    amps = waveformAmps,
+                    isPlaying = isPlaying,
+                    isGenerating = isGenerating,
+                    playProgress = playProgress,
+                    generateEnabled = canGenerate,
+                    emptyHint = true,
+                    onGenerate = { generateTTS() },
+                    onTogglePlay = { audioData?.let { togglePlay(it) } },
+                    onSeek = { delta -> audioData?.let { seekBy(it, delta) } },
+                    onSave = { saveAudio() }
+                )
+            }
+
+            else -> {
+                // ── 音色克隆 ──────────────────────────────────────
+                Text(
+                    "Xiaomi MIMO 音色克隆",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    "一段原声即刻复刻，语音内容创作，随心随意更自由。",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                SectionCard {
+                    RequiredLabel("克隆音频")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        DashedActionCard(
+                            modifier = Modifier.weight(1f),
+                            icon = if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
+                            title = if (isRecording) "停止录制" else "录制音频",
+                            subtitle = if (isRecording) "录制中…再次点击结束"
+                            else "请在安静环境，录制 5-30s 的音频",
+                            highlighted = isRecording,
+                            onClick = { if (isRecording) stopRecording() else startRecording() }
+                        )
+                        DashedActionCard(
+                            modifier = Modifier.weight(1f),
+                            icon = Icons.Default.Upload,
+                            title = "上传音频",
+                            subtitle = "请上传 5-30s、10MB 以内的音频",
+                            highlighted = false,
+                            onClick = { audioPicker.launch("audio/*") }
+                        )
+                    }
+                    if (cloneAudioName != null) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    cloneAudioName!!,
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(
+                                    onClick = { cloneAudioData = null; cloneAudioName = null },
+                                    modifier = Modifier.size(20.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Remove",
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                SectionCard {
+                    RequiredLabel("播报文本")
+                    OutlinedTextField(
+                        value = inputText,
+                        onValueChange = { inputText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("输入播报文本，开启试听之旅吧", fontSize = 13.sp) },
+                        minLines = 3,
+                        maxLines = 8,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = fieldColors
+                    )
+                    Text(
+                        "${inputText.length} 字",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End
+                    )
+                }
+
+                ErrorBanner(errorMsg)
+
+                SynthesisResultPanel(
+                    audioData = audioData,
+                    amps = waveformAmps,
+                    isPlaying = isPlaying,
+                    isGenerating = isGenerating,
+                    playProgress = playProgress,
+                    generateEnabled = canGenerate,
+                    emptyHint = true,
+                    onGenerate = { generateTTS() },
+                    onTogglePlay = { audioData?.let { togglePlay(it) } },
+                    onSeek = { delta -> audioData?.let { seekBy(it, delta) } },
+                    onSave = { saveAudio() }
+                )
+            }
+        }
+    }
+}
+
+// ── UI building blocks ──────────────────────────────────────────
+
+@Composable
+private fun SectionCard(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            content = content
+        )
+    }
+}
+
+@Composable
+private fun RequiredLabel(text: String, required: Boolean = true) {
+    Row {
+        Text(
+            text,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        if (required) {
+            Text("*", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MiMoColors.Error)
+        }
+    }
+}
+
+@Composable
+private fun ExampleChip(text: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+            .drawBehind {
+                val strokePx = 1.dp.toPx()
+                drawRoundRect(
+                    color = Color.Gray.copy(alpha = 0.4f),
+                    topLeft = Offset(strokePx / 2f, strokePx / 2f),
+                    size = Size(size.width - strokePx, size.height - strokePx),
+                    cornerRadius = CornerRadius(size.height / 2 - strokePx / 2f),
+                    style = Stroke(width = strokePx)
+                )
+            }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(text, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable
+private fun ToggleChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(
+                if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+            )
+            .drawBehind {
+                if (!selected) {
+                    val strokePx = 1.dp.toPx()
+                    drawRoundRect(
+                        color = Color.Gray.copy(alpha = 0.4f),
+                        topLeft = Offset(strokePx / 2f, strokePx / 2f),
+                        size = Size(size.width - strokePx, size.height - strokePx),
+                        cornerRadius = CornerRadius(size.height / 2 - strokePx / 2f),
+                        style = Stroke(width = strokePx)
+                    )
+                }
+            }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(
+            label,
+            fontSize = 12.sp,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary
+            else MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
+private fun ErrorBanner(errorMsg: String?) {
+    errorMsg?.let {
+        Surface(
+            color = MiMoColors.Error.copy(alpha = 0.1f),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MiMoColors.Error,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(it, fontSize = 13.sp, color = MiMoColors.Error)
+            }
+        }
+    }
+}
+
+private fun Modifier.dashedBorder(color: Color, width: Dp, radius: Dp): Modifier = this.drawBehind {
+    val strokePx = width.toPx()
+    drawRoundRect(
+        color = color,
+        topLeft = Offset(strokePx / 2f, strokePx / 2f),
+        size = Size(size.width - strokePx, size.height - strokePx),
+        cornerRadius = CornerRadius((radius.toPx() - strokePx / 2f).coerceAtLeast(0f)),
+        style = Stroke(
+            width = strokePx,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f))
+        )
+    )
+}
+
+@Composable
+private fun DashedActionCard(
+    modifier: Modifier = Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    highlighted: Boolean,
+    onClick: () -> Unit
+) {
+    val border = if (highlighted) MiMoColors.Error else MaterialTheme.colorScheme.outline
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                if (highlighted) MiMoColors.Error.copy(alpha = 0.08f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            )
+            .dashedBorder(border, 1.dp, 14.dp)
+            .clickable(onClick = onClick)
+            .padding(vertical = 18.dp, horizontal = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            modifier = Modifier.size(22.dp),
+            tint = if (highlighted) MiMoColors.Error else MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            title,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            subtitle,
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun SynthesisResultPanel(
+    audioData: ByteArray?,
+    amps: List<Float>,
+    isPlaying: Boolean,
+    isGenerating: Boolean,
+    playProgress: Float,
+    generateEnabled: Boolean,
+    emptyHint: Boolean,
+    onGenerate: () -> Unit,
+    onTogglePlay: () -> Unit,
+    onSeek: (Float) -> Unit,
+    onSave: () -> Unit
+) {
+    val totalSec = audioData?.let { it.size / 2.0 / 24000.0 } ?: 0.0
+    val curSec = totalSec * playProgress
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "合成结果",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (audioData != null) {
+                    Text(
+                        "${audioData.size / 1024} KB",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (audioData == null && emptyHint) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        "还未生成语音",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        "输入播报文本，开启试听之旅吧",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Waveform: static dot grid while idle, amplitude bars with playhead otherwise
+            WaveformCanvas(
+                amps = amps,
+                hasAudio = audioData != null,
+                progress = playProgress,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(72.dp)
+            )
+
+            LinearProgressIndicator(
+                progress = { playProgress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f),
+                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
+                gapSize = 0.dp
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    formatMmSs(curSec),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    formatMmSs(totalSec),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = { onSeek(-10f) },
+                    enabled = audioData != null,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        Icons.Default.FastRewind,
+                        contentDescription = "后退",
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                FilledIconButton(
+                    onClick = onTogglePlay,
+                    enabled = audioData != null,
+                    modifier = Modifier.size(54.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                ) {
+                    Icon(
+                        if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "暂停" else "播放",
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                IconButton(
+                    onClick = { onSeek(10f) },
+                    enabled = audioData != null,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        Icons.Default.FastForward,
+                        contentDescription = "前进",
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = onGenerate,
+                    modifier = Modifier.weight(1f),
+                    enabled = generateEnabled && !isGenerating,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    if (isGenerating) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("生成中……")
+                    } else {
+                        Text("生成语音")
+                    }
+                }
+                OutlinedButton(
+                    onClick = onSave,
+                    enabled = audioData != null,
+                    modifier = Modifier.height(48.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Download,
+                        contentDescription = "下载",
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun WaveformCanvas(
+    amps: List<Float>,
+    hasAudio: Boolean,
+    progress: Float,
+    modifier: Modifier = Modifier
+) {
+    val idleDot = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f)
+    val playedBar = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+    val idleBar = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        if (!hasAudio) {
+            val cols = 42
+            val rows = 5
+            val dx = w / cols
+            val dy = h / rows
+            for (c in 0 until cols) {
+                for (r in 0 until rows) {
+                    drawCircle(
+                        color = idleDot,
+                        radius = 1.6f,
+                        center = Offset(dx * c + dx / 2f, dy * r + dy / 2f)
+                    )
+                }
+            }
+        } else if (amps.isNotEmpty()) {
+            val n = amps.size
+            val slot = w / n
+            val barW = (slot * 0.55f).coerceAtLeast(2f)
+            for (i in 0 until n) {
+                val barH = amps[i] * h * 0.82f
+                val x = slot * i + (slot - barW) / 2f
+                drawRoundRect(
+                    color = if (i.toFloat() / n <= progress) playedBar else idleBar,
+                    topLeft = Offset(x, (h - barH) / 2f),
+                    size = Size(barW, barH),
+                    cornerRadius = CornerRadius(barW / 2f)
+                )
+            }
+        }
+    }
+}
+
+// ── Audio helpers ───────────────────────────────────────────────
+
+private fun computeWaveformAmps(data: ByteArray, bars: Int = 48): List<Float> {
+    val samples = data.size / 2
+    if (samples <= 0) return emptyList()
+    return (0 until bars).map { i ->
+        val start = (i.toLong() * samples / bars).toInt()
+        val end = (((i + 1).toLong() * samples / bars).toInt()).coerceAtMost(samples)
+        var max = 0
+        var s = start
+        while (s < end) {
+            val lo = data[s * 2].toInt() and 0xFF
+            val hi = data[s * 2 + 1].toInt() shl 8
+            val v = (hi or lo).toShort().toInt()
+            val a = abs(v)
+            if (a > max) max = a
+            s += 2
+        }
+        (max / 32768f).coerceIn(0.06f, 1f)
+    }
+}
+
+private fun formatMmSs(seconds: Double): String {
+    val total = seconds.toInt().coerceAtLeast(0)
+    return String.format(Locale.US, "%02d:%02d", total / 60, total % 60)
 }
 
 private fun pcmToWav(pcmData: ByteArray, sampleRate: Int, channels: Int, bitsPerSample: Int): ByteArray {

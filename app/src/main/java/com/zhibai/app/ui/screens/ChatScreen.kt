@@ -1180,6 +1180,23 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                         .weight(1f)
                         .fillMaxWidth()
                 ) {
+                    // Fold consecutive process rows (思考/搜索/浏览/工具) into one
+                    // 「共用时 N 秒」group (MiMo official style); other messages solo.
+                    val groupedItems = remember(session?.messages) {
+                        val msgs = session?.messages ?: emptyList()
+                        val out = mutableListOf<List<com.zhibai.app.data.model.ChatMessage>>()
+                        var buf = mutableListOf<com.zhibai.app.data.model.ChatMessage>()
+                        for (m in msgs) {
+                            if (m.role == "step" || m.role == "tool" || m.role == "tool_group") {
+                                buf.add(m)
+                            } else {
+                                if (buf.isNotEmpty()) { out.add(buf.toList()); buf = mutableListOf() }
+                                out.add(listOf(m))
+                            }
+                        }
+                        if (buf.isNotEmpty()) out.add(buf.toList())
+                        out
+                    }
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
@@ -1206,12 +1223,12 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                         }
 
                         itemsIndexed(
-                            session?.messages ?: emptyList(),
-                            key = { _, msg -> msg.id }
-                        ) { _, message ->
+                            groupedItems,
+                            key = { _, group -> group.first().id }
+                        ) { _, group ->
                             val msgEasing = CubicBezierEasing(0.0f, 0.0f, 0.2f, 1f)
                             val entered = remember { mutableStateOf(false) }
-                            LaunchedEffect(message.id) { entered.value = true }
+                            LaunchedEffect(group.first().id) { entered.value = true }
                             val msgOffset by animateFloatAsState(
                                 targetValue = if (entered.value) 0f else 40f,
                                 animationSpec = tween(450, easing = msgEasing),
@@ -1228,6 +1245,16 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                     .offset(y = msgOffset.dp)
                                     .alpha(msgAlpha)
                             ) {
+                                val isProcessGroup = group.size > 1 ||
+                                    group.first().role in listOf("step", "tool", "tool_group")
+                                if (isProcessGroup) {
+                                    com.zhibai.app.ui.components.ProcessGroupCard(
+                                        messages = group,
+                                        fontSize = fontSize,
+                                        isDarkTheme = isDarkTheme
+                                    )
+                                } else {
+                                    val message = group.first()
                                 Column {
                                     MessageBubble(
                                         message = message,
@@ -1258,6 +1285,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                         onOpenFileCard = { path -> artifactViewFile = path },
                                         isSpeaking = isSpeaking
                                     )
+                                    }
                                 }
                             }
                         }
