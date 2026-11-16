@@ -280,6 +280,8 @@ private fun SettingsMainMenu(
     onPrefIslandExpandOnPhaseChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    var showLangDialog by remember { mutableStateOf(false) }
     Column(modifier = modifier.fillMaxSize()) {
         // API Key
         ListItem(
@@ -288,6 +290,16 @@ private fun SettingsMainMenu(
             leadingContent = { Icon(Icons.Default.Key, contentDescription = null) },
             trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
             modifier = Modifier.clickable { onNavigate(SettingsPage.API_KEY, "API Key") }
+        )
+        HorizontalDivider()
+
+        // Language
+        ListItem(
+            headlineContent = { Text("语言") },
+            supportingContent = { Text(com.zhibai.app.i18n.LangManager.languageName(com.zhibai.app.i18n.LangManager.currentCode)) },
+            leadingContent = { Icon(Icons.Default.Language, contentDescription = null) },
+            trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
+            modifier = Modifier.clickable { showLangDialog = true }
         )
         HorizontalDivider()
 
@@ -372,6 +384,49 @@ private fun SettingsMainMenu(
             modifier = Modifier.clickable { onNavigate(SettingsPage.ABOUT, "关于") }
         )
         HorizontalDivider()
+    }
+
+    if (showLangDialog) {
+        AlertDialog(
+            onDismissRequest = { showLangDialog = false },
+            title = { Text("语言") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    com.zhibai.app.i18n.LangManager.availableLocales().sorted().forEach { code ->
+                        val name = com.zhibai.app.i18n.LangManager.languageName(code)
+                        val selected = code == com.zhibai.app.i18n.LangManager.currentCode
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    com.zhibai.app.i18n.LangManager.switchTo(context, code)
+                                    showLangDialog = false
+                                }
+                                .padding(vertical = 10.dp)
+                        ) {
+                            Text(
+                                name,
+                                fontSize = 15.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (selected) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLangDialog = false }) { Text("取消") }
+            }
+        )
     }
 }
 
