@@ -19,17 +19,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.Android
+import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -41,6 +44,7 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -477,3 +481,95 @@ private fun FileReviewRow(path: String, fontSize: Int, isDarkTheme: Boolean) {
 }
 
 private fun String.firstLine(): String = lineSequence().firstOrNull()?.take(80) ?: ""
+
+/**
+ * File presentation card (role="file_card", show_file tool): type badge + icon +
+ * filename + relative time, tap opens the in-app viewer. Style matches 产物中心.
+ */
+@Composable
+fun FileCard(
+    message: ChatMessage,
+    fontSize: Int,
+    isDarkTheme: Boolean,
+    onOpen: (String) -> Unit = {}
+) {
+    val path = message.fileCardPath ?: return
+    val file = remember(path) { java.io.File(path) }
+    if (!file.exists()) return
+    val ext = file.extension.lowercase()
+    val (kindLabel, icon) = when (ext) {
+        "jpg", "jpeg", "png", "webp", "gif" -> "图片" to Icons.Default.Image
+        "mp4", "mkv", "webm", "3gp", "mov" -> "视频" to Icons.Default.VideoFile
+        "mp3", "wav", "ogg", "m4a", "aac", "flac" -> "音频" to Icons.Default.AudioFile
+        "html", "htm" -> "落地页" to Icons.Default.Public
+        "md", "txt", "pdf", "doc", "docx", "json", "kt", "java", "py", "js", "ts", "xml" -> "文本" to Icons.Default.Description
+        else -> "文件" to Icons.Default.Description
+    }
+    val textColor = if (isDarkTheme) MiMoColors.ThinkingTextDark else MiMoColors.ThinkingText
+    val bg = if (isDarkTheme) MiMoColors.ThinkingBgDark else MiMoColors.ThinkingBg
+    val relTime = remember(message.timestamp) {
+        val diff = System.currentTimeMillis() - message.timestamp
+        when {
+            diff < 60_000 -> "刚刚"
+            diff < 3_600_000 -> "${diff / 60_000} 分钟前"
+            diff < 86_400_000 -> "${diff / 3_600_000} 小时前"
+            else -> "${diff / 86_400_000} 天前"
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth(0.85f)
+            .padding(vertical = 2.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(bg)
+            .clickable { onOpen(path) }
+            .padding(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(textColor.copy(alpha = 0.12f))
+                    .padding(horizontal = 7.dp, vertical = 2.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(5.dp)
+                            .clip(CircleShape)
+                            .background(textColor.copy(alpha = 0.7f))
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(kindLabel, fontSize = 9.sp, color = textColor.copy(alpha = 0.8f))
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(40.dp),
+                tint = textColor.copy(alpha = 0.8f)
+            )
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            file.name,
+            fontSize = (fontSize - 2).sp,
+            fontWeight = FontWeight.SemiBold,
+            color = textColor,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            relTime,
+            fontSize = (fontSize - 6).sp,
+            color = textColor.copy(alpha = 0.55f)
+        )
+    }
+}

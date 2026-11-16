@@ -97,6 +97,7 @@ fun toolActionTitle(tool: String, args: Map<String, Any>): String {
         "open_app" -> "启动应用 ${arg("package").takeLast(30)}"
         "open_file" -> "打开文件 $name"
         "open_url" -> "打开网页 ${arg("url").substringAfter("://").take(40)}"
+        "show_file" -> "展示文件 $name"
         "list_apps" -> "列出已安装应用"
         "close_app" -> "停止应用 ${arg("package").takeLast(30)}"
         "install_apk" -> "安装 ${name}"

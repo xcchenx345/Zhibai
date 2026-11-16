@@ -910,6 +910,19 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
             }
         })
 
+        // show_file — present a generated file to the user as a file card in chat
+        tools.add(AgentTool(
+            name = "show_file",
+            description = "Show a file to the user as a preview card in the conversation. Use after creating or finding a file the user should see. Args: path",
+            riskLevel = 1, category = "file"
+        ) { args, _ ->
+            val path = args["path"] as? String ?: return@AgentTool "Error: no path"
+            val file = resolvePath(path)
+            if (!validatePath(file)) return@AgentTool "Error: access denied"
+            if (!file.exists()) return@AgentTool "Error: file not found: ${file.absolutePath}"
+            "SHOW_FILE:${file.absolutePath}"
+        })
+
         // set_alarm
         tools.add(AgentTool(
             name = "set_alarm", description = "Set an alarm. Args: hour (0-23), minute (0-59), label (optional)", riskLevel = 1, category = "device"

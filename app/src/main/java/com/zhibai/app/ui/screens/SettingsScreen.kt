@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.sp
 import com.zhibai.app.ui.theme.MiMoColors
 
 private enum class SettingsPage {
-    MAIN, API_KEY, VOICE, FONT_SIZE, AGENT, ABOUT, FORBIDDEN, TOOL_PERMISSIONS, INPUT_STYLE, PREFERENCES, WIRELESS_ADB, ISLAND, AUTOGLM, ARTIFACTS
+    MAIN, API_KEY, VOICE, FONT_SIZE, AGENT, ABOUT, FORBIDDEN, TOOL_PERMISSIONS, INPUT_STYLE, PREFERENCES, WIRELESS_ADB, ISLAND, AUTOGLM
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -199,10 +199,6 @@ fun SettingsScreen(
             SettingsPage.ABOUT -> AboutPage(
                 onNavigateToForbidden = { currentPage = SettingsPage.FORBIDDEN; pageTitle = "隐藏设置" },
                 modifier = Modifier.padding(paddingValues)
-            )
-            SettingsPage.ARTIFACTS -> ArtifactsScreen(
-                workspaceDir = workspaceDir,
-                onBack = { currentPage = SettingsPage.MAIN; pageTitle = "设置" }
             )
             SettingsPage.FORBIDDEN -> ForbiddenPage(
                 forceNewSession = forceNewSessionOnModelSwitch,

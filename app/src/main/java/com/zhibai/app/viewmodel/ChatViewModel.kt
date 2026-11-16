@@ -147,6 +147,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val PREF_MODEL_HABIT = stringPreferencesKey("pref_model_habit") // suffix habit, max 10 chars
     private val PREF_SCENARIO = stringPreferencesKey("pref_scenario") // "code" / "work" / "daily" / "study" / ""
     private val PREF_ISLAND_EXPAND_ON_PHASE = stringPreferencesKey("pref_island_expand_on_phase") // "true" = re-expand capsule on phase change
+    private val PREF_ENABLE_SEARCH = stringPreferencesKey("pref_enable_search") // "true" / "false"
     private val PREF_ISLAND_ENABLED = stringPreferencesKey("pref_island_enabled") // master switch
     private val PREF_ISLAND_STREAMING = stringPreferencesKey("pref_island_streaming") // multi-token scroll
     private val PREF_USER_AGE = stringPreferencesKey("pref_user_age") // int string; required
@@ -194,7 +195,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _thinkingLevel = MutableStateFlow(2)
     val thinkingLevel: StateFlow<Int> = _thinkingLevel.asStateFlow()
 
-    private val _enableSearch = MutableStateFlow(false)
+    private val _enableSearch = MutableStateFlow(true)
     val enableSearch: StateFlow<Boolean> = _enableSearch.asStateFlow()
 
     private val _showSettings = MutableStateFlow(false)
@@ -840,6 +841,7 @@ $convoText
                 prefs[PREF_AUTO_COMPRESS]?.let { _prefAutoCompress.value = it == "true" }
                 prefs[PREF_AUTO_COMPRESS_THRESHOLD]?.let { _prefAutoCompressThreshold.value = it.toIntOrNull() ?: 800000 }
                 prefs[PREF_AUTO_SAVE_IMAGES]?.let { _prefAutoSaveImages.value = it }
+                prefs[PREF_ENABLE_SEARCH]?.let { _enableSearch.value = it == "true" }
                 prefs[PREF_LONG_TERM_MEMORY]?.let { _prefLongTermMemory.value = it == "true" }
                 prefs[PREF_MEMORY_AUTO_WRITE]?.let { _prefMemoryAutoWrite.value = it == "true" }
                 prefs[PREF_MODEL_HABIT]?.let { _prefModelHabit.value = it }
@@ -1779,6 +1781,7 @@ AI：$assistantReply
 
     fun toggleSearch() {
         _enableSearch.value = !_enableSearch.value
+        viewModelScope.launch { context.dataStore.edit { it[PREF_ENABLE_SEARCH] = _enableSearch.value.toString() } }
     }
 
     fun toggleSettings() {
@@ -1814,6 +1817,7 @@ AI：$assistantReply
     fun createNewSession() {
         val session = ChatSession(model = _currentModel.value)
         _currentSession.value = session
+        agentTaskManager.bindConversation(session.id)
         AppLog.d("session new: ${session.id.take(8)} model=${session.model}")
         resetAgentPhase()
     }
@@ -1821,6 +1825,7 @@ AI：$assistantReply
     fun selectSession(sessionId: String) {
         val target = _sessions.value.find { it.id == sessionId } ?: return
         _currentSession.value = target
+        agentTaskManager.bindConversation(sessionId)
         AppLog.d("session select: ${sessionId.take(8)} msgs=${target.messages.size} model=${target.model}")
         // Restore this session's own model (each session keeps its selection)
         val sessionModel = target.model
@@ -1843,6 +1848,7 @@ AI：$assistantReply
         _sessions.value = _sessions.value.filter { it.id != sessionId }
         if (_currentSession.value?.id == sessionId) {
             _currentSession.value = _sessions.value.lastOrNull()
+            _currentSession.value?.let { agentTaskManager.bindConversation(it.id) }
         }
         saveSessions()
     }
@@ -1865,6 +1871,14 @@ AI：$assistantReply
         _showArchivePage.value = !_showArchivePage.value
     }
 
+    // ---- 产物中心 page ----
+    private val _showArtifactsPage = MutableStateFlow(false)
+    val showArtifactsPage: StateFlow<Boolean> = _showArtifactsPage.asStateFlow()
+
+    fun toggleArtifactsPage() {
+        _showArtifactsPage.value = !_showArtifactsPage.value
+    }
+
     fun restoreSessions(ids: Set<String>) {
         _sessions.value = _sessions.value.map { s ->
             if (s.id in ids) s.copy(archived = false, lastActiveAt = System.currentTimeMillis()) else s
@@ -1883,6 +1897,7 @@ AI：$assistantReply
         _sessions.value = _sessions.value.filter { it.id !in ids }
         if (_currentSession.value?.id in ids) {
             _currentSession.value = _sessions.value.lastOrNull()
+            _currentSession.value?.let { agentTaskManager.bindConversation(it.id) }
         }
         saveSessions()
     }
@@ -1971,7 +1986,7 @@ AI：$assistantReply
 
         // Edit text only — preserve imageUri / fileName so re-sent message keeps attachments
         val editedUserMsg = session.messages[msgIndex].copy(content = newText)
-        val assistantMsg = ChatMessage(role = "assistant", content = "", isStreaming = true)
+        val assistantMsg = ChatMessage(role = "assistant", content = "", isStreaming = true, flatProcess = true)
 
         val updatedMessages = messagesBefore + editedUserMsg + assistantMsg + messagesAfter
         updateSessionById(session.id) { s -> s.copy(messages = updatedMessages) }
@@ -2124,7 +2139,7 @@ AI：$assistantReply
         // Keep everything before the user message, then re-send
         val before = msgs.take(userIdx)
         val after = msgs.drop(assistantIdx + 1)
-        val streamingMsg = ChatMessage(role = "assistant", content = "", isStreaming = true)
+        val streamingMsg = ChatMessage(role = "assistant", content = "", isStreaming = true, flatProcess = true)
         updateSessionById(session.id) { s ->
             s.copy(messages = before + userMsg + streamingMsg + after)
         }
@@ -2253,7 +2268,7 @@ AI：$assistantReply
                     imageUri = persistedImages.joinToString("|").ifBlank { null },
                     fileName = fileName
                 )
-                val assistantMessage = ChatMessage(role = "assistant", content = "", isStreaming = true)
+                val assistantMessage = ChatMessage(role = "assistant", content = "", isStreaming = true, flatProcess = true)
                 val userMsgId = userMessage.id
                 updateSessionById(session.id) { s ->
                     s.copy(messages = s.messages + userMessage + assistantMessage)
@@ -2467,7 +2482,7 @@ AI：$assistantReply
             }
         }
         val maxRounds = 5
-        agentTaskManager.startSession()
+        agentTaskManager.startSession(session.id)
         // Tool-card ids must be unique across runs: leftover "stream-tc-1-0" cards
         // from the previous run collide with the next run's round-1 cards and the
         // LazyColumn crashes on duplicate keys.
@@ -2559,7 +2574,7 @@ AI：$assistantReply
             val id = java.util.UUID.randomUUID().toString()
             updateSessionById(session.id) { ss ->
                 ss.copy(messages = ss.messages + ChatMessage(
-                    id = id, role = "assistant", content = "", isStreaming = true
+                    id = id, role = "assistant", content = "", isStreaming = true, flatProcess = true
                 ))
             }
             return id
@@ -2671,6 +2686,15 @@ AI：$assistantReply
                                     reasoningContent = if (thinkOut.isNotBlank()) thinkOut else msgs[i].reasoningContent
                                 )
                             }
+                            // Live-fill the thinking step row so the reasoning is
+                            // readable while the answer streams (new unified style)
+                            val tid = thinkStepId
+                            if (tid != null && thinkOut.isNotBlank()) {
+                                val j = msgs.indexOfFirst { it.id == tid }
+                                if (j >= 0) {
+                                    msgs[j] = msgs[j].copy(reasoningContent = thinkOut)
+                                }
+                            }
                             s.copy(messages = msgs)
                         }
                         if (respOut.isNotBlank() && !narrationNotified) {
@@ -2687,7 +2711,12 @@ AI：$assistantReply
                     // User pressed stop — drop this round's pending cards; stopGeneration
                     // already finalized the placeholder.
                     updateSessionById(session.id) { s ->
-                        s.copy(messages = s.messages.filterNot { it.id.startsWith(cardTag) })
+                        s.copy(messages = s.messages
+                            .filterNot { it.id.startsWith(cardTag) }
+                            .map {
+                                if (it.id == thinkStepId) it.copy(content = "已深度思考", isStreaming = false)
+                                else it
+                            })
                     }
                     throw e
                 } catch (e: Exception) {
@@ -2696,14 +2725,12 @@ AI：$assistantReply
                 return failure
             }
 
-            if (searchOnly) {
-                thinkStepId = java.util.UUID.randomUUID().toString().also { id ->
-                    updateSessionById(session.id) { s ->
-                        s.copy(messages = s.messages + ChatMessage(
-                            id = id, role = "step", content = "正在思考", isStreaming = true
-                        ))
-                    }
-                }
+            // Unified thinking timeline (all modes): one step row per round, inserted
+            // ABOVE the answer placeholder, live-filled as reasoning streams.
+            thinkStepId = java.util.UUID.randomUUID().toString().also { id ->
+                insertStepBeforeAnswer(session.id, ChatMessage(
+                    id = id, role = "step", content = "正在思考", isStreaming = true
+                ))
             }
             var streamFailure = runStreamRound(activeApi)
             // A round that already produced content is a success — a tail error must
@@ -2720,7 +2747,8 @@ AI：$assistantReply
                 streamFailure = null
             }
             AppLog.d("agentFlow round $round streamed: chars=${streamBuf.length} think=${thinkOut.length} fail=${streamFailure?.message?.take(120)}")
-            if (searchOnly) {
+            // Finalize the thinking step row (all modes)
+            run {
                 val tid = thinkStepId
                 thinkStepId = null
                 if (tid != null) {
@@ -3096,6 +3124,17 @@ AI：$assistantReply
                         toolResult = "用户放弃授权（${permissionLabel(type)}），跳过此操作。"
                     }
                 }
+                // show_file → a file card message (renders as preview card in chat)
+                if (toolResult.startsWith("SHOW_FILE:")) {
+                    val fPath = toolResult.removePrefix("SHOW_FILE:")
+                    val cardId = java.util.UUID.randomUUID().toString()
+                    updateSessionById(session.id) { s ->
+                        s.copy(messages = s.messages + ChatMessage(
+                            id = cardId, role = "file_card", content = "", fileCardPath = fPath
+                        ))
+                    }
+                    toolResult = "已向用户展示文件卡片：$fPath"
+                }
                 // switch_phase result → flip the phase here (the engine has no
                 // access to _agentPhase). The card itself was already shown by
                 // the questionnaire flow inside the tool.
@@ -3143,12 +3182,10 @@ AI：$assistantReply
                     if (stepId == null) {
                         val id = java.util.UUID.randomUUID().toString()
                         if (tc.tool == "web_search") searchStepId = id else fetchStepId = id
-                        updateSessionById(session.id) { s ->
-                            s.copy(messages = s.messages + ChatMessage(
-                                id = id, role = "step", content = label,
-                                reasoningContent = displayResult
-                            ))
-                        }
+                        insertStepBeforeAnswer(session.id, ChatMessage(
+                            id = id, role = "step", content = label,
+                            reasoningContent = displayResult
+                        ))
                     } else {
                         updateSessionById(session.id) { s ->
                             s.copy(messages = s.messages.map {
@@ -3192,7 +3229,7 @@ AI：$assistantReply
             enableSearch = false
         )
 
-        val streamingMsg = ChatMessage(role = "assistant", content = "", isStreaming = true)
+        val streamingMsg = ChatMessage(role = "assistant", content = "", isStreaming = true, flatProcess = true)
         updateSessionById(session.id) { s ->
             // Collapse against the LIVE session inside the transform — capturing
             // `current` first and ignoring the fresh `s` wiped concurrent updates.
@@ -3257,8 +3294,12 @@ AI：$assistantReply
         // ALL tool steps first and narrations afterwards — out of order.)
         val toolIter = toolSteps.iterator()
         val mergedSteps = mutableListOf<Map<String, String>>()
+        // Step timeline rows (思考/搜索/浏览) are kept verbatim in order — the
+        // unified new style; only raw tool cards collapse into the group.
+        val keptSteps = mutableListOf<com.zhibai.app.data.model.ChatMessage>()
         for (m in runSeg) {
             when (m.role) {
+                "step", "file_card" -> keptSteps.add(m)
                 "tool" -> if (toolIter.hasNext()) mergedSteps.add(toolIter.next())
                 "assistant" -> if (!m.isStreaming && (m.content.isNotBlank() || m.reasoningContent.isNotBlank())) {
                     if (m.reasoningContent.isNotBlank()) {
@@ -3273,12 +3314,16 @@ AI：$assistantReply
         // Defensive: steps whose cards are missing from the segment (legacy formats)
         while (toolIter.hasNext()) mergedSteps.add(toolIter.next())
 
-        if (mergedSteps.isEmpty()) return beforeRun
-        val groupMsg = com.zhibai.app.data.model.ChatMessage(
-            role = "tool_group",
-            content = gson.toJson(mergedSteps)
-        )
-        return beforeRun + groupMsg
+        if (mergedSteps.isEmpty() && keptSteps.isEmpty()) return beforeRun
+        val tail = mutableListOf<com.zhibai.app.data.model.ChatMessage>()
+        if (keptSteps.isNotEmpty()) tail.addAll(keptSteps)
+        if (mergedSteps.isNotEmpty()) {
+            tail.add(com.zhibai.app.data.model.ChatMessage(
+                role = "tool_group",
+                content = gson.toJson(mergedSteps)
+            ))
+        }
+        return beforeRun + tail
     }
 
     private suspend fun streamResponse(
@@ -3298,6 +3343,9 @@ AI：$assistantReply
         var reasoningEndMs = 0L
         var highRiskRejected = false
         var highRiskFalsePositive = false
+        // Unified thinking timeline: one step row above the answer, live-filled
+        // (replaces the old in-bubble ProcessFlowCard for new messages).
+        var thinkStepId: String? = null
         // Island streaming: batch tokens and flush contentText on a throttle so the
         // capsule scrolls without re-expanding (same id + fixed setWhen).
         var islandStreamLive = false
@@ -3390,6 +3438,14 @@ AI：$assistantReply
                         if (chunk.reasoning.isNotBlank() && reasoningStartMs == 0L) {
                             reasoningStartMs = System.currentTimeMillis()
                         }
+                        // First reasoning token → open the thinking step row (above the answer)
+                        if (chunk.reasoning.isNotBlank() && thinkStepId == null) {
+                            thinkStepId = java.util.UUID.randomUUID().toString().also { id ->
+                                insertStepBeforeAnswer(sessionId, com.zhibai.app.data.model.ChatMessage(
+                                    id = id, role = "step", content = "正在思考", isStreaming = true
+                                ))
+                            }
+                        }
                         if (chunk.content.isNotBlank() && reasoningStartMs != 0L && reasoningEndMs == 0L) {
                             reasoningEndMs = System.currentTimeMillis()
                         }
@@ -3459,6 +3515,12 @@ AI：$assistantReply
                                     annotations = if (allAnnotations.isNotEmpty()) allAnnotations.toList() else null
                                 )
                             }
+                            // Live-fill the thinking step row (unified new style)
+                            val tid = thinkStepId
+                            if (tid != null && fullReasoning.isNotBlank()) {
+                                val j = msgs.indexOfFirst { it.id == tid }
+                                if (j >= 0) msgs[j] = msgs[j].copy(reasoningContent = fullReasoning)
+                            }
                             s.copy(messages = msgs)
                         }
                     }
@@ -3520,8 +3582,22 @@ AI：$assistantReply
                                     annotations = anns,
                                     reasoningDurationMs = duration
                                 )
-                                s.copy(messages = msgs)
-                            } else s
+                            }
+                            // Close the thinking step row: 已深度思考, or drop if no reasoning
+                            val tid = thinkStepId
+                            if (tid != null) {
+                                if (fullReasoning.isNotBlank()) {
+                                    val j = msgs.indexOfFirst { it.id == tid }
+                                    if (j >= 0) msgs[j] = msgs[j].copy(
+                                        content = "已深度思考",
+                                        reasoningContent = fullReasoning,
+                                        isStreaming = false
+                                    )
+                                } else {
+                                    msgs.removeAll { it.id == tid }
+                                }
+                            }
+                            s.copy(messages = msgs)
                         }
                         recalcTokens()
                         // Rejected round (not a false positive): neither the reply NOR the
@@ -3567,7 +3643,13 @@ AI：$assistantReply
             if (current != null) {
                 updateSessionById(sessionId) { s ->
                     s.copy(messages = s.messages.map {
-                        if (it.isStreaming) it.copy(isStreaming = false, content = it.content.ifBlank { fullContent }, reasoningContent = it.reasoningContent.ifBlank { fullReasoning }) else it
+                        when {
+                            it.id == thinkStepId && fullReasoning.isNotBlank() ->
+                                it.copy(content = "已深度思考", reasoningContent = fullReasoning, isStreaming = false)
+                            it.id == thinkStepId -> it.copy(content = "已深度思考", isStreaming = false)
+                            it.isStreaming -> it.copy(isStreaming = false, content = it.content.ifBlank { fullContent }, reasoningContent = it.reasoningContent.ifBlank { fullReasoning })
+                            else -> it
+                        }
                     })
                 }
             }
@@ -3862,6 +3944,21 @@ AI：$assistantReply
         saveSessions()
     }
 
+    /**
+     * Insert a step timeline row ABOVE the streaming answer placeholder.
+     * Appending (`messages + row`) put cards below the answer bubble; the design
+     * wants the thinking/search timeline above it.
+     */
+    private fun insertStepBeforeAnswer(sessionId: String, step: com.zhibai.app.data.model.ChatMessage) {
+        updateSessionById(sessionId) { s ->
+            if (s.messages.any { it.id == step.id }) return@updateSessionById s
+            val msgs = s.messages.toMutableList()
+            val phIdx = msgs.indexOfLast { it.isStreaming && it.role == "assistant" }
+            if (phIdx >= 0) msgs.add(phIdx, step) else msgs.add(step)
+            s.copy(messages = msgs)
+        }
+    }
+
     private fun getSystemPrompt(): String {
         val today = java.time.LocalDate.now()
         val dayOfWeek = today.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.ENGLISH)
@@ -3992,6 +4089,7 @@ ${phoneToolDoc}- read_file: {"path":"file path"}
 - list_apps: {}
 - open_file: {"path":"file path"} — open a file (image/doc/audio/video) with the system viewer
 - open_url: {"url":"https://..."} — open a web page in the default browser
+- show_file: {"path":"file path"} — show a file to the user as a preview card in the conversation (use after creating a file the user asked for)
 - request_permission: {"permission":"accessibility|overlay|storage|projection|notification|mic|calendar|alarm|location","reason":"why it is needed"}
   Use when you are blocked by a missing system permission or a tool reports NEED_PERMISSION. The user will be offered a jump to system Settings.
 - get_location: {} — Get GPS coordinates

@@ -23,70 +23,40 @@ data class CheckTask(
 }
 
 /**
- * Manages the agent checklist (T1–T999).
+ * Manages the agent checklist (T1–T999), scoped PER CHAT CONVERSATION — each
+ * conversation keeps its own list (the user opens it from that conversation's
+ * top-right menu), so switching chats never shows another chat's tasks.
  *
  * Success: all remaining tasks are DONE or CANCELLED, and at least one is DONE.
  * Failure: any task is struck (removed from list), or all are cancelled with none done.
  *
- * Tasks persist to [persistFile] (when provided) so an app restart no longer
- * wipes the checklist the user is looking at.
+ * Buckets persist to [persistFile] so an app restart no longer wipes the
+ * checklist the user is looking at.
  */
 class AgentTaskManager(private val persistFile: java.io.File? = null) {
+
+    private data class Bucket(
+        val tasks: List<CheckTask> = emptyList(),
+        val nextId: Int = 1,
+        val hasFailure: Boolean = false
+    )
+
+    /** chat session id → that conversation's checklist. */
+    private val buckets = java.util.concurrent.ConcurrentHashMap<String, Bucket>()
+    private var currentChatId: String = ""
+
     private val _tasks = MutableStateFlow<List<CheckTask>>(emptyList())
     val tasks: StateFlow<List<CheckTask>> = _tasks.asStateFlow()
 
     private val _isActive = MutableStateFlow(false)
     val isActive: StateFlow<Boolean> = _isActive.asStateFlow()
 
-    private var nextId = 1
-    private var hasFailure = false
+    private fun bucket(): Bucket = buckets[currentChatId] ?: Bucket()
 
-    private fun load() {
-        val f = persistFile ?: return
-        try {
-            if (!f.exists()) return
-            val root = com.google.gson.JsonParser.parseString(f.readText()).asJsonObject
-            nextId = root.get("nextId")?.asInt ?: 1
-            hasFailure = root.get("hasFailure")?.asBoolean ?: false
-            sessionId = root.get("sessionId")?.asInt ?: 0
-            val arr = root.getAsJsonArray("tasks") ?: return
-            _tasks.value = arr.mapNotNull { el ->
-                val o = el.asJsonObject
-                val id = o.get("id")?.asInt ?: return@mapNotNull null
-                val title = o.get("title")?.asString ?: return@mapNotNull null
-                val status = try {
-                    CheckTaskStatus.valueOf(o.get("status")?.asString ?: "PENDING")
-                } catch (_: Exception) { CheckTaskStatus.PENDING }
-                CheckTask(id = id, title = title, status = status)
-            }
-            AppLog.d("agentTasks loaded: ${_tasks.value.size} from ${f.name}")
-        } catch (e: Exception) {
-            AppLog.e("agentTasks load failed", e)
-        }
-    }
-
-    private fun persist() {
-        val f = persistFile ?: return
-        try {
-            val arr = com.google.gson.JsonArray().apply {
-                _tasks.value.forEach { t ->
-                    add(com.google.gson.JsonObject().apply {
-                        addProperty("id", t.id)
-                        addProperty("title", t.title)
-                        addProperty("status", t.status.name)
-                    })
-                }
-            }
-            val root = com.google.gson.JsonObject().apply {
-                addProperty("nextId", nextId)
-                addProperty("hasFailure", hasFailure)
-                addProperty("sessionId", sessionId)
-                add("tasks", arr)
-            }
-            f.writeText(root.toString())
-        } catch (e: Exception) {
-            AppLog.e("agentTasks persist failed", e)
-        }
+    private fun mutateBucket(transform: (Bucket) -> Bucket) {
+        buckets[currentChatId] = transform(bucket())
+        _tasks.value = bucket().tasks
+        persist()
     }
 
     /** Unique session ID — increments on each startSession(). Used to prevent duplicate celebrations. */
@@ -97,6 +67,76 @@ class AgentTaskManager(private val persistFile: java.io.File? = null) {
         // After sessionId's declaration — property initializers run in order,
         // so load() must not run before sessionId exists (it would get zeroed).
         load()
+    }
+
+    private fun load() {
+        val f = persistFile ?: return
+        try {
+            if (!f.exists()) return
+            val root = com.google.gson.JsonParser.parseString(f.readText()).asJsonObject
+            sessionId = root.get("sessionId")?.asInt ?: 0
+            val bucketsEl = root.get("buckets")?.takeIf { it.isJsonObject }?.asJsonObject
+            if (bucketsEl != null) {
+                for ((chatId, v) in bucketsEl.entrySet()) {
+                    val o = v.asJsonObject
+                    val arr = o.getAsJsonArray("tasks") ?: continue
+                    val tasks = arr.mapNotNull { el ->
+                        val t = el.asJsonObject
+                        val id = t.get("id")?.asInt ?: return@mapNotNull null
+                        val title = t.get("title")?.asString ?: return@mapNotNull null
+                        val status = try {
+                            CheckTaskStatus.valueOf(t.get("status")?.asString ?: "PENDING")
+                        } catch (_: Exception) { CheckTaskStatus.PENDING }
+                        CheckTask(id = id, title = title, status = status)
+                    }
+                    buckets[chatId] = Bucket(
+                        tasks = tasks,
+                        nextId = o.get("nextId")?.asInt ?: ((tasks.maxOfOrNull { it.id } ?: 0) + 1),
+                        hasFailure = o.get("hasFailure")?.asBoolean ?: false
+                    )
+                }
+            }
+            AppLog.d("agentTasks loaded: ${buckets.size} conversations from ${f.name}")
+        } catch (e: Exception) {
+            AppLog.e("agentTasks load failed", e)
+        }
+    }
+
+    private fun persist() {
+        val f = persistFile ?: return
+        try {
+            val bucketsEl = com.google.gson.JsonObject()
+            for ((chatId, b) in buckets) {
+                val arr = com.google.gson.JsonArray().apply {
+                    b.tasks.forEach { t ->
+                        add(com.google.gson.JsonObject().apply {
+                            addProperty("id", t.id)
+                            addProperty("title", t.title)
+                            addProperty("status", t.status.name)
+                        })
+                    }
+                }
+                bucketsEl.add(chatId, com.google.gson.JsonObject().apply {
+                    addProperty("nextId", b.nextId)
+                    addProperty("hasFailure", b.hasFailure)
+                    add("tasks", arr)
+                })
+            }
+            val root = com.google.gson.JsonObject().apply {
+                addProperty("sessionId", sessionId)
+                add("buckets", bucketsEl)
+            }
+            f.writeText(root.toString())
+        } catch (e: Exception) {
+            AppLog.e("agentTasks persist failed", e)
+        }
+    }
+
+    /** Point the checklist at a chat conversation (drawer / session switch). */
+    fun bindConversation(chatSessionId: String) {
+        if (currentChatId == chatSessionId) return
+        currentChatId = chatSessionId
+        _tasks.value = bucket().tasks
     }
 
     /** Last session whose finish celebration already played — survives leaving
@@ -132,40 +172,41 @@ class AgentTaskManager(private val persistFile: java.io.File? = null) {
         return allChecked
     }
 
-    fun startSession() {
+    /** A new agent run starts in [chatSessionId] — that conversation gets a fresh checklist. */
+    fun startSession(chatSessionId: String = currentChatId) {
+        currentChatId = chatSessionId
+        buckets[chatSessionId] = Bucket()
         _tasks.value = emptyList()
-        nextId = 1
-        hasFailure = false
         sessionId++
         _isActive.value = true
         persist()
-        AppLog.d("agentSession start: #$sessionId")
+        AppLog.d("agentSession start: #$sessionId chat=$chatSessionId")
     }
 
     fun addTask(title: String): CheckTask {
-        val task = CheckTask(id = nextId++, title = title)
-        _tasks.value = _tasks.value + task
-        persist()
+        val b = bucket()
+        val task = CheckTask(id = b.nextId, title = title)
+        mutateBucket { it.copy(tasks = it.tasks + task, nextId = it.nextId + 1) }
         return task
     }
 
     fun updateStatus(taskId: Int, status: CheckTaskStatus) {
-        _tasks.value = _tasks.value.map {
-            if (it.id == taskId) it.copy(status = status) else it
+        mutateBucket { b ->
+            b.copy(tasks = b.tasks.map { if (it.id == taskId) it.copy(status = status) else it })
         }
-        persist()
     }
 
     /** Mark a task as "划掉" — removed from list, counts as failure. */
     fun strikeTask(taskId: Int) {
-        hasFailure = true
-        _tasks.value = _tasks.value.filterNot { it.id == taskId }
-        persist()
+        mutateBucket { b ->
+            b.copy(tasks = b.tasks.filterNot { it.id == taskId }, hasFailure = true)
+        }
     }
 
     fun getSessionResult(): AgentSessionResult {
-        val taskList = _tasks.value
-        if (hasFailure) return AgentSessionResult.FAILED
+        val b = bucket()
+        val taskList = b.tasks
+        if (b.hasFailure) return AgentSessionResult.FAILED
         if (taskList.isEmpty()) return AgentSessionResult.NONE
         val allDoneOrCancelled = taskList.all {
             it.status == CheckTaskStatus.DONE || it.status == CheckTaskStatus.CANCELLED

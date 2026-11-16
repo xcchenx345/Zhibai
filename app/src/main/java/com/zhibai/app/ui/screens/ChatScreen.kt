@@ -144,6 +144,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
     val skillList by viewModel.skillList.collectAsState()
     val skillContent by viewModel.skillContent.collectAsState()
     val showArchivePage by viewModel.showArchivePage.collectAsState()
+    val showArtifactsPage by viewModel.showArtifactsPage.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
     var selectedFiles by remember { mutableStateOf<List<SelectedFile>>(emptyList()) }
@@ -641,6 +642,30 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
             )
 
+            // ---- 产物中心 ----
+            NavigationDrawerItem(
+                icon = {
+                    Icon(
+                        Icons.Default.FolderOpen,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                },
+                label = {
+                    Text(
+                        text = "产物中心",
+                        fontSize = 14.sp,
+                        maxLines = 1
+                    )
+                },
+                selected = false,
+                onClick = {
+                    viewModel.toggleArtifactsPage()
+                    coroutineScope.launch { drawerState.close() }
+                },
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
             // ---- Search ----
@@ -676,24 +701,6 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                 shape = RoundedCornerShape(12.dp),
                 textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
             )
-
-            // ---- 工作清单 panel (中间产物 / 产物 / 参考 / 任务) ----
-            run {
-                val workTasks by viewModel.agentTaskManager.tasks.collectAsState()
-                com.zhibai.app.ui.components.WorkPanel(
-                    artifacts = session?.artifacts ?: com.zhibai.app.data.model.SessionArtifacts(),
-                    messages = session?.messages ?: emptyList(),
-                    tasks = workTasks,
-                    onOpenFile = { path ->
-                        artifactViewFile = path
-                        coroutineScope.launch { drawerState.close() }
-                    },
-                    onOpenUrl = { url ->
-                        pendingLeaveUrl = url
-                        coroutineScope.launch { drawerState.close() }
-                    }
-                )
-            }
 
             // ---- Section label: 对话列表 ----
             Row(
@@ -1179,7 +1186,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                         contentPadding = PaddingValues(
                             start = 16.dp,
                             // Clear floating menu / title chrome at the top
-                            top = if (showChrome) 72.dp else 56.dp,
+                            top = if (showChrome) 84.dp else 68.dp,
                             end = 16.dp,
                             bottom = if (inputAreaHeightPx > 0) inputBottomPadding else 200.dp
                         ),
@@ -1248,6 +1255,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                         onUndoFileChanges = if (message.role == "tool_files") {
                                             { viewModel.undoFileChanges(message.id) }
                                         } else null,
+                                        onOpenFileCard = { path -> artifactViewFile = path },
                                         isSpeaking = isSpeaking
                                     )
                                 }
@@ -1306,23 +1314,25 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                         }
                     }
 
-                    // Agent task panel + snowflake indicator (above input bar)
+                    // 工作清单 panel (中间产物/产物/参考/任务) + snowflake indicator
                     val agentActive by viewModel.agentTaskManager.isActive.collectAsState()
+                    val workTasks by viewModel.agentTaskManager.tasks.collectAsState()
+                    if (showTaskPanel) {
+                        // Per-conversation checklist panel, opened from the top-right menu
+                        com.zhibai.app.ui.components.WorkPanel(
+                            artifacts = session?.artifacts ?: com.zhibai.app.data.model.SessionArtifacts(),
+                            messages = session?.messages ?: emptyList(),
+                            tasks = workTasks,
+                            onOpenFile = { path -> artifactViewFile = path },
+                            onOpenUrl = { url -> pendingLeaveUrl = url },
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 8.dp, start = 16.dp, end = 16.dp)
+                        )
+                    }
                     if (isAgent) {
-                        val agentTasks by viewModel.agentTaskManager.tasks.collectAsState()
-                        val agentResult = remember(agentTasks, agentActive) {
+                        val agentResult = remember(workTasks, agentActive) {
                             viewModel.agentTaskManager.getSessionResult()
-                        }
-                        // Task panel — toggleable via top bar button, persists across sessions
-                        if (showTaskPanel) {
-                            com.zhibai.app.ui.components.AgentTaskPanel(
-                                taskManager = viewModel.agentTaskManager,
-                                result = agentResult,
-                                isActive = agentActive,
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .padding(top = 8.dp, start = 16.dp, end = 16.dp)
-                            )
                         }
                         if (agentActive || isGenerating) {
                             com.zhibai.app.ui.components.AgentSnowflakeIndicator(
@@ -2526,20 +2536,21 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                             )
                                         }
                                     )
-                                    DropdownMenuItem(
-                                        text = { Text("工作清单") },
-                                        onClick = {
-                                            showTaskPanel = !showTaskPanel
-                                            topMenuOpen = false
-                                        },
-                                        leadingIcon = {
-                                            Icon(Icons.Default.Checklist, contentDescription = null)
-                                        },
-                                        trailingIcon = {
-                                            if (showTaskPanel) Icon(Icons.Default.Check, contentDescription = null)
-                                        }
-                                    )
                                 }
+                                // 工作清单 — per-conversation checklist + artifacts (all modes)
+                                DropdownMenuItem(
+                                    text = { Text("工作清单") },
+                                    onClick = {
+                                        showTaskPanel = !showTaskPanel
+                                        topMenuOpen = false
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Checklist, contentDescription = null)
+                                    },
+                                    trailingIcon = {
+                                        if (showTaskPanel) Icon(Icons.Default.Check, contentDescription = null)
+                                    }
+                                )
                                 if (showAutoRead) {
                                     DropdownMenuItem(
                                         text = { Text("自动朗读") },
@@ -2717,6 +2728,25 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
         )
     }
 
+    // 产物中心 full page (drawer entry)
+    AnimatedVisibility(
+        visible = showArtifactsPage,
+        enter = slideInHorizontally(
+            initialOffsetX = { it },
+            animationSpec = tween(380, easing = pageEasing)
+        ) + fadeIn(tween(380, easing = pageEasing)),
+        exit = slideOutHorizontally(
+            targetOffsetX = { it },
+            animationSpec = tween(320, easing = pageEasing)
+        ) + fadeOut(tween(320, easing = pageEasing))
+    ) {
+        ArtifactsScreen(
+            workspaceDir = viewModel.agentEngine?.workspaceDir ?: java.io.File(""),
+            sessions = sessions,
+            onBack = { viewModel.toggleArtifactsPage() }
+        )
+    }
+
     // 产物中心 viewer — opened from a drawer artifact row
     AnimatedVisibility(
         visible = artifactViewFile != null,
@@ -2731,6 +2761,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
     ) {
         ArtifactsScreen(
             workspaceDir = viewModel.agentEngine?.workspaceDir ?: java.io.File(""),
+            sessions = sessions,
             initialFile = artifactViewFile,
             onBack = { artifactViewFile = null }
         )

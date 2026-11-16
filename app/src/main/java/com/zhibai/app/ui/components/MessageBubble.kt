@@ -79,13 +79,15 @@ fun MessageBubble(
     onReadAloud: ((String) -> Unit)? = null,
     onRegenerate: (() -> Unit)? = null,
     isSpeaking: Boolean = false,
-    onUndoFileChanges: (() -> Unit)? = null
+    onUndoFileChanges: (() -> Unit)? = null,
+    onOpenFileCard: ((String) -> Unit)? = null
 ) {
     val isUser = message.role == "user"
     val isTool = message.role == "tool"
     val isToolGroup = message.role == "tool_group"
     val isStep = message.role == "step"
     val isFileChanges = message.role == "tool_files"
+    val isFileCard = message.role == "file_card"
     var showContextMenu by remember { mutableStateOf(false) }
     var showRawTextDialog by remember { mutableStateOf(false) }
     var groupExpanded by remember { mutableStateOf(false) }
@@ -226,6 +228,17 @@ fun MessageBubble(
                 }
             }
         }
+        return
+    }
+
+    // File presentation card (show_file tool)
+    if (isFileCard) {
+        FileCard(
+            message = message,
+            fontSize = fontSize,
+            isDarkTheme = isDarkTheme,
+            onOpen = { path -> onOpenFileCard?.invoke(path) }
+        )
         return
     }
 
@@ -623,7 +636,8 @@ private fun ProcessStepRow(
     fontSize: Int,
     isDarkTheme: Boolean
 ) {
-    var open by remember(message.id) { mutableStateOf(false) }
+    // Open while streaming so the thinking is readable live (not after the answer)
+    var open by remember(message.id) { mutableStateOf(message.isStreaming) }
     var detailFull by remember(message.id) { mutableStateOf(false) }
     val textColor = if (isDarkTheme) MiMoColors.ThinkingTextDark else MiMoColors.ThinkingText
     val secondaryColor = textColor.copy(alpha = 0.65f)

@@ -196,7 +196,7 @@ fun CodeBlock(
     // the block scrolls past. LazyColumn does not clip its items, so a zIndex +
     // translation paints the header over the messages above it.
     val density = LocalDensity.current
-    val stickyTopPx = with(density) { 104.dp.toPx() }
+    val stickyTopPx = with(density) { 116.dp.toPx() }
     var winY by remember { mutableFloatStateOf(0f) }
     var blockH by remember { mutableFloatStateOf(0f) }
     val stuck = collapsed && winY < stickyTopPx && winY + blockH > stickyTopPx

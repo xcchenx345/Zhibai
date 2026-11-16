@@ -205,7 +205,9 @@ data class ChatMessage(
     /** Real-time tool output accumulated while the tool runs. */
     val toolLive: String? = null,
     /** "running" | "ok" | "error" — null on legacy messages. */
-    val toolStatus: String? = null
+    val toolStatus: String? = null,
+    /** Path of a file the model chose to present — renders as a file card. */
+    val fileCardPath: String? = null
 )
 
 /** ChatSession gains the artifact trail; null on legacy sessions (gson Unsafe default). */
