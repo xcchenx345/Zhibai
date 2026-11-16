@@ -462,7 +462,10 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
     // delta in one transaction (no intermediate frame). ourScroll marks the whole
     // programmatic scroll so the intent watcher never treats it as a user scroll.
     suspend fun scrollChatToEnd() {
-        val size = session?.messages?.size ?: 0
+        // The list renders GROUPED items (fewer than raw messages) — always count
+        // the real item count, or scrollToItem lands out of range and the jump
+        // stutters the viewport (white flash on every auto-follow).
+        val size = listState.layoutInfo.totalItemsCount
         if (size <= 0) return
         // bottom contentPadding ≈ input height (200.dp fallback before first measure)
         val paddingPx = inputAreaHeightPx
@@ -1226,24 +1229,11 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                             groupedItems,
                             key = { _, group -> group.first().id }
                         ) { _, group ->
-                            val msgEasing = CubicBezierEasing(0.0f, 0.0f, 0.2f, 1f)
-                            val entered = remember { mutableStateOf(false) }
-                            LaunchedEffect(group.first().id) { entered.value = true }
-                            val msgOffset by animateFloatAsState(
-                                targetValue = if (entered.value) 0f else 40f,
-                                animationSpec = tween(450, easing = msgEasing),
-                                label = "msgSlide"
-                            )
-                            val msgAlpha by animateFloatAsState(
-                                targetValue = if (entered.value) 1f else 0f,
-                                animationSpec = tween(350, easing = msgEasing),
-                                label = "msgFade"
-                            )
+                            // No entrance animation: items remount whenever a group
+                            // key changes mid-stream, and the fade-in replayed as a
+                            // white flash on every auto-follow scroll.
                             Box(
-                                modifier = Modifier
-                                    .animateItem()
-                                    .offset(y = msgOffset.dp)
-                                    .alpha(msgAlpha)
+                                modifier = Modifier.animateItem()
                             ) {
                                 val isProcessGroup = group.size > 1 ||
                                     group.first().role in listOf("step", "tool", "tool_group")
