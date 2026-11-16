@@ -755,6 +755,29 @@ $convoText
     )
 
     private var streamingJob: Job? = null
+    /** Per-session run slots — the send/stop button and stopGeneration key off the
+     *  CURRENT session, so a new chat shows send (not a stale stop), stopping never
+     *  touches another conversation's run, and each chat generates independently. */
+    private val streamingJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
+    private val _generatingSessionIds = MutableStateFlow<Set<String>>(emptySet())
+    val generatingSessionIds: StateFlow<Set<String>> = _generatingSessionIds.asStateFlow()
+
+    /** Start-of-run bookkeeping (synchronous, before the job launches). */
+    private fun markGenerating(sessionId: String) {
+        _generatingSessionIds.value = _generatingSessionIds.value + sessionId
+        _isGenerating.value = true
+    }
+
+    /** End-of-run bookkeeping (finish/error/stop) for one session. */
+    private fun markIdle(sessionId: String) {
+        streamingJobs.remove(sessionId)
+        val rest = _generatingSessionIds.value - sessionId
+        _generatingSessionIds.value = rest
+        if (rest.isEmpty()) {
+            _isGenerating.value = false
+            streamingJob = null
+        }
+    }
     /** Model route change that arrived mid-generation; applied when the run ends. */
     private var pendingRouteModel: String? = null
     private var currentAudioTrack: android.media.AudioTrack? = null
@@ -1819,7 +1842,7 @@ AI：$assistantReply
 
     fun createNewSession() {
         val session = ChatSession(model = _currentModel.value)
-        _currentSession.value = session
+        synchronized(sessionLock) { _currentSession.value = session }
         agentTaskManager.bindConversation(session.id)
         AppLog.d("session new: ${session.id.take(8)} model=${session.model}")
         resetAgentPhase()
@@ -1827,7 +1850,7 @@ AI：$assistantReply
 
     fun selectSession(sessionId: String) {
         val target = _sessions.value.find { it.id == sessionId } ?: return
-        _currentSession.value = target
+        synchronized(sessionLock) { _currentSession.value = target }
         agentTaskManager.bindConversation(sessionId)
         AppLog.d("session select: ${sessionId.take(8)} msgs=${target.messages.size} model=${target.model}")
         // Restore this session's own model (each session keeps its selection)
@@ -1977,7 +2000,7 @@ AI：$assistantReply
     fun editAndResend(messageId: String, newText: String) {
         val session = _currentSession.value ?: return
         if (newText.isBlank()) return
-        if (_isGenerating.value) return
+        if (_generatingSessionIds.value.contains(session.id)) return
         AppLog.d("editAndResend: msg=${messageId.take(8)} len=${newText.length}")
 
         val msgIndex = session.messages.indexOfFirst { it.id == messageId }
@@ -1995,11 +2018,10 @@ AI：$assistantReply
         updateSessionById(session.id) { s -> s.copy(messages = updatedMessages) }
 
         // Now trigger the API call
-        streamingJob = viewModelScope.launch(Dispatchers.IO) {
+        markGenerating(session.id)
+        _error.value = null
+        val editJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                _isGenerating.value = true
-                _error.value = null
-
                 val apiMessages = mutableListOf<Message>(
                     Message(role = "system", content = getSystemPrompt())
                 )
@@ -2043,7 +2065,7 @@ AI：$assistantReply
                     while (true) {
                         kotlinx.coroutines.delay(10_000)
                         if (System.currentTimeMillis() - lastDataTime > 300_000) {
-                            _isGenerating.value = false
+                            markIdle(session.id)
                             updateSessionById(session.id) { s ->
                                 s.copy(messages = s.messages.map {
                                     if (it.isStreaming) it.copy(
@@ -2083,7 +2105,7 @@ AI：$assistantReply
                             }
                         }
                         is StreamChunk.Done -> {
-                            _isGenerating.value = false
+                            markIdle(session.id)
                             watchdogJob.cancel()
                             lastStreamCompleted = true
                             islandService.showAgentTaskComplete(
@@ -2121,16 +2143,17 @@ AI：$assistantReply
                     )
                 }
             } finally {
-                _isGenerating.value = false
+                markIdle(session.id)
                 flushPendingRoute()
             }
         }
+        streamingJobs[session.id] = editJob
     }
 
     /** Regenerate: drop the last assistant reply, re-send the preceding user message. */
     fun regenerate() {
         val session = _currentSession.value ?: return
-        if (_isGenerating.value) return
+        if (_generatingSessionIds.value.contains(session.id)) return
         AppLog.d("regenerate: session=${session.id.take(8)}")
         val msgs = session.messages
         // Find last assistant message that is not streaming
@@ -2147,10 +2170,10 @@ AI：$assistantReply
             s.copy(messages = before + userMsg + streamingMsg + after)
         }
 
-        streamingJob = viewModelScope.launch(Dispatchers.IO) {
+        markGenerating(session.id)
+        _error.value = null
+        val regenJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                _isGenerating.value = true
-                _error.value = null
                 val apiMessages = mutableListOf<Message>(
                     Message(role = "system", content = getSystemPrompt())
                 )
@@ -2193,18 +2216,19 @@ AI：$assistantReply
                     )
                 }
             } finally {
-                _isGenerating.value = false
+                markIdle(session.id)
                 flushPendingRoute()
             }
         }
+        streamingJobs[session.id] = regenJob
     }
 
     fun sendMessage(text: String, imageUris: List<Uri> = emptyList(), fileUri: Uri? = null, fileName: String? = null) {
         val session = _currentSession.value ?: return
         if (text.isBlank() && imageUris.isEmpty() && fileUri == null) return
-        // No overlapping generation jobs: _isGenerating is set synchronously below,
-        // before any suspension, so a second send can't start a parallel run.
-        if (_isGenerating.value) return
+        // Block only a duplicate send on the SAME conversation — other
+        // conversations may generate in parallel (each run owns its session).
+        if (_generatingSessionIds.value.contains(session.id)) return
         if (_isCompressing.value) {
             _error.value = "正在压缩会话，请稍候再发送"
             return
@@ -2248,10 +2272,10 @@ AI：$assistantReply
             _sessions.value = _sessions.value + session
             saveSessions()
         }
-        _isGenerating.value = true
+        markGenerating(session.id)
         _error.value = null
         lastStreamCompleted = false
-        streamingJob = viewModelScope.launch(Dispatchers.IO) {
+        val sendJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 // Persist picker URIs first — content:// dies after process kill.
                 val persistedImages = imageUris.mapNotNull { persistImage(it) }
@@ -2366,7 +2390,7 @@ AI：$assistantReply
                     )
                 }
             } finally {
-                _isGenerating.value = false
+                markIdle(session.id)
                 // Always close the agent session: early returns inside executeAgentFlow
                 // (final structured answer, parse fallbacks) and thrown/cancelled runs
                 // skip its endSession call, which left the snowflake indicator stuck.
@@ -2380,6 +2404,8 @@ AI：$assistantReply
                 flushPendingRoute()
             }
         }
+        streamingJobs[session.id] = sendJob
+        streamingJob = sendJob
     }
 
     private suspend fun executeNormalFlow(
@@ -3527,7 +3553,7 @@ AI：$assistantReply
             while (true) {
                 kotlinx.coroutines.delay(10_000)
                 if (System.currentTimeMillis() - lastDataTime > 90_000) {
-                    _isGenerating.value = false
+                    markIdle(sessionId)
                     if (trackSpeed) {
                         val prev = _speedStats.value
                         if (prev != null) _speedStats.value = prev.copy(finished = true, currentTotal = 0f, currentThink = 0f, currentAnswer = 0f)
@@ -3649,7 +3675,7 @@ AI：$assistantReply
                         }
                     }
                     is StreamChunk.Done -> {
-                        _isGenerating.value = false
+                        markIdle(sessionId)
                         watchdogJob.cancel()
                         lastStreamCompleted = true
                         AppLog.d("streamResponse done: content=${fullContent.length} think=${fullReasoning.length} anns=${allAnnotations.size}")
@@ -3828,14 +3854,16 @@ AI：$assistantReply
     }
 
     fun stopGeneration() {
-        AppLog.d("stopGeneration")
-        streamingJob?.cancel()
-        _isGenerating.value = false
+        val current = _currentSession.value ?: return
+        AppLog.d("stopGeneration session=${current.id.take(8)}")
+        // Stop ONLY the current conversation's run — pressing stop in another
+        // chat used to kill a different session's job and strand it mid-stream.
+        streamingJobs[current.id]?.cancel()
+        markIdle(current.id)
         _error.value = null
         _pendingToolCall.value = null
         _pendingQuestionnaire.value = null
         islandService.cancelNotification()
-        val current = _currentSession.value ?: return
         updateSessionById(current.id) { s ->
             s.copy(messages = s.messages.map {
                 if (it.isStreaming) it.copy(isStreaming = false) else it
@@ -4067,10 +4095,14 @@ AI：$assistantReply
             // chat list sorts by most recent conversation instead of creation order.
             val u = transform(target).copy(lastActiveAt = System.currentTimeMillis())
             _sessions.value = _sessions.value.map { if (it.id == sessionId) u else it }
+            // Check AND assign atomically: outside the lock, a session switch could
+            // land between the id check and the write, and the OLD session's state
+            // would overwrite the NEW current session (conversations bleeding into
+            // each other — 原对话内容直接出现在新对话).
+            if (_currentSession.value?.id == sessionId) {
+                _currentSession.value = u
+            }
             u
-        }
-        if (_currentSession.value?.id == sessionId) {
-            _currentSession.value = updated
         }
         saveSessions()
     }

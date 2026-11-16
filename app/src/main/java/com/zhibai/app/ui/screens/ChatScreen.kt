@@ -116,6 +116,10 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
     val session by viewModel.currentSession.collectAsState()
     val sessions by viewModel.sessions.collectAsState()
     val isGenerating by viewModel.isGenerating.collectAsState()
+    // Per-session generation state — the send/stop button reflects ONLY the
+    // current conversation (a new chat shows send, not a stale stop button).
+    val generatingIds by viewModel.generatingSessionIds.collectAsState()
+    val isThisChatGenerating = generatingIds.contains(session?.id)
     val error by viewModel.error.collectAsState()
     val currentModel by viewModel.currentModel.collectAsState()
     val enableThinking by viewModel.enableThinking.collectAsState()
@@ -498,7 +502,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
         session?.messages?.size,
         session?.messages?.lastOrNull()?.content?.length,
         session?.messages?.lastOrNull()?.reasoningContent?.length,
-        isGenerating,
+        isThisChatGenerating,
         followEnabled
     ) {
         if ((session?.messages?.size ?: 0) > 0 && followEnabled && !listState.isScrollInProgress) {
@@ -806,7 +810,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
             LazyColumn(modifier = Modifier.weight(1f)) {
                 items(filteredSessionsWithSnippets) { (sess, matchSnippet) ->
                     val isSelected = sess.id == session?.id
-                    val isThisGenerating = isGenerating && isSelected
+                    val isThisGenerating = generatingIds.contains(sess.id)
                     val isBatchChecked = sess.id in batchSelectedIds
                     var showMenu by remember { mutableStateOf(false) }
                     var showRename by remember { mutableStateOf(false) }
@@ -1354,7 +1358,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                         val agentResult = remember(workTasks, agentActive) {
                             viewModel.agentTaskManager.getSessionResult()
                         }
-                        if (agentActive || isGenerating) {
+                        if (agentActive || isThisChatGenerating) {
                             com.zhibai.app.ui.components.AgentSnowflakeIndicator(
                                 result = agentResult,
                                 isActive = true,
@@ -2041,7 +2045,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                     // Smooth bg color transitions on send → generating
                                     val btnBg by animateColorAsState(
                                         targetValue = when {
-                                            isGenerating -> stopBg
+                                            isThisChatGenerating -> stopBg
                                             canSend -> MaterialTheme.colorScheme.primary
                                             else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
                                         },
@@ -2049,7 +2053,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                     )
                                     val glyphColor by animateColorAsState(
                                         targetValue = when {
-                                            isGenerating -> stopFg
+                                            isThisChatGenerating -> stopFg
                                             canSend -> Color.White
                                             else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                         },
@@ -2058,8 +2062,8 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                     // Send: up-arrow flies out on tap, then stop square springs in
                                     var arrowFlyOut by remember { mutableStateOf(false) }
                                     var squareIn by remember { mutableStateOf(false) }
-                                    LaunchedEffect(isGenerating) {
-                                        if (isGenerating) {
+                                    LaunchedEffect(isThisChatGenerating) {
+                                        if (isThisChatGenerating) {
                                             delay(150)
                                             squareIn = true
                                         } else {
@@ -2095,7 +2099,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                                 indication = null
                                             ) {
                                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                if (isGenerating) {
+                                                if (isThisChatGenerating) {
                                                     viewModel.stopGeneration()
                                                 } else if (voicePhase == VoicePhase.Idle && canSend) {
                                                     arrowFlyOut = true
@@ -2318,7 +2322,9 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
             } // end Column
 
             // ===== Floating chrome (no real top bar) =====
-            // Solid block covers the button/title row entirely; gradient below fades content out.
+            // Solid block covers the button/title row entirely. The old fade
+            // gradient below it ALSO covered the 56-136dp content zone — it hid
+            // the pinned code-block header and the top of the 工作清单 panel.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2332,24 +2338,6 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                         .fillMaxWidth()
                         .height(56.dp)
                         .background(MaterialTheme.colorScheme.background)
-                )
-                // Fade below the buttons
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(80.dp)
-                        .align(Alignment.TopCenter)
-                        .padding(top = 56.dp)
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.background,
-                                    MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
-                                    MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
-                                    MaterialTheme.colorScheme.background.copy(alpha = 0f)
-                                )
-                            )
-                        )
                 )
             }
 
