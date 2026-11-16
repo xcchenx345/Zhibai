@@ -1604,6 +1604,18 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
             runSubagent(task, context, depth = 1)
         })
 
+        // spawn_subagent — named subagent; several spawned in ONE round run concurrently
+        tools.add(AgentTool(
+            name = "spawn_subagent",
+            description = "Spawn a NAMED subagent with its own mini tool loop for ONE independent subtask. Args: task (what to do), context (optional background), name (optional short subagent name). Multiple spawn_subagent calls in the same round run CONCURRENTLY. Returns the subagent's final answer. Subagents cannot spawn further subagents.",
+            riskLevel = 2, category = "task"
+        ) { args, _ ->
+            val task = args["task"] as? String ?: return@AgentTool "Error: no task"
+            val context = (args["context"] as? String)?.takeIf { it.isNotBlank() }
+            val name = (args["name"] as? String)?.takeIf { it.isNotBlank() }
+            runSubagent(task, context, depth = 1, name = name)
+        })
+
         // request_permission - ask the user to grant a system permission & jump to Settings
         tools.add(AgentTool(
             name = "request_permission",
@@ -1882,16 +1894,32 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
     }
 
     /**
-     * Mini tool loop for run_subagent: a fresh model round gets the subtask and the
-     * tool list, may call tools for up to [maxRounds] rounds, then answers in prose.
-     * Depth-capped so a subagent cannot spawn sub-subagents forever.
+     * Mini tool loop for run_subagent/spawn_subagent: a fresh model round gets the
+     * subtask and the tool list, may call tools for up to [maxRounds] rounds, then
+     * answers in prose. Depth-capped so a subagent cannot spawn sub-subagents.
+     * [name] labels the subagent in its prompt and live lines; [live] routes progress
+     * lines to one card (null → the engine-wide sink, i.e. the run_subagent card).
      */
-    private suspend fun runSubagent(task: String, context: String?, depth: Int): String {
+    private suspend fun runSubagent(
+        task: String,
+        context: String?,
+        depth: Int,
+        name: String? = null,
+        live: ((String) -> Unit)? = null
+    ): String {
         if (depth > 2) return "Error: subagent nesting too deep"
         val maxRounds = 4
+        val label = name?.takeIf { it.isNotBlank() } ?: "subagent"
+        fun emit(line: String) {
+            val tagged = "[$label] $line"
+            if (live != null) {
+                try { live(tagged) } catch (_: Exception) {}
+            } else emitOutput(tagged)
+        }
+        emit("开始子任务：${task.replace('\n', ' ').take(80)}")
         val apiMessages = mutableListOf<com.zhibai.app.data.model.Message>(
             com.zhibai.app.data.model.Message(role = "system", content = """
-You are a focused subagent of a phone assistant. Complete the EXACT subtask you are given.
+You are ${if (name.isNullOrBlank()) "a focused subagent" else "subagent \"$label\""} of a phone assistant. Complete the EXACT subtask you are given.
 Use tools when needed (reply with the tool_calls JSON schema), then answer with a concise
 final result in plain text — the parent agent will use it directly.
 
@@ -1904,6 +1932,7 @@ ${getToolsDescription()}
             })
         )
         for (round in 0 until maxRounds) {
+            emit("第 ${round + 1} 轮：请求模型…")
             val request = com.zhibai.app.data.model.ChatRequest(
                 model = "mimo-v2.6-flash",
                 messages = apiMessages,
@@ -1923,29 +1952,40 @@ ${getToolsDescription()}
             )
             val calls = parsed?.toolCalls.orEmpty()
             if (calls.isEmpty()) {
-                return (parsed?.response ?: raw).ifBlank { "Error: subagent returned empty result" }
+                val answer = (parsed?.response ?: raw).ifBlank { "Error: subagent returned empty result" }
+                emit("完成：${answer.replace('\n', ' ').take(100)}")
+                return answer
             }
             val results = mutableListOf<String>()
             calls.forEach { tc ->
                 val tcArgs = tc.args ?: emptyMap<String, Any>()
-                if (tc.tool == "run_subagent") {
-                    results.add("[tool result: run_subagent]\nError: subagents cannot spawn subagents")
+                if (tc.tool == "run_subagent" || tc.tool == "spawn_subagent") {
+                    emit("拒绝 ${tc.tool}：子代理不能再派生子代理")
+                    results.add("[tool result: ${tc.tool}]\nError: subagents cannot spawn subagents")
                     return@forEach
                 }
+                emit("调用 ${tc.tool}")
                 val out = try {
                     executeTool(tc.tool, tcArgs, MODE_DEFAULT)
                 } catch (e: Exception) {
                     "Error: ${e.message}"
                 }
+                emit("${tc.tool} → ${out.replace('\n', ' ').take(120)}")
                 results.add("[tool result: ${tc.tool}]\n${out.take(4000)}")
             }
             apiMessages.add(com.zhibai.app.data.model.Message(role = "assistant", content = raw))
             apiMessages.add(com.zhibai.app.data.model.Message(role = "user", content = results.joinToString("\n\n")))
         }
+        emit("达到工具轮次上限")
         return "Error: subagent hit the tool-round limit before answering"
     }
 
-    suspend fun executeTool(toolName: String, args: Map<String, Any>, mode: Int): String {
+    /**
+     * Execute one tool under [mode] permission rules. [live] (optional) receives this
+     * call's progress lines directly — used by spawn_subagent so each concurrent
+     * subagent streams into its own card instead of the engine-wide sink.
+     */
+    suspend fun executeTool(toolName: String, args: Map<String, Any>, mode: Int, live: ((String) -> Unit)? = null): String {
         val tool = tools.find { it.name == toolName }
             ?: return "Error: unknown tool '$toolName'"
         if (!tool.enabled) {
@@ -1974,7 +2014,16 @@ ${getToolsDescription()}
         }
         return withContext(Dispatchers.IO) {
             try {
-                tool.execute(args, context)
+                if (toolName == "spawn_subagent" || toolName == "run_subagent") {
+                    // Direct dispatch so [live] can stream this subagent's progress
+                    // into its own card (tool.execute has no live-output parameter).
+                    val task = args["task"] as? String ?: return@withContext "Error: no task"
+                    val bg = (args["context"] as? String)?.takeIf { it.isNotBlank() }
+                    val name = (args["name"] as? String)?.takeIf { it.isNotBlank() }
+                    runSubagent(task, bg, depth = 1, name = name, live = live)
+                } else {
+                    tool.execute(args, context)
+                }
             } catch (e: Exception) {
                 "Error executing $toolName: ${e.message}"
             }

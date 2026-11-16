@@ -22,6 +22,9 @@ import com.zhibai.app.util.AppLog
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -2959,12 +2962,119 @@ AI：$assistantReply
             // assistant.tool_calls (our assistant turn is a plain JSON string), so
             // every tool round 400'd and killed the conversation.
             val roundToolResults = mutableListOf<String>()
+            // ---- spawn_subagent batch -----------------------------------------
+            // Every spawn_subagent call in this round gets its own card + live sink,
+            // and several run CONCURRENTLY (async) — the model can fan out independent
+            // subtasks in one tool_calls array. Results are keyed by the original
+            // index so the sequential loop below keeps them in call order.
+            // MODE_ASK_ALL serializes instead: executeTool shares one
+            // pendingConfirmation slot, so parallel approvals would strand the
+            // first continuation.
+            val spawnResults = java.util.concurrent.ConcurrentHashMap<Int, String>()
+            val spawnCalls = toolCalls.withIndex().filter {
+                it.value.tool == "spawn_subagent" && !searchOnly
+            }
+            if (spawnCalls.isNotEmpty()) {
+                suspend fun runSpawnCall(idx: Int, tc: com.zhibai.app.agent.StructuredToolCall) {
+                    val baseArgs = tc.args ?: emptyMap<String, Any>()
+                    val subName = (baseArgs["name"] as? String)?.trim()
+                        ?.takeIf { it.isNotBlank() } ?: "S${idx + 1}"
+                    val tcArgs = baseArgs + ("name" to subName)
+                    recordArtifact(tc.tool, tcArgs)
+                    val toolStartMs = System.currentTimeMillis()
+                    // Reuse the stream-detected "调用中" card when it exists (same as the
+                    // sequential path) so one tool call never renders two cards.
+                    val streamCardId = "${cardTag}$idx"
+                    val hasStreamCard = _sessions.value.find { it.id == session.id }
+                        ?.messages?.any { it.id == streamCardId } == true
+                    val runningMsgId = if (hasStreamCard) streamCardId
+                    else java.util.UUID.randomUUID().toString()
+                    val runTitle = com.zhibai.app.agent.toolActionTitle(tc.tool, tcArgs)
+                    val runIcon = com.zhibai.app.agent.toolIconKey(tc.tool)
+                    insertStepBeforeAnswer(session.id, ChatMessage(
+                        id = runningMsgId, role = "tool", content = "",
+                        toolTitle = runTitle, toolIcon = runIcon, toolStatus = "running", toolLive = ""
+                    ))
+                    updateSessionById(session.id) { s ->
+                        val msgs = s.messages.toMutableList()
+                        val i = msgs.indexOfFirst { it.id == runningMsgId }
+                        if (i >= 0) msgs[i] = msgs[i].copy(
+                            content = "", toolTitle = runTitle, toolIcon = runIcon, toolStatus = "running", toolLive = ""
+                        )
+                        s.copy(messages = msgs)
+                    }
+                    val liveBuf = StringBuilder()
+                    var lastLiveFlush = 0L
+                    val result = try {
+                        engine!!.executeTool(tc.tool, tcArgs, _agentPermissionMode.value) { line ->
+                            synchronized(liveBuf) { liveBuf.appendLine(line) }
+                            val now = System.currentTimeMillis()
+                            if (now - lastLiveFlush > 300) {
+                                lastLiveFlush = now
+                                val snapshot = synchronized(liveBuf) { liveBuf.toString() }.takeLast(2000)
+                                updateSessionById(session.id) { s ->
+                                    val msgs = s.messages.toMutableList()
+                                    val i = msgs.indexOfFirst { it.id == runningMsgId }
+                                    if (i >= 0) msgs[i] = msgs[i].copy(toolLive = snapshot)
+                                    s.copy(messages = msgs)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        "Error: ${e.message}"
+                    }
+                    AppLog.d("tool <- spawn_subagent[$subName] ${System.currentTimeMillis() - toolStartMs}ms: ${result.take(120).replace('\n', ' ')}")
+                    val finalStatus = if (result.startsWith("Error") || result.startsWith("DENIED")) "error" else "ok"
+                    updateSessionById(session.id) { s ->
+                        val msgs = s.messages.toMutableList()
+                        val i = msgs.indexOfFirst { it.id == runningMsgId }
+                        if (i >= 0) msgs[i] = msgs[i].copy(
+                            content = "[${tc.tool}] ${result.take(2000)}",
+                            toolStatus = finalStatus,
+                            toolLive = synchronized(liveBuf) { liveBuf.toString() }.takeLast(2000)
+                        )
+                        s.copy(messages = msgs)
+                    }
+                    spawnResults[idx] = result
+                }
+                _toolExecuting.value = true
+                try {
+                    if (spawnCalls.size > 1 &&
+                        _agentPermissionMode.value != com.zhibai.app.agent.AgentEngine.MODE_ASK_ALL
+                    ) {
+                        islandService.showAgentTaskNotification(
+                            taskTitle = "运行中",
+                            taskStatus = "并发执行 ${spawnCalls.size} 个子代理",
+                            progress = -1,
+                            phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_RUN
+                        )
+                        coroutineScope {
+                            spawnCalls.map { (idx, tc) ->
+                                async { runSpawnCall(idx, tc) }
+                            }.awaitAll()
+                        }
+                    } else {
+                        // Single spawn, or MODE_ASK_ALL (shared confirmation slot): serial.
+                        spawnCalls.forEach { (idx, tc) -> runSpawnCall(idx, tc) }
+                    }
+                } finally {
+                    _toolExecuting.value = false
+                }
+            }
             toolCalls.forEachIndexed { idx, tc ->
                 // gson fills data-class fields via Unsafe: a JSON object that omits
                 // "args" leaves this null even though Kotlin defaults it to emptyMap().
                 // Accessing it unguarded used to NPE the whole run right after the
                 // tool card appeared.
                 val tcArgs = tc.args ?: emptyMap<String, Any>()
+                // spawn_subagent already ran in the concurrent batch above (card +
+                // live output handled there) — only fold its result into the round.
+                if (spawnResults.containsKey(idx)) {
+                    val displayResult = spawnResults[idx] ?: ""
+                    toolSteps.add(mapOf("tool" to tc.tool, "result" to displayResult))
+                    roundToolResults.add("[tool result: ${tc.tool}]\n$displayResult")
+                    return@forEachIndexed
+                }
                 AppLog.d("tool -> ${tc.tool} args=${tcArgs.keys} searchOnly=$searchOnly")
                 recordArtifact(tc.tool, tcArgs)
                 val toolStartMs = System.currentTimeMillis()
@@ -4087,6 +4197,11 @@ ${phoneToolDoc}- read_file: {"path":"file path"}
 - open_file: {"path":"file path"} — open a file (image/doc/audio/video) with the system viewer
 - open_url: {"url":"https://..."} — open a web page in the default browser
 - show_file: {"path":"file path"} — show a file to the user as a preview card in the conversation (use after creating a file the user asked for)
+- spawn_subagent: {"task":"one independent, self-contained subtask","context":"optional background for the subagent","name":"optional short subagent name"}
+  Spawn a NAMED subagent with its own mini tool loop; it works the subtask and returns its final result as this tool's result.
+  Multiple spawn_subagent calls in the SAME reply run CONCURRENTLY (in parallel) — use this to fan out independent subtasks at once (e.g. research A and research B together). Give each a distinct name.
+  The subagent CANNOT spawn further subagents and only sees its own task + context. Keep every subtask self-contained.
+- run_subagent: {"task":"one independent subtask","context":"optional background"} — single unnamed subagent (same engine as spawn_subagent). Prefer spawn_subagent when spawning several at once.
 - request_permission: {"permission":"accessibility|overlay|storage|projection|notification|mic|calendar|alarm|location","reason":"why it is needed"}
   Use when you are blocked by a missing system permission or a tool reports NEED_PERMISSION. The user will be offered a jump to system Settings.
 - get_location: {} — Get GPS coordinates

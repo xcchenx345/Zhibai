@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AcUnit
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Build
@@ -82,6 +83,7 @@ private fun iconFor(key: String?): ImageVector = when (key) {
     "time" -> Icons.Default.Schedule
     "skill" -> Icons.Default.Build
     "task" -> Icons.Default.TaskAlt
+    "subagent" -> Icons.Default.AccountTree
     "phone" -> Icons.Default.Phone
     "security" -> Icons.Default.Lock
     "fun" -> Icons.Default.AcUnit

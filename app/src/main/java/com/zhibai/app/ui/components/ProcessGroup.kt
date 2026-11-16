@@ -23,6 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -207,6 +208,7 @@ private fun iconForToolKey(key: String?): ImageVector = when (key) {
     "web" -> Icons.Default.Public
     "search" -> Icons.Default.Search
     "time" -> Icons.Default.Description
+    "subagent" -> Icons.Default.AccountTree
     else -> Icons.Default.Description
 }
 

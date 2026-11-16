@@ -39,6 +39,7 @@ fun describeToolCall(tool: String, args: Map<String, Any>): String {
         "run_adb" -> "以 shell 权限执行命令「${arg("command")}」，影响面较大。"
         "request_permission" -> "请求「${arg("permission")}」系统权限。"
         "create_questionnaire" -> "向用户展示一张问卷并等待填写。"
+        "spawn_subagent", "run_subagent" -> "派生子代理执行「${arg("task").take(30)}」，完成后返回结果。"
         else -> "执行 $tool。"
     }
 }
@@ -66,6 +67,7 @@ fun toolIconKey(tool: String): String = when (tool) {
     "set_alarm", "set_timer", "get_alarms" -> "time"
     "read_skill", "list_skills" -> "skill"
     "add_task", "update_task", "strike_task", "create_questionnaire", "switch_phase" -> "task"
+    "spawn_subagent", "run_subagent" -> "subagent"
     "make_call", "search_contacts" -> "phone"
     "request_permission" -> "security"
     "let_it_snow" -> "fun"
@@ -141,6 +143,8 @@ fun toolActionTitle(tool: String, args: Map<String, Any>): String {
         "add_task" -> "添加任务"
         "update_task" -> "更新任务"
         "strike_task" -> "完成任务"
+        "spawn_subagent" -> "子代理 ${arg("name").ifBlank { arg("task").take(16) }}"
+        "run_subagent" -> "运行子代理 ${arg("task").take(16)}"
         "create_questionnaire" -> "创建问卷"
         "switch_phase" -> "切换阶段"
         "let_it_snow" -> "下雪"
