@@ -133,7 +133,7 @@ fun AgentTaskPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "任务清单",
+                "工作清单",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = scheme.onSurface

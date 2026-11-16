@@ -677,10 +677,13 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                 textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
             )
 
-            // ---- 产物中心 panel (中间产物 / 参考, task-list style accordion) ----
-            session?.artifacts?.let { arts ->
-                com.zhibai.app.ui.components.ArtifactsPanel(
-                    artifacts = arts,
+            // ---- 工作清单 panel (中间产物 / 产物 / 参考 / 任务) ----
+            run {
+                val workTasks by viewModel.agentTaskManager.tasks.collectAsState()
+                com.zhibai.app.ui.components.WorkPanel(
+                    artifacts = session?.artifacts ?: com.zhibai.app.data.model.SessionArtifacts(),
+                    messages = session?.messages ?: emptyList(),
+                    tasks = workTasks,
                     onOpenFile = { path ->
                         artifactViewFile = path
                         coroutineScope.launch { drawerState.close() }
@@ -2524,7 +2527,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                         }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("任务清单") },
+                                        text = { Text("工作清单") },
                                         onClick = {
                                             showTaskPanel = !showTaskPanel
                                             topMenuOpen = false

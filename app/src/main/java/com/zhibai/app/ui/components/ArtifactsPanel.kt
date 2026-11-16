@@ -24,10 +24,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -47,54 +50,69 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zhibai.app.agent.CheckTask
+import com.zhibai.app.agent.CheckTaskStatus
 import com.zhibai.app.data.model.ArtifactEntry
+import com.zhibai.app.data.model.ChatMessage
 import com.zhibai.app.data.model.SessionArtifacts
 
 /**
- * 产物中心 panel — same accordion language as the task checklist:
- *  产物 → 中间产物 (made, often unseen) with a 更多 expander,
- *  参考 → 联网搜索 (urls) + 项目文件 (read files).
- * Rows open the in-app viewer via [onOpenFile]; URLs via [onOpenUrl].
+ * 工作清单 panel (drawer, above the conversation list) — task-list accordion
+ * language, four groups:
+ *   中间产物 — files the agent made but never showed in chat,
+ *   产物 — files it made that WERE shown,
+ *   参考 — 联网搜索 urls + 项目文件 it read,
+ *   任务 — the agent checklist.
  */
 @Composable
-fun ArtifactsPanel(
+fun WorkPanel(
     artifacts: SessionArtifacts,
+    messages: List<ChatMessage>,
+    tasks: List<CheckTask>,
     onOpenFile: (String) -> Unit = {},
     onOpenUrl: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    if (artifacts.produced.isEmpty() && artifacts.referenced.isEmpty() && artifacts.searches.isEmpty()) return
-
-    val scheme = MaterialTheme.colorScheme
+    val producedAll = artifacts.produced
+    // 已在对话里展示过的 = 产物; 造出来但从没露过的 = 中间产物
+    val mentioned = remember(messages, producedAll) {
+        val blob = buildString {
+            messages.forEach { append(it.content).append('\n').append(it.reasoningContent) }
+        }
+        producedAll.filter { it.name.isNotBlank() && blob.contains(it.name) }
+    }
+    val shown = mentioned
+    val hidden = producedAll.filterNot { e -> shown.any { it.path == e.path } }
     val totalRefs = artifacts.referenced.size + artifacts.searches.size
 
+    // Always render — an empty panel is how the user found it missing above the list.
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        ArtifactSection(
-            title = "产物",
-            count = artifacts.produced.size,
-            items = artifacts.produced,
-            emptyHint = "暂无中间产物",
-            onOpenFile = onOpenFile,
-            onOpenUrl = onOpenUrl
+        // ---- 中间产物 ----
+        WorkSection(
+            title = "中间产物",
+            count = hidden.size,
+            emptyHint = "暂无"
         ) {
-            // Produced files: 中间产物 sub-group + name rows + 更多 expander
-            if (artifacts.produced.isNotEmpty()) {
-                SubGroupLabel("中间产物", artifacts.produced.size, Icons.Default.Description)
-            }
-            ProducedList(items = artifacts.produced, onOpenFile = onOpenFile)
+            FileRowList(items = hidden, onOpenFile = onOpenFile)
         }
-        ArtifactSection(
+        // ---- 产物 ----
+        WorkSection(
+            title = "产物",
+            count = mentioned.size,
+            emptyHint = "暂无"
+        ) {
+            FileRowList(items = mentioned, onOpenFile = onOpenFile)
+        }
+        // ---- 参考 ----
+        WorkSection(
             title = "参考",
             count = totalRefs,
-            items = artifacts.searches + artifacts.referenced,
-            emptyHint = "暂无参考",
-            onOpenFile = onOpenFile,
-            onOpenUrl = onOpenUrl
+            emptyHint = "暂无"
         ) {
             if (artifacts.searches.isNotEmpty()) {
                 SubGroupLabel("联网搜索", artifacts.searches.size, Icons.Default.Language)
@@ -119,17 +137,24 @@ fun ArtifactsPanel(
                 }
             }
         }
+        // ---- 任务 ----
+        WorkSection(
+            title = "任务",
+            count = tasks.size,
+            emptyHint = "暂无"
+        ) {
+            tasks.forEach { t ->
+                TaskRow(task = t)
+            }
+        }
     }
 }
 
 @Composable
-private fun ArtifactSection(
+private fun WorkSection(
     title: String,
     count: Int,
-    items: List<ArtifactEntry>,
     emptyHint: String,
-    onOpenFile: (String) -> Unit,
-    onOpenUrl: (String) -> Unit,
     content: @Composable () -> Unit
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -137,7 +162,7 @@ private fun ArtifactSection(
     val chevron by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
         animationSpec = tween(220),
-        label = "artifactChevron"
+        label = "workChevron"
     )
 
     Column(
@@ -194,7 +219,7 @@ private fun ArtifactSection(
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(1.dp)
             ) {
-                if (items.isEmpty()) {
+                if (count == 0) {
                     Text(
                         emptyHint,
                         fontSize = 11.sp,
@@ -209,9 +234,9 @@ private fun ArtifactSection(
     }
 }
 
-/** Produced list — first 8 rows, then a 更多 N expander (reference design). */
+/** File rows capped at 8 with a 更多 N expander (reference design). */
 @Composable
-private fun ProducedList(items: List<ArtifactEntry>, onOpenFile: (String) -> Unit) {
+private fun FileRowList(items: List<ArtifactEntry>, onOpenFile: (String) -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val visible = items.take(8)
     val hidden = items.drop(8)
@@ -258,6 +283,56 @@ private fun ProducedList(items: List<ArtifactEntry>, onOpenFile: (String) -> Uni
                     onClick = { onOpenFile(e.path) })
             }
         }
+    }
+}
+
+@Composable
+private fun TaskRow(task: CheckTask) {
+    val scheme = MaterialTheme.colorScheme
+    val done = task.status == CheckTaskStatus.DONE
+    val inProgress = task.status == CheckTaskStatus.IN_PROGRESS
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .then(
+                if (inProgress) Modifier.background(scheme.primary.copy(alpha = 0.06f))
+                else Modifier
+            )
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            when (task.status) {
+                CheckTaskStatus.DONE -> Icons.Default.CheckCircle
+                CheckTaskStatus.IN_PROGRESS -> Icons.Default.HourglassEmpty
+                else -> Icons.Default.RadioButtonUnchecked
+            },
+            contentDescription = task.status.name,
+            modifier = Modifier.size(13.dp),
+            tint = when (task.status) {
+                CheckTaskStatus.DONE -> scheme.primary
+                CheckTaskStatus.IN_PROGRESS -> scheme.primary.copy(alpha = 0.8f)
+                else -> scheme.onSurfaceVariant.copy(alpha = 0.55f)
+            }
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            task.label,
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+            color = scheme.onSurfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier.width(30.dp)
+        )
+        Text(
+            task.title,
+            fontSize = 12.sp,
+            color = if (done) scheme.onSurfaceVariant.copy(alpha = 0.55f) else scheme.onSurface,
+            textDecoration = if (done) TextDecoration.LineThrough else null,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 

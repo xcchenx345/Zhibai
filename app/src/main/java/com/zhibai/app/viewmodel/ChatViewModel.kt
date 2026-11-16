@@ -746,7 +746,9 @@ $convoText
     var agentEngine: com.zhibai.app.agent.AgentEngine? = null
         private set
 
-    val agentTaskManager = com.zhibai.app.agent.AgentTaskManager()
+    val agentTaskManager = com.zhibai.app.agent.AgentTaskManager(
+        java.io.File(context.filesDir, "agent_tasks.json")
+    )
 
     private var streamingJob: Job? = null
     /** Model route change that arrived mid-generation; applied when the run ends. */

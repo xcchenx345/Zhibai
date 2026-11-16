@@ -27,8 +27,11 @@ data class CheckTask(
  *
  * Success: all remaining tasks are DONE or CANCELLED, and at least one is DONE.
  * Failure: any task is struck (removed from list), or all are cancelled with none done.
+ *
+ * Tasks persist to [persistFile] (when provided) so an app restart no longer
+ * wipes the checklist the user is looking at.
  */
-class AgentTaskManager {
+class AgentTaskManager(private val persistFile: java.io.File? = null) {
     private val _tasks = MutableStateFlow<List<CheckTask>>(emptyList())
     val tasks: StateFlow<List<CheckTask>> = _tasks.asStateFlow()
 
@@ -38,9 +41,63 @@ class AgentTaskManager {
     private var nextId = 1
     private var hasFailure = false
 
+    private fun load() {
+        val f = persistFile ?: return
+        try {
+            if (!f.exists()) return
+            val root = com.google.gson.JsonParser.parseString(f.readText()).asJsonObject
+            nextId = root.get("nextId")?.asInt ?: 1
+            hasFailure = root.get("hasFailure")?.asBoolean ?: false
+            sessionId = root.get("sessionId")?.asInt ?: 0
+            val arr = root.getAsJsonArray("tasks") ?: return
+            _tasks.value = arr.mapNotNull { el ->
+                val o = el.asJsonObject
+                val id = o.get("id")?.asInt ?: return@mapNotNull null
+                val title = o.get("title")?.asString ?: return@mapNotNull null
+                val status = try {
+                    CheckTaskStatus.valueOf(o.get("status")?.asString ?: "PENDING")
+                } catch (_: Exception) { CheckTaskStatus.PENDING }
+                CheckTask(id = id, title = title, status = status)
+            }
+            AppLog.d("agentTasks loaded: ${_tasks.value.size} from ${f.name}")
+        } catch (e: Exception) {
+            AppLog.e("agentTasks load failed", e)
+        }
+    }
+
+    private fun persist() {
+        val f = persistFile ?: return
+        try {
+            val arr = com.google.gson.JsonArray().apply {
+                _tasks.value.forEach { t ->
+                    add(com.google.gson.JsonObject().apply {
+                        addProperty("id", t.id)
+                        addProperty("title", t.title)
+                        addProperty("status", t.status.name)
+                    })
+                }
+            }
+            val root = com.google.gson.JsonObject().apply {
+                addProperty("nextId", nextId)
+                addProperty("hasFailure", hasFailure)
+                addProperty("sessionId", sessionId)
+                add("tasks", arr)
+            }
+            f.writeText(root.toString())
+        } catch (e: Exception) {
+            AppLog.e("agentTasks persist failed", e)
+        }
+    }
+
     /** Unique session ID — increments on each startSession(). Used to prevent duplicate celebrations. */
     var sessionId: Int = 0
         private set
+
+    init {
+        // After sessionId's declaration — property initializers run in order,
+        // so load() must not run before sessionId exists (it would get zeroed).
+        load()
+    }
 
     /** Last session whose finish celebration already played — survives leaving
      *  the Agent screen, unlike a `remember` in composition (which reset to -1 on
@@ -81,12 +138,14 @@ class AgentTaskManager {
         hasFailure = false
         sessionId++
         _isActive.value = true
+        persist()
         AppLog.d("agentSession start: #$sessionId")
     }
 
     fun addTask(title: String): CheckTask {
         val task = CheckTask(id = nextId++, title = title)
         _tasks.value = _tasks.value + task
+        persist()
         return task
     }
 
@@ -94,12 +153,14 @@ class AgentTaskManager {
         _tasks.value = _tasks.value.map {
             if (it.id == taskId) it.copy(status = status) else it
         }
+        persist()
     }
 
     /** Mark a task as "划掉" — removed from list, counts as failure. */
     fun strikeTask(taskId: Int) {
         hasFailure = true
         _tasks.value = _tasks.value.filterNot { it.id == taskId }
+        persist()
     }
 
     fun getSessionResult(): AgentSessionResult {
