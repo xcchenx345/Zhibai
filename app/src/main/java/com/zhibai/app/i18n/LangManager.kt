@@ -64,7 +64,7 @@ object LangManager {
         } else if (savedSystem != nowTag) {
             // System language changed while the app was away — raise the prompt.
             p.edit().putString("last_system", nowTag).apply()
-            val target = normalize(nowTag)
+            val target = resolveAvailable(nowTag) ?: DEFAULT
             if (target != _current.value) {
                 _switchRequest.value = LangSwitchRequest(
                     fromCode = p.getString("app_lang", DEFAULT) ?: DEFAULT,
@@ -79,8 +79,7 @@ object LangManager {
         val start = if (saved != null) {
             saved
         } else {
-            val sys = normalize(nowTag)
-            if (sys in available) sys else DEFAULT
+            resolveAvailable(nowTag) ?: DEFAULT
         }
         applyLocale(context, start)
 
@@ -111,6 +110,22 @@ object LangManager {
         return NAMES[lang] ?: code.uppercase(Locale.ROOT)
     }
 
+    /** English language name — used in the system prompt's reply-language line. */
+    fun replyLanguageName(code: String = _current.value): String {
+        val lang = code.substringBefore('-')
+        return ENGLISH_NAMES[code] ?: ENGLISH_NAMES[lang] ?: "Chinese (Simplified)"
+    }
+
+    /** Resolve a system tag to an available locale: alias map first (tw/mo → hant),
+     *  then exact match, then same-language match (so en-GB finds the en pack). */
+    fun resolveAvailable(tag: String): String? {
+        val n = normalize(tag)
+        val aliased = TAG_ALIASES[n] ?: n
+        if (aliased in available) return aliased
+        val lang = aliased.substringBefore('-')
+        return available.firstOrNull { it.substringBefore('-') == lang }
+    }
+
     /** One-liner in the target language for the bilingual prompt. */
     fun promptLineIn(code: String): String {
         val name = languageName(code)
@@ -125,7 +140,7 @@ object LangManager {
         if (now == lastSystemTag) return
         lastSystemTag = now
         prefs?.edit()?.putString("last_system", now)?.apply()
-        val target = normalize(now)
+        val target = resolveAvailable(now) ?: DEFAULT
         if (target == _current.value) return
         _switchRequest.value = LangSwitchRequest(
             fromCode = _current.value,
@@ -181,20 +196,38 @@ object LangManager {
         }
     }
 
-    /** Native names for the languages a system switch may land on. */
+    /** Native names for the languages a system switch may land on.
+     *  One-China naming: Traditional Chinese is the script code zh-hant (plus the
+     *  zh-hk pack) — no region codes that split the country. */
     private val NAMES = mapOf(
-        "zh-cn" to "简体中文", "zh" to "中文", "zh-tw" to "繁體中文", "zh-hk" to "繁體中文",
+        "zh-cn" to "简体中文", "zh" to "中文", "zh-hant" to "繁體中文", "zh-hk" to "繁體中文（香港）",
         "en" to "English", "ja" to "日本語", "ko" to "한국어",
         "fr" to "Français", "de" to "Deutsch", "es" to "Español",
         "ru" to "Русский", "it" to "Italiano", "pt" to "Português",
         "th" to "ไทย", "vi" to "Tiếng Việt", "ar" to "العربية"
     )
 
+    /** English names for the model's "Reply in X" prompt line. */
+    private val ENGLISH_NAMES = mapOf(
+        "zh-cn" to "Chinese (Simplified)", "zh" to "Chinese",
+        "zh-hant" to "Chinese (Traditional)", "zh-hk" to "Chinese (Traditional, Hong Kong)",
+        "en" to "English", "ja" to "Japanese",
+        "ko" to "Korean", "fr" to "French", "de" to "German", "es" to "Spanish",
+        "ru" to "Russian", "it" to "Italian", "pt" to "Portuguese",
+        "th" to "Thai", "vi" to "Vietnamese", "ar" to "Arabic"
+    )
+
+    /** Device locale tags that must land on a pack despite the naming rule. */
+    private val TAG_ALIASES = mapOf(
+        "zh-tw" to "zh-hant", "zh-mo" to "zh-hant"
+    )
+
     /** The prompt sentence itself, spoken in the TARGET language (bilingual half). */
     private val PROMPTS = mapOf<String, (String) -> String>(
         "zh-cn" to { "系统语言已更改为 $it，是否切换 App 语言？" },
         "zh" to { "系統語言已更改為 $it，是否切換 App 語言？" },
-        "zh-tw" to { "系統語言已更改為 $it，是否切換 App 語言？" },
+        "zh-hant" to { "系統語言已更改為 $it，是否切換 App 語言？" },
+        "zh-hk" to { "系統語言已更改為 $it，是否切換 App 語言？" },
         "en" to { "The system language changed to $it. Switch the app language?" },
         "ja" to { "システム言語が $it に変わりました。アプリの言語を切り替えますか？" },
         "ko" to { "시스템 언어가 $it(으)로 변경되었습니다. 앱 언어를 전환할까요?" },

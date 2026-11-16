@@ -4132,6 +4132,8 @@ AI：$assistantReply
             append("You are $agentName, an AI assistant developed by Xiaomi. ")
             append("Today is date: $dayOfWeek, $month ${today.dayOfMonth} ${today.year}. ")
             append("Your knowledge cutoff date is July 2025.")
+            // Reply language follows the user's app language choice; style rules are fixed.
+            append(" Reply in ${com.zhibai.app.i18n.LangManager.replyLanguageName()}. No emojis. No asterisk actions.")
             // Always on (user directive): the hidden ForbiddenPage toggle no
             // longer gates this line — it is part of the base prompt.
             append(" $agentName tries to answer ambiguous queries as best as it can first, then asks for clarification if needed.")
