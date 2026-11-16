@@ -1318,7 +1318,9 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     val agentActive by viewModel.agentTaskManager.isActive.collectAsState()
                     val workTasks by viewModel.agentTaskManager.tasks.collectAsState()
                     if (showTaskPanel) {
-                        // Per-conversation checklist panel, opened from the top-right menu
+                        // Per-conversation checklist panel, opened from the top-right menu.
+                        // Top offset clears the chrome row (menu/title/capsule all live in
+                        // the 0-56dp opaque strip) — starting at 8dp buried it under them.
                         com.zhibai.app.ui.components.WorkPanel(
                             artifacts = session?.artifacts ?: com.zhibai.app.data.model.SessionArtifacts(),
                             messages = session?.messages ?: emptyList(),
@@ -1327,7 +1329,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                             onOpenUrl = { url -> pendingLeaveUrl = url },
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
-                                .padding(top = 8.dp, start = 16.dp, end = 16.dp)
+                                .padding(top = 60.dp, start = 16.dp, end = 16.dp)
                         )
                     }
                     if (isAgent) {
@@ -2193,8 +2195,11 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 4.dp),
-                        color = MiMoColors.Primary.copy(alpha = 0.08f),
-                        shape = RoundedCornerShape(12.dp)
+                        // Nearly opaque — the call details behind the card must not
+                        // bleed through the tinted translucent fill
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+                        shape = RoundedCornerShape(12.dp),
+                        shadowElevation = 2.dp
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3365,8 +3370,10 @@ private fun QuestionnaireCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
-        color = MiMoColors.Primary.copy(alpha = 0.06f),
-        shape = RoundedCornerShape(16.dp)
+        // Nearly opaque — questions must stay readable over the chat behind
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+        shape = RoundedCornerShape(16.dp),
+        shadowElevation = 2.dp
     ) {
         Column(
             modifier = Modifier

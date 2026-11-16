@@ -681,12 +681,23 @@ private fun ProcessStepRow(
         if (open && message.reasoningContent.isNotBlank()) {
             val detail = message.reasoningContent
             val detailLong = detail.length > 260 || detail.lineSequence().count() > 6
-            if (detailFull && detailLong) {
+            // While streaming the live text always uses the scroll box with
+            // auto-follow (表内自动下拉); after completion it falls back to the
+            // masked preview + 展开全部.
+            val showScrolled = detailLong && (detailFull || message.isStreaming)
+            if (showScrolled) {
+                val scrollState = rememberScrollState()
+                // 表内自动下拉: follow the growing reasoning tail while streaming
+                LaunchedEffect(detail.length, message.isStreaming) {
+                    if (message.isStreaming) {
+                        scrollState.scrollTo(scrollState.maxValue)
+                    }
+                }
                 Box(
                     modifier = Modifier
                         .padding(start = 22.dp, end = 8.dp)
                         .heightIn(max = 300.dp)
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(scrollState)
                 ) {
                     Text(
                         detail,

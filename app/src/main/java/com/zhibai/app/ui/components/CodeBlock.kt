@@ -195,8 +195,10 @@ fun CodeBlock(
     // 折叠贴顶: a collapsed block's header pins to the top of the chat area while
     // the block scrolls past. LazyColumn does not clip its items, so a zIndex +
     // translation paints the header over the messages above it.
+    // 60dp = flush under the chrome row (menu/title/capsule live in the opaque
+    // 0-56dp strip) — same content top line as the 工作清单 panel.
     val density = LocalDensity.current
-    val stickyTopPx = with(density) { 116.dp.toPx() }
+    val stickyTopPx = with(density) { 60.dp.toPx() }
     var winY by remember { mutableFloatStateOf(0f) }
     var blockH by remember { mutableFloatStateOf(0f) }
     val stuck = collapsed && winY < stickyTopPx && winY + blockH > stickyTopPx
