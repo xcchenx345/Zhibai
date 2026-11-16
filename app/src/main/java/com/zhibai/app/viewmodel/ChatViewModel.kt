@@ -2687,8 +2687,21 @@ AI：$assistantReply
                                 )
                             }
                             // Live-fill the thinking step row so the reasoning is
-                            // readable while the answer streams (new unified style)
-                            val tid = thinkStepId
+                            // readable while the answer streams (new unified style).
+                            // Created lazily on the first reasoning token inside this
+                            // same transform — never deleted afterwards (key churn
+                            // reshuffled the list).
+                            var tid = thinkStepId
+                            if (tid == null && thinkOut.isNotBlank()) {
+                                tid = java.util.UUID.randomUUID().toString()
+                                thinkStepId = tid
+                                val phIdx = msgs.indexOfLast { it.isStreaming && it.role == "assistant" }
+                                val row = ChatMessage(
+                                    id = tid, role = "step", content = "正在思考",
+                                    isStreaming = true, reasoningContent = thinkOut
+                                )
+                                if (phIdx >= 0) msgs.add(phIdx, row) else msgs.add(row)
+                            }
                             if (tid != null && thinkOut.isNotBlank()) {
                                 val j = msgs.indexOfFirst { it.id == tid }
                                 if (j >= 0) {
@@ -2725,13 +2738,11 @@ AI：$assistantReply
                 return failure
             }
 
-            // Unified thinking timeline (all modes): one step row per round, inserted
-            // ABOVE the answer placeholder, live-filled as reasoning streams.
-            thinkStepId = java.util.UUID.randomUUID().toString().also { id ->
-                insertStepBeforeAnswer(session.id, ChatMessage(
-                    id = id, role = "step", content = "正在思考", isStreaming = true
-                ))
-            }
+            // Unified thinking timeline (all modes): the step row is created LAZILY
+            // on the first reasoning token (in the chunk writeback below) — creating
+            // it upfront and deleting it when reasoning never came churned the
+            // group keys and reshuffled the card list mid-run.
+            thinkStepId = null
             var streamFailure = runStreamRound(activeApi)
             // A round that already produced content is a success — a tail error must
             // not trigger a re-stream over the finished answer. Only a truly empty
@@ -2975,15 +2986,16 @@ AI：$assistantReply
                 it.value.tool == "spawn_subagent" && !searchOnly
             }
             if (spawnCalls.isNotEmpty()) {
-                suspend fun runSpawnCall(idx: Int, tc: com.zhibai.app.agent.StructuredToolCall) {
+                // Phase 1 — create every spawn card SEQUENTIALLY in call order so the
+                // timeline matches the model's tool_calls array (concurrent insertion
+                // permuted the cards).
+                data class SpawnSlot(val idx: Int, val tc: com.zhibai.app.agent.StructuredToolCall, val msgId: String, val args: Map<String, Any>, val name: String)
+                val slots = spawnCalls.map { (idx, tc) ->
                     val baseArgs = tc.args ?: emptyMap<String, Any>()
                     val subName = (baseArgs["name"] as? String)?.trim()
                         ?.takeIf { it.isNotBlank() } ?: "S${idx + 1}"
                     val tcArgs = baseArgs + ("name" to subName)
                     recordArtifact(tc.tool, tcArgs)
-                    val toolStartMs = System.currentTimeMillis()
-                    // Reuse the stream-detected "调用中" card when it exists (same as the
-                    // sequential path) so one tool call never renders two cards.
                     val streamCardId = "${cardTag}$idx"
                     val hasStreamCard = _sessions.value.find { it.id == session.id }
                         ?.messages?.any { it.id == streamCardId } == true
@@ -3003,10 +3015,15 @@ AI：$assistantReply
                         )
                         s.copy(messages = msgs)
                     }
+                    SpawnSlot(idx, tc, runningMsgId, tcArgs, subName)
+                }
+                // Phase 2 — run them concurrently (each updates ONLY its own card).
+                suspend fun runSpawnCall(slot: SpawnSlot) {
+                    val toolStartMs = System.currentTimeMillis()
                     val liveBuf = StringBuilder()
                     var lastLiveFlush = 0L
                     val result = try {
-                        engine!!.executeTool(tc.tool, tcArgs, _agentPermissionMode.value) { line ->
+                        engine!!.executeTool(slot.tc.tool, slot.args, _agentPermissionMode.value) { line ->
                             synchronized(liveBuf) { liveBuf.appendLine(line) }
                             val now = System.currentTimeMillis()
                             if (now - lastLiveFlush > 300) {
@@ -3014,7 +3031,7 @@ AI：$assistantReply
                                 val snapshot = synchronized(liveBuf) { liveBuf.toString() }.takeLast(2000)
                                 updateSessionById(session.id) { s ->
                                     val msgs = s.messages.toMutableList()
-                                    val i = msgs.indexOfFirst { it.id == runningMsgId }
+                                    val i = msgs.indexOfFirst { it.id == slot.msgId }
                                     if (i >= 0) msgs[i] = msgs[i].copy(toolLive = snapshot)
                                     s.copy(messages = msgs)
                                 }
@@ -3023,39 +3040,39 @@ AI：$assistantReply
                     } catch (e: Exception) {
                         "Error: ${e.message}"
                     }
-                    AppLog.d("tool <- spawn_subagent[$subName] ${System.currentTimeMillis() - toolStartMs}ms: ${result.take(120).replace('\n', ' ')}")
+                    AppLog.d("tool <- spawn_subagent[${slot.name}] ${System.currentTimeMillis() - toolStartMs}ms: ${result.take(120).replace('\n', ' ')}")
                     val finalStatus = if (result.startsWith("Error") || result.startsWith("DENIED")) "error" else "ok"
                     updateSessionById(session.id) { s ->
                         val msgs = s.messages.toMutableList()
-                        val i = msgs.indexOfFirst { it.id == runningMsgId }
+                        val i = msgs.indexOfFirst { it.id == slot.msgId }
                         if (i >= 0) msgs[i] = msgs[i].copy(
-                            content = "[${tc.tool}] ${result.take(2000)}",
+                            content = "[${slot.tc.tool}] ${result.take(2000)}",
                             toolStatus = finalStatus,
                             toolLive = synchronized(liveBuf) { liveBuf.toString() }.takeLast(2000)
                         )
                         s.copy(messages = msgs)
                     }
-                    spawnResults[idx] = result
+                    spawnResults[slot.idx] = result
                 }
                 _toolExecuting.value = true
                 try {
-                    if (spawnCalls.size > 1 &&
+                    if (slots.size > 1 &&
                         _agentPermissionMode.value != com.zhibai.app.agent.AgentEngine.MODE_ASK_ALL
                     ) {
                         islandService.showAgentTaskNotification(
                             taskTitle = "运行中",
-                            taskStatus = "并发执行 ${spawnCalls.size} 个子代理",
+                            taskStatus = "并发执行 ${slots.size} 个子代理",
                             progress = -1,
                             phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_RUN
                         )
                         coroutineScope {
-                            spawnCalls.map { (idx, tc) ->
-                                async { runSpawnCall(idx, tc) }
+                            slots.map { slot ->
+                                async { runSpawnCall(slot) }
                             }.awaitAll()
                         }
                     } else {
                         // Single spawn, or MODE_ASK_ALL (shared confirmation slot): serial.
-                        spawnCalls.forEach { (idx, tc) -> runSpawnCall(idx, tc) }
+                        slots.forEach { slot -> runSpawnCall(slot) }
                     }
                 } finally {
                     _toolExecuting.value = false
@@ -4038,13 +4055,20 @@ AI：$assistantReply
         _isSpeaking.value = false
     }
 
+    /** Serializes session message mutations — concurrent subagent coroutines used
+     *  to race the read-modify-write in updateSessionById and lose/permute cards. */
+    private val sessionLock = Any()
+
     /** Update a session by ID without touching _currentSession (safe during streaming when user switches). */
     private fun updateSessionById(sessionId: String, transform: (ChatSession) -> ChatSession) {
-        val target = _sessions.value.find { it.id == sessionId } ?: return
-        // Any message mutation is conversation activity — refresh lastActiveAt so the
-        // chat list sorts by most recent conversation instead of creation order.
-        val updated = transform(target).copy(lastActiveAt = System.currentTimeMillis())
-        _sessions.value = _sessions.value.map { if (it.id == sessionId) updated else it }
+        val updated = synchronized(sessionLock) {
+            val target = _sessions.value.find { it.id == sessionId } ?: return
+            // Any message mutation is conversation activity — refresh lastActiveAt so the
+            // chat list sorts by most recent conversation instead of creation order.
+            val u = transform(target).copy(lastActiveAt = System.currentTimeMillis())
+            _sessions.value = _sessions.value.map { if (it.id == sessionId) u else it }
+            u
+        }
         if (_currentSession.value?.id == sessionId) {
             _currentSession.value = updated
         }

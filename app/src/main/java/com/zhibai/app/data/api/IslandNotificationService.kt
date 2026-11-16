@@ -213,6 +213,10 @@ class IslandNotificationService(private val context: Context) {
     private val notificationManager =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
+    /** Serializes notify/cancel — concurrent tool coroutines raced cancel+repost
+     *  and broke the capsule (blank island mid-run). */
+    private val notifyLock = Any()
+
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var completeRunnable: Runnable? = null
     private var channelReady = false
@@ -383,6 +387,26 @@ class IslandNotificationService(private val context: Context) {
         /** Heads-up + sound via the alert channel (需要授权 / 需要答题 / 回答完成). */
         alert: Boolean = false
     ) {
+        synchronized(notifyLock) {
+            showAgentTaskNotificationLocked(
+                taskTitle, taskStatus, progress, isIndeterminate, actions,
+                showConfirmActions, livePhase, phase, forceExpand, alert
+            )
+        }
+    }
+
+    private fun showAgentTaskNotificationLocked(
+        taskTitle: String,
+        taskStatus: String,
+        progress: Int,
+        isIndeterminate: Boolean,
+        actions: List<Pair<String, PendingIntent>>,
+        showConfirmActions: Boolean,
+        livePhase: Boolean,
+        phase: String,
+        forceExpand: Boolean,
+        alert: Boolean
+    ) {
         if (!enabled) {
             Log.d(TAG, "island disabled by user — skip notify")
             return
@@ -544,9 +568,11 @@ class IslandNotificationService(private val context: Context) {
     }
 
     fun cancelNotification() {
-        notificationManager.cancel(NOTIFICATION_ID)
-        notificationManager.cancel(NOTIFICATION_ID_ALERT)
-        lastPhase = null
-        liveStartWhen = 0L
+        synchronized(notifyLock) {
+            notificationManager.cancel(NOTIFICATION_ID)
+            notificationManager.cancel(NOTIFICATION_ID_ALERT)
+            lastPhase = null
+            liveStartWhen = 0L
+        }
     }
 }
