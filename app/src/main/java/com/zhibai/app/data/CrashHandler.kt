@@ -15,6 +15,10 @@ class CrashHandler(private val context: Context) : Thread.UncaughtExceptionHandl
     private val defaultHandler: Thread.UncaughtExceptionHandler? =
         Thread.getDefaultUncaughtExceptionHandler()
 
+    init {
+        BuildConfigCompat.init(context)
+    }
+
     companion object {
         private const val TAG = "CrashHandler"
         private const val FILE_NAME = "last_crash.log"
@@ -59,14 +63,22 @@ class CrashHandler(private val context: Context) : Thread.UncaughtExceptionHandl
     }
 }
 
-/** Minimal BuildConfig accessor — avoids R class dependency in non-UI code. */
+/** App version info, filled from PackageManager at crash-handler init (AGP 8
+ *  does not generate a BuildConfig class in this module, so reflection on it
+ *  silently reported "unknown (0)"). */
 object BuildConfigCompat {
-    val versionName: String get() = try {
-        val clazz = Class.forName("com.zhibai.app.BuildConfig")
-        clazz.getField("VERSION_NAME").get(null) as? String ?: "unknown"
-    } catch (_: Exception) { "unknown" }
-    val versionCode: Int get() = try {
-        val clazz = Class.forName("com.zhibai.app.BuildConfig")
-        clazz.getField("VERSION_CODE").get(null) as? Int ?: 0
-    } catch (_: Exception) { 0 }
+    @Volatile var versionName: String = "unknown"
+    @Volatile var versionCode: Int = 0
+
+    fun init(context: Context) {
+        try {
+            val pi = context.packageManager.getPackageInfo(context.packageName, 0)
+            versionName = pi.versionName ?: "unknown"
+            versionCode = if (android.os.Build.VERSION.SDK_INT >= 28) {
+                pi.longVersionCode.toInt()
+            } else {
+                @Suppress("DEPRECATION") pi.versionCode
+            }
+        } catch (_: Exception) { }
+    }
 }

@@ -4680,18 +4680,24 @@ sources inline as [reference:N]."""
                     .map { if (it.isStreaming) it.copy(isStreaming = false) else it }
                 )
             }
-            val json = gson.toJson(cleanSessions)
             val file = File(context.filesDir, "mimo_sessions.json")
             // Atomic replace: the old file stays intact if the write is interrupted.
             val tmp = File(context.filesDir, "mimo_sessions.json.tmp")
-            tmp.writeText(json)
+            // Stream the graph straight to disk: gson.toJson() materializes the whole
+            // JSON as one String and its backing array blew the 256MB heap.
+            val type = com.google.gson.reflect.TypeToken.getParameterized(List::class.java, ChatSession::class.java).type
+            java.io.OutputStreamWriter(java.io.FileOutputStream(tmp), Charsets.UTF_8).use { w ->
+                val jw = gson.newJsonWriter(w)
+                gson.toJson(cleanSessions, type, jw)
+                jw.flush()
+            }
             if (!tmp.renameTo(file)) {
-                file.writeText(json)
+                tmp.copyTo(file, overwrite = true)
                 tmp.delete()
             }
-            AppLog.d("sessions saved: ${cleanSessions.size} sessions ${json.length}B")
-            // Also write encrypted backup to external storage
-            com.zhibai.app.data.ChatBackupManager.backup(context, json)
+            AppLog.d("sessions saved: ${cleanSessions.size} sessions ${file.length()}B")
+            // Also write encrypted backup to external storage (streamed, same reason)
+            com.zhibai.app.data.ChatBackupManager.backupFile(context, file)
         } catch (e: Exception) {
             AppLog.e("sessions save FAILED", e)
         }
@@ -4700,9 +4706,9 @@ sources inline as [reference:N]."""
     private suspend fun loadSessions(): List<ChatSession>? {
         return try {
             val file = File(context.filesDir, "mimo_sessions.json")
-            val parseAndClean: (String) -> List<ChatSession>? = { json ->
+            val parseAndClean: (java.io.Reader) -> List<ChatSession>? = { reader ->
                 val type = com.google.gson.reflect.TypeToken.getParameterized(List::class.java, ChatSession::class.java).type
-                val sessions: List<ChatSession>? = gson.fromJson(json, type)
+                val sessions: List<ChatSession>? = gson.fromJson(reader, type)
                 sessions?.map { session ->
                     session.copy(messages = session.messages
                         .filterNot { it.isStreaming && it.content.isBlank() }
@@ -4712,12 +4718,11 @@ sources inline as [reference:N]."""
             }
 
             if (file.exists()) {
-                val json = file.readText()
-                if (json.isNotBlank()) {
+                if (file.length() > 0) {
                     // A torn/corrupt file must fall back to the backup instead of
                     // wiping history (the old code returned null and dropped it all).
-                    val parsed = try { parseAndClean(json) } catch (e: Exception) {
-                        AppLog.e("sessions file corrupt (${json.length}B), falling back to backup", e)
+                    val parsed = try { file.bufferedReader(Charsets.UTF_8).use { parseAndClean(it) } } catch (e: Exception) {
+                        AppLog.e("sessions file corrupt (${file.length()}B), falling back to backup", e)
                         null
                     }
                     val result = parsed ?: tryRestoreFromBackup(file, parseAndClean)
@@ -4732,7 +4737,7 @@ sources inline as [reference:N]."""
                 val prefs = context.dataStore.data.first()
                 val sessionsJson = prefs[SESSIONS_KEY]
                 if (!sessionsJson.isNullOrBlank()) {
-                    val sessions = parseAndClean(sessionsJson)
+                    val sessions = parseAndClean(java.io.StringReader(sessionsJson))
                     if (sessions != null) {
                         file.writeText(sessionsJson)
                         context.dataStore.edit { it.remove(SESSIONS_KEY) }
@@ -4748,10 +4753,10 @@ sources inline as [reference:N]."""
 
     private fun tryRestoreFromBackup(
         targetFile: File,
-        parse: (String) -> List<ChatSession>?
+        parse: (java.io.Reader) -> List<ChatSession>?
     ): List<ChatSession>? {
         val backupJson = com.zhibai.app.data.ChatBackupManager.restore(context) ?: return null
-        val sessions = parse(backupJson) ?: return null
+        val sessions = parse(java.io.StringReader(backupJson)) ?: return null
         // Write restored data to normal location
         try { targetFile.writeText(backupJson) } catch (_: Exception) { }
         return sessions
