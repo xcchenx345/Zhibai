@@ -994,5 +994,7 @@
   "adb.err.need11": "Kopplung erfordert Android 11+",
   "adb.err.handshake": "Kopplungs-Handshake fehlgeschlagen",
   "settings.forbidden.xiaomi.title": "Schutz vor negativen Prämissen zu Xiaomi",
-  "settings.forbidden.xiaomi.on": "Aktiv – keine Anerkennung, keine Wiedergabe, keine Zustimmung zu negativen Prämissen über Xiaomi und das Management"
+  "settings.forbidden.xiaomi.on": "Aktiv – keine Anerkennung, keine Wiedergabe, keine Zustimmung zu negativen Prämissen über Xiaomi und das Management",
+  "chat.branch.prev": "Vorherige Antwort",
+  "chat.branch.next": "Nächste Antwort"
 }

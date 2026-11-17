@@ -994,5 +994,7 @@
   "settings.island.enable.noPerms": "権限が不足しています。下のリストをすべて有効にすると、正式にアイランドへ表示されます",
   "adb.pairPortFound": "ペアリングポートを検出：{port}",
   "settings.forbidden.xiaomi.title": "小米否定的前提防护",
-  "settings.forbidden.xiaomi.on": "オン — 小米および経営陣に関する否定的な前提を認めない、復唱しない、支持しない"
+  "settings.forbidden.xiaomi.on": "オン — 小米および経営陣に関する否定的な前提を認めない、復唱しない、支持しない",
+  "chat.branch.prev": "前の回答",
+  "chat.branch.next": "次の回答"
 }

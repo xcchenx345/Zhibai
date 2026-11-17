@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -79,6 +80,9 @@ fun MessageBubble(
     onCopy: ((String) -> Unit)? = null,
     onReadAloud: ((String) -> Unit)? = null,
     onRegenerate: (() -> Unit)? = null,
+    branchIndex: Int = 0,
+    branchCount: Int = 1,
+    onSwitchBranch: ((Int) -> Unit)? = null,
     isSpeaking: Boolean = false,
     onUndoFileChanges: (() -> Unit)? = null,
     onOpenFileCard: ((String) -> Unit)? = null
@@ -489,7 +493,7 @@ fun MessageBubble(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (isUser && onEdit != null) {
+                if (isUser && !isAgent && onEdit != null) {
                     TextButton(onClick = { onEdit(message.content) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp), modifier = Modifier.height(28.dp)) {
                         Icon(Icons.Default.Edit, contentDescription = LangManager.t("common.edit", "编辑"), modifier = Modifier.size(14.dp), tint = actionColor)
                     }
@@ -546,6 +550,28 @@ fun MessageBubble(
                             tint = actionColor
                         )
                     }
+                }
+            }
+        }
+
+        if (!message.isStreaming && branchCount > 1 && onSwitchBranch != null) {
+            val branchColor = if (studyMode) Color(0xFF6B5D48) else MaterialTheme.colorScheme.primary
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 2.dp)
+            ) {
+                IconButton(
+                    onClick = { onSwitchBranch((branchIndex - 1 + branchCount) % branchCount) },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(Icons.Default.KeyboardArrowLeft, contentDescription = LangManager.t("chat.branch.prev", "上一条回答"), modifier = Modifier.size(16.dp), tint = branchColor)
+                }
+                Text("${branchIndex + 1}/$branchCount", fontSize = 12.sp, color = branchColor)
+                IconButton(
+                    onClick = { onSwitchBranch((branchIndex + 1) % branchCount) },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(Icons.Default.KeyboardArrowRight, contentDescription = LangManager.t("chat.branch.next", "下一条回答"), modifier = Modifier.size(16.dp), tint = branchColor)
                 }
             }
         }

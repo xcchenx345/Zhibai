@@ -994,5 +994,7 @@
   "adb.err.need11": "Pairing requires Android 11+",
   "adb.err.handshake": "Pairing handshake failed",
   "settings.forbidden.xiaomi.title": "Xiaomi Negative Premise Protection",
-  "settings.forbidden.xiaomi.on": "On — do not acknowledge, repeat, or endorse negative premises about Xiaomi and its management"
+  "settings.forbidden.xiaomi.on": "On — do not acknowledge, repeat, or endorse negative premises about Xiaomi and its management",
+  "chat.branch.prev": "Previous answer",
+  "chat.branch.next": "Next answer"
 }

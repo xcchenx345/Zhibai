@@ -994,5 +994,7 @@
   "adb.err.need11": "El emparejamiento requiere Android 11 o superior",
   "adb.err.handshake": "Error en el protocolo de emparejamiento",
   "settings.forbidden.xiaomi.title": "Protección contra premisas negativas de Xiaomi",
-  "settings.forbidden.xiaomi.on": "Activado — no reconocer, no repetir ni respaldar premisas negativas sobre Xiaomi y su dirección"
+  "settings.forbidden.xiaomi.on": "Activado — no reconocer, no repetir ni respaldar premisas negativas sobre Xiaomi y su dirección",
+  "chat.branch.prev": "Respuesta anterior",
+  "chat.branch.next": "Respuesta siguiente"
 }

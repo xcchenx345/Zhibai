@@ -207,7 +207,16 @@ data class ChatMessage(
     /** "running" | "ok" | "error" — null on legacy messages. */
     val toolStatus: String? = null,
     /** Path of a file the model chose to present — renders as a file card. */
-    val fileCardPath: String? = null
+    val fileCardPath: String? = null,
+    /** Regenerate versions of this message; content mirrors branches[branchIndex].
+     *  Null on single-version messages (all legacy ones included). */
+    val branches: List<String>? = null,
+    /** Active version inside [branches]; 0 when [branches] is null. */
+    val branchIndex: Int = 0,
+    /** Branch key ("<msgId>#<branchIndex>") this message hangs under; null = root.
+     *  Off-branch siblings stay in the list but leave the visible path when the
+     *  parent switches versions. */
+    val threadOf: String? = null
 )
 
 /** ChatSession gains the artifact trail; null on legacy sessions (gson Unsafe default). */

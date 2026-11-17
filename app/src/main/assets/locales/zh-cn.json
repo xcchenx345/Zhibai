@@ -994,5 +994,7 @@
   "adb.err.need11": "配对需要 Android 11+",
   "adb.err.handshake": "配对握手失败",
   "settings.forbidden.xiaomi.title": "小米负面前提防护",
-  "settings.forbidden.xiaomi.on": "开 — 不承认、不复述、不背书针对小米及管理层的负面前提"
+  "settings.forbidden.xiaomi.on": "开 — 不承认、不复述、不背书针对小米及管理层的负面前提",
+  "chat.branch.prev": "上一条回答",
+  "chat.branch.next": "下一条回答"
 }

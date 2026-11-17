@@ -2026,9 +2026,15 @@ AI：$assistantReply
 
         // Edit text only — preserve imageUri / fileName so re-sent message keeps attachments
         val editedUserMsg = session.messages[msgIndex].copy(content = newText)
-        val assistantMsg = ChatMessage(role = "assistant", content = "", isStreaming = true, flatProcess = true)
+        val assistantMsg = ChatMessage(role = "assistant", content = "", isStreaming = true, flatProcess = true,
+            threadOf = "${editedUserMsg.id}#${editedUserMsg.branchIndex}")
+        // Relink the kept tail under the new answer so it stays on the visible path.
+        var prevKey = "${assistantMsg.id}#${assistantMsg.branchIndex}"
+        val relinkedAfter = messagesAfter.map { m ->
+            m.copy(threadOf = prevKey).also { prevKey = "${it.id}#${it.branchIndex}" }
+        }
 
-        val updatedMessages = messagesBefore + editedUserMsg + assistantMsg + messagesAfter
+        val updatedMessages = messagesBefore + editedUserMsg + assistantMsg + relinkedAfter
         updateSessionById(session.id) { s -> s.copy(messages = updatedMessages) }
 
         // Now trigger the API call
@@ -2041,7 +2047,7 @@ AI：$assistantReply
                 )
 
                 // Add conversation history up to the edited message; re-attach image on the edited msg
-                val history = updatedMessages.filter { it.role == "user" || (it.role == "assistant" && it.content.isNotBlank()) }
+                val history = visibleMessages(updatedMessages).filter { it.role == "user" || (it.role == "assistant" && it.content.isNotBlank()) }
                 for (msg in history) {
                     if (msg.role == "user") {
                         val imgB64 = msg.imageUri?.let { uri ->
@@ -2164,37 +2170,94 @@ AI：$assistantReply
         streamingJobs[session.id] = editJob
     }
 
-    /** Regenerate: drop the last assistant reply, re-send the preceding user message. */
-    fun regenerate() {
+    /** Branch identity of a message: its id plus the active version. */
+    private fun branchKey(m: ChatMessage): String = "${m.id}#${m.branchIndex}"
+
+    /** The thread along the currently selected branches: root messages plus, under
+     *  each, the children hanging off its active branch key. Off-branch subtrees stay
+     *  in the session (they return when their branch is re-selected) but drop out of
+     *  here - and therefore out of the request context and the visible timeline. */
+    fun visibleMessages(messages: List<ChatMessage>): List<ChatMessage> {
+        if (messages.all { it.threadOf == null }) return messages
+        val children = HashMap<String, MutableList<ChatMessage>>()
+        for (m in messages) {
+            val t = m.threadOf ?: continue
+            children.getOrPut(t) { mutableListOf() }.add(m)
+        }
+        val visibleIds = LinkedHashSet<String>()
+        val root = messages.filter { it.threadOf == null }
+        root.forEach { visibleIds.add(it.id) }
+        var cur = root.lastOrNull()
+        while (cur != null) {
+            val kids = children[branchKey(cur)] ?: break
+            kids.forEach { visibleIds.add(it.id) }
+            cur = kids.lastOrNull()
+        }
+        // Render in original list order so process rows stay above their answer.
+        return messages.filter { it.id in visibleIds }
+    }
+
+    /** Switch a regenerated answer to another version: the subtree under the old
+     *  version leaves the view and the request context, and comes back on re-select. */
+    fun switchBranch(messageId: String, newIndex: Int) {
         val session = _currentSession.value ?: return
         if (_generatingSessionIds.value.contains(session.id)) return
-        AppLog.d("regenerate: session=${session.id.take(8)}")
-        val msgs = session.messages
-        // Find last assistant message that is not streaming
-        val assistantIdx = msgs.indexOfLast { it.role == "assistant" && !it.isStreaming && it.content.isNotBlank() }
-        if (assistantIdx < 0) return
-        // Find the user message before it
-        val userIdx = (assistantIdx - 1 downTo 0).firstOrNull { msgs[it].role == "user" } ?: return
-        val userMsg = msgs[userIdx]
-        // Keep everything before the user message, then re-send
-        val before = msgs.take(userIdx)
-        val after = msgs.drop(assistantIdx + 1)
-        val streamingMsg = ChatMessage(role = "assistant", content = "", isStreaming = true, flatProcess = true)
         updateSessionById(session.id) { s ->
-            s.copy(messages = before + userMsg + streamingMsg + after)
+            val msgs = s.messages.toMutableList()
+            val i = msgs.indexOfFirst { it.id == messageId }
+            if (i < 0) return@updateSessionById s
+            val m = msgs[i]
+            val branches = m.branches ?: return@updateSessionById s
+            if (newIndex !in branches.indices || newIndex == m.branchIndex) return@updateSessionById s
+            val saved = branches.toMutableList()
+            saved[m.branchIndex] = m.content
+            msgs[i] = m.copy(branches = saved, branchIndex = newIndex, content = saved[newIndex], isStreaming = false)
+            s.copy(messages = msgs)
         }
+        recalcTokens()
+    }
 
+    /** Regenerate: append a fresh version of the target answer (the last one when
+     *  [messageId] is null) and stream into it. Earlier versions and everything
+     *  hanging off them stay in the session and reappear when re-selected. */
+    fun regenerate(messageId: String? = null) {
+        val session = _currentSession.value ?: return
+        if (_generatingSessionIds.value.contains(session.id)) return
+        AppLog.d("regenerate: session=${session.id.take(8)} msg=${messageId?.take(8) ?: "last"}")
+        val visible = visibleMessages(session.messages)
+        val target = when {
+            messageId != null -> visible.lastOrNull { it.id == messageId && it.role == "assistant" && !it.isStreaming }
+            else -> visible.lastOrNull { it.role == "assistant" && !it.isStreaming && it.content.isNotBlank() }
+        } ?: return
+        val tIdx = visible.indexOfFirst { it.id == target.id }
+        val userMsg = (tIdx - 1 downTo 0).firstOrNull { visible[it].role == "user" }?.let { visible[it] } ?: return
+        val history = visible.take(visible.indexOfFirst { it.id == userMsg.id } + 1)
+        val branches = (target.branches ?: listOf(target.content)).toMutableList()
+        branches.add("")
+        val newIndex = branches.size - 1
         markGenerating(session.id)
         _error.value = null
+        updateSessionById(session.id) { s ->
+            s.copy(messages = s.messages.map {
+                if (it.id == target.id) it.copy(
+                    branches = branches,
+                    branchIndex = newIndex,
+                    content = "",
+                    reasoningContent = "",
+                    annotations = null,
+                    isStreaming = true
+                ) else it
+            })
+        }
         val regenJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 val apiMessages = mutableListOf<Message>(
                     Message(role = "system", content = getSystemPrompt())
                 )
-                val history = (before + userMsg).filter {
+                val hist = history.filter {
                     it.role == "user" || (it.role == "assistant" && it.content.isNotBlank())
                 }
-                for (msg in history) {
+                for (msg in hist) {
                     if (msg.role == "user") {
                         val imgB64 = msg.imageUri?.let { uri ->
                             try {
@@ -2224,10 +2287,9 @@ AI：$assistantReply
             } catch (e: Exception) {
                 _error.value = e.message ?: "Unknown error"
                 updateSessionById(session.id) { s ->
-                    s.copy(messages = s.messages
-                        .filterNot { it.role == "assistant" && it.content.isBlank() && it.isStreaming }
-                        .map { if (it.isStreaming) it.copy(isStreaming = false) else it }
-                    )
+                    s.copy(messages = s.messages.map {
+                        if (it.id == target.id && it.isStreaming) it.copy(isStreaming = false) else it
+                    })
                 }
             } finally {
                 markIdle(session.id)
@@ -2312,9 +2374,11 @@ AI：$assistantReply
                             ?: LangManager.t("chat.attachment", "[附件]")
                     },
                     imageUri = persistedImages.joinToString("|").ifBlank { null },
-                    fileName = fileName
+                    fileName = fileName,
+                    threadOf = visibleMessages(session.messages).lastOrNull()?.let { "${it.id}#${it.branchIndex}" }
                 )
-                val assistantMessage = ChatMessage(role = "assistant", content = "", isStreaming = true, flatProcess = true)
+                val assistantMessage = ChatMessage(role = "assistant", content = "", isStreaming = true, flatProcess = true,
+                    threadOf = "${userMessage.id}#${userMessage.branchIndex}")
                 val userMsgId = userMessage.id
                 updateSessionById(session.id) { s ->
                     s.copy(messages = s.messages + userMessage + assistantMessage)
@@ -2437,7 +2501,7 @@ AI：$assistantReply
             Message(role = "system", content = getSystemPrompt())
         )
 
-        val history = session.messages
+        val history = visibleMessages(session.messages)
         val thinkingOn = buildThinkingConfig().type == "enabled"
         for (msg in history) {
             if (msg.role == "user") {
@@ -3756,6 +3820,13 @@ AI：$assistantReply
                                     annotations = anns,
                                     reasoningDurationMs = duration
                                 )
+                                // Keep the branch table in sync with the finalized text.
+                                val brs = msgs[lastIdx].branches
+                                if (brs != null && msgs[lastIdx].branchIndex in brs.indices) {
+                                    val synced = brs.toMutableList()
+                                    synced[msgs[lastIdx].branchIndex] = msgs[lastIdx].content
+                                    msgs[lastIdx] = msgs[lastIdx].copy(branches = synced)
+                                }
                             }
                             // Close the thinking step row: 已深度思考, or drop if no reasoning
                             val tid = thinkStepId
@@ -4141,7 +4212,12 @@ AI：$assistantReply
             if (s.messages.any { it.id == step.id }) return@updateSessionById s
             val msgs = s.messages.toMutableList()
             val phIdx = msgs.indexOfLast { it.isStreaming && it.role == "assistant" }
-            if (phIdx >= 0) msgs.add(phIdx, step) else msgs.add(step)
+            if (phIdx >= 0) {
+                // Ride the answer's branch so the row hides and returns with its version.
+                msgs.add(phIdx, step.copy(threadOf = "${msgs[phIdx].id}#${msgs[phIdx].branchIndex}"))
+            } else {
+                msgs.add(step)
+            }
             s.copy(messages = msgs)
         }
     }

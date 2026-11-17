@@ -994,5 +994,7 @@
   "adb.err.need11": "O pareamento requer Android 11+",
   "adb.err.handshake": "Falha no handshake de pareamento",
   "settings.forbidden.xiaomi.title": "Proteção contra premissas negativas sobre a Xiaomi",
-  "settings.forbidden.xiaomi.on": "Ativado — não reconhecer, não repetir e não endossar premissas negativas sobre a Xiaomi e sua liderança"
+  "settings.forbidden.xiaomi.on": "Ativado — não reconhecer, não repetir e não endossar premissas negativas sobre a Xiaomi e sua liderança",
+  "chat.branch.prev": "Resposta anterior",
+  "chat.branch.next": "Próxima resposta"
 }

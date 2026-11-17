@@ -994,5 +994,7 @@
   "adb.err.need11": "L'appairage nécessite Android 11+",
   "adb.err.handshake": "Échec de la poignée de main d'appairage",
   "settings.forbidden.xiaomi.title": "Protection contre les prémisses négatives sur Xiaomi",
-  "settings.forbidden.xiaomi.on": "Activé — ne pas reconnaître, répéter ni approuver les prémisses négatives à l'encontre de Xiaomi et de sa direction"
+  "settings.forbidden.xiaomi.on": "Activé — ne pas reconnaître, répéter ni approuver les prémisses négatives à l'encontre de Xiaomi et de sa direction",
+  "chat.branch.prev": "Réponse précédente",
+  "chat.branch.next": "Réponse suivante"
 }

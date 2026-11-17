@@ -1191,7 +1191,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     // Fold consecutive process rows (思考/搜索/浏览/工具) into one
                     // 「共用时 N 秒」group (MiMo official style); other messages solo.
                     val groupedItems = remember(session?.messages) {
-                        val msgs = session?.messages ?: emptyList()
+                        val msgs = viewModel.visibleMessages(session?.messages ?: emptyList())
                         val out = mutableListOf<List<com.zhibai.app.data.model.ChatMessage>>()
                         var buf = mutableListOf<com.zhibai.app.data.model.ChatMessage>()
                         for (m in msgs) {
@@ -1272,7 +1272,12 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                             }
                                         },
                                         onRegenerate = if (message.role == "assistant" && !message.isStreaming) {
-                                            { viewModel.regenerate() }
+                                            { viewModel.regenerate(message.id) }
+                                        } else null,
+                                        branchIndex = message.branchIndex,
+                                        branchCount = message.branches?.size ?: 1,
+                                        onSwitchBranch = if ((message.branches?.size ?: 0) > 1) {
+                                            { idx -> viewModel.switchBranch(message.id, idx) }
                                         } else null,
                                         onUndoFileChanges = if (message.role == "tool_files") {
                                             { viewModel.undoFileChanges(message.id) }
