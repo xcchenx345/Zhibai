@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.sp
 import com.zhibai.app.agent.AgentSessionResult
 import com.zhibai.app.agent.AgentTaskManager
 import com.zhibai.app.agent.CheckTaskStatus
+import com.zhibai.app.i18n.LangManager
 
 /**
  * Floating task checklist panel shown during Agent execution.
@@ -105,9 +106,9 @@ fun AgentTaskPanel(
 
     // Status badge (pill) — text + theme color, no icon glyphs
     val badge: Pair<String, Color>? = when {
-        isActive -> "进行中" to scheme.primary
-        result == AgentSessionResult.FAILED -> "失败" to scheme.error
-        allDone -> "已完成" to scheme.primary
+        isActive -> LangManager.t("agent.taskRunning", "进行中") to scheme.primary
+        result == AgentSessionResult.FAILED -> LangManager.t("agent.taskFailed", "失败") to scheme.error
+        allDone -> LangManager.t("agent.taskDone", "已完成") to scheme.primary
         else -> null
     }
 
@@ -133,7 +134,7 @@ fun AgentTaskPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "工作清单",
+                LangManager.t("agent.workPanel", "工作清单"),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = scheme.onSurface
@@ -164,7 +165,7 @@ fun AgentTaskPanel(
             }
             Icon(
                 imageVector = Icons.Default.KeyboardArrowDown,
-                contentDescription = if (expanded) "收起" else "展开",
+                contentDescription = if (expanded) LangManager.t("chat.collapse", "收起") else LangManager.t("common.expand", "展开"),
                 modifier = Modifier
                     .size(18.dp)
                     .rotate(chevronAngle),

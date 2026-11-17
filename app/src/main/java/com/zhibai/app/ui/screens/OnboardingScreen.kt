@@ -39,6 +39,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.ui.theme.MiMoColors
 import com.zhibai.app.viewmodel.ChatViewModel
 import com.zhibai.app.localai.LocalAiSupport
@@ -248,10 +249,10 @@ private fun ObTopBar(
 @Composable
 private fun ObBottomBar(
     onNext: () -> Unit,
-    nextLabel: String = "继续",
+    nextLabel: String = LangManager.t("common.continue", "继续"),
     nextEnabled: Boolean = true,
     onSkip: (() -> Unit)? = null,
-    skipLabel: String = "跳过"
+    skipLabel: String = LangManager.t("common.skip", "跳过")
 ) {
     Row(
         modifier = Modifier
@@ -394,7 +395,7 @@ private fun WelcomeStep(onStart: () -> Unit) {
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                "知白",
+                LangManager.t("app.name", "知白"),
                 fontSize = 42.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 10.sp,
@@ -402,7 +403,7 @@ private fun WelcomeStep(onStart: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                "雪",
+                LangManager.t("onboarding.welcome.subtitle", "雪"),
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Light,
                 letterSpacing = 12.sp,
@@ -412,7 +413,7 @@ private fun WelcomeStep(onStart: () -> Unit) {
             Spacer(modifier = Modifier.height(20.dp))
 
             Text(
-                "v2.6 · 纯净如雪",
+                LangManager.t("onboarding.welcome.tagline", "v2.6 · 纯净如雪"),
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.outline,
                 letterSpacing = 2.sp,
@@ -420,7 +421,7 @@ private fun WelcomeStep(onStart: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "MiMo AI 非官方客户端",
+                LangManager.t("onboarding.welcome.desc", "MiMo AI 非官方客户端"),
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),
                 modifier = Modifier.alpha(contentAlpha)
@@ -436,7 +437,7 @@ private fun WelcomeStep(onStart: () -> Unit) {
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 shape = RoundedCornerShape(26.dp)
             ) {
-                Text("踏雪而行", fontSize = 17.sp, fontWeight = FontWeight.Medium, letterSpacing = 2.sp)
+                Text(LangManager.t("onboarding.welcome.start", "踏雪而行"), fontSize = 17.sp, fontWeight = FontWeight.Medium, letterSpacing = 2.sp)
             }
         }
     }
@@ -594,7 +595,10 @@ private fun ApiKeyStep(
 
     Column(modifier = Modifier.fillMaxSize()) {
         ObStepColumn(modifier = Modifier.weight(1f)) {
-            ObHeading("配置 API Key", "连接 MiMo 服务后才能开始对话。填好后点「继续」。")
+            ObHeading(
+                LangManager.t("onboarding.apikey.title", "配置 API Key"),
+                LangManager.t("onboarding.apikey.subtitle", "连接 MiMo 服务后才能开始对话。填好后点「继续」。")
+            )
 
             OutlinedTextField(
                 value = input,
@@ -637,7 +641,7 @@ private fun ApiKeyStep(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            "如何获取 API Key",
+                            LangManager.t("onboarding.apikey.howto", "如何获取 API Key"),
                             fontWeight = FontWeight.Medium,
                             fontSize = 14.sp
                         )
@@ -650,7 +654,10 @@ private fun ApiKeyStep(
                     }
                     AnimatedVisibility(visible = hint) {
                         Text(
-                            "1. 访问 platform.xiaomimimo.com\n2. 登录或注册账号\n3. 进入 API Keys 区域\n4. 创建并复制 Key",
+                            LangManager.t(
+                                "onboarding.apikey.howto.steps",
+                                "1. 访问 platform.xiaomimimo.com\n2. 登录或注册账号\n3. 进入 API Keys 区域\n4. 创建并复制 Key"
+                            ),
                             fontSize = 13.sp,
                             lineHeight = 22.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -667,7 +674,8 @@ private fun ApiKeyStep(
                 if (input.isNotBlank()) viewModel.setApiKey(input.trim())
                 onNext()
             },
-            nextLabel = if (savedKey.isNotBlank()) "保存并继续" else "继续",
+            nextLabel = if (savedKey.isNotBlank()) LangManager.t("onboarding.saveContinue", "保存并继续")
+                else LangManager.t("common.continue", "继续"),
             nextEnabled = input.isNotBlank()
         )
     }
@@ -715,7 +723,7 @@ private fun LocalModelStep(
                 )
             }
         } catch (e: Exception) {
-            loadError = e.message ?: "网络错误"
+            loadError = e.message ?: LangManager.t("localai.networkError", "网络错误")
         } finally {
             loading = false
         }
@@ -746,14 +754,18 @@ private fun LocalModelStep(
     Column(modifier = Modifier.fillMaxSize()) {
         ObStepColumn(modifier = Modifier.weight(1f)) {
             ObHeading(
-                "本地模型（可选）",
-                "内置 MNN 推理引擎，不依赖任何第三方应用。启用后可离线对话；也可以跳过继续使用云端。"
+                LangManager.t("onboarding.localai.title", "本地模型（可选）"),
+                LangManager.t(
+                    "onboarding.localai.subtitle",
+                    "内置 MNN 推理引擎，不依赖任何第三方应用。启用后可离线对话；也可以跳过继续使用云端。"
+                )
             )
 
             support?.let { s ->
                 Text(
-                    "本机档位：${LocalAiSupport.tierLabel(s.tier)} · " +
-                        "${"%.1f".format(s.totalRamGb)}GB 内存",
+                    LangManager.t("onboarding.localai.tierInfo", "本机档位：{tier} · {ram}GB 内存")
+                        .replace("{tier}", LocalAiSupport.tierLabel(s.tier))
+                        .replace("{ram}", "%.1f".format(s.totalRamGb)),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -769,17 +781,18 @@ private fun LocalModelStep(
                 loading -> Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     Spacer(modifier = Modifier.width(10.dp))
-                    Text("正在获取模型列表…", fontSize = 13.sp,
+                    Text(LangManager.t("localai.fetchingModels", "正在获取模型列表…"), fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
 
                 loadError != null -> Column {
                     Text(
-                        "获取模型列表失败：$loadError",
+                        LangManager.t("onboarding.localai.loadFailed", "获取模型列表失败：{error}")
+                            .replace("{error}", loadError.orEmpty()),
                         fontSize = 13.sp, color = MaterialTheme.colorScheme.error
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    TextButton(onClick = { reloadKey++ }) { Text("重试") }
+                    TextButton(onClick = { reloadKey++ }) { Text(LangManager.t("common.retry", "重试")) }
                 }
 
                 else -> {
@@ -815,9 +828,9 @@ private fun LocalModelStep(
                                         append(" · ")
                                         append(
                                             when {
-                                                !allowed -> "本机档位不足"
-                                                m.displayName.contains("MiMo-7B-RL") -> "推荐 · 默认"
-                                                else -> "可安装"
+                                                !allowed -> LangManager.t("onboarding.localai.tierTooLow", "本机档位不足")
+                                                m.displayName.contains("MiMo-7B-RL") -> LangManager.t("onboarding.localai.recommended", "推荐 · 默认")
+                                                else -> LangManager.t("onboarding.localai.installable", "可安装")
                                             }
                                         )
                                     },
@@ -850,7 +863,12 @@ private fun LocalModelStep(
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     buildString {
-                        append(if (p != null && p.percent >= 0) "下载中 ${p.percent}%" else "下载中")
+                        append(
+                            if (p != null && p.percent >= 0)
+                                LangManager.t("localai.downloadingPct", "下载中 {p}%")
+                                    .replace("{p}", p.percent.toString())
+                            else LangManager.t("localai.downloading", "下载中")
+                        )
                         if (p != null && p.bytesTotal != null && p.bytesTotal > 0) {
                             append(" · ").append(obHumanBytes(p.bytesDone))
                             append('/').append(obHumanBytes(p.bytesTotal))
@@ -858,7 +876,7 @@ private fun LocalModelStep(
                         if (p != null && p.speedBps > 0) {
                             append(" · ").append(obHumanBytes(p.speedBps)).append("/s")
                         }
-                        append(" — 完成提醒见灵动岛")
+                        append(LangManager.t("onboarding.localai.islandHint", " — 完成提醒见灵动岛"))
                     },
                     fontSize = 12.sp, color = MaterialTheme.colorScheme.primary
                 )
@@ -866,7 +884,7 @@ private fun LocalModelStep(
             if (enabled) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    "已启用 · $activeModel",
+                    LangManager.t("onboarding.localai.enabled", "已启用 · {model}").replace("{model}", activeModel),
                     fontSize = 13.sp, fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -883,13 +901,13 @@ private fun LocalModelStep(
                 else dialog = ObLocalAiDialog.WARNING
             },
             nextLabel = when {
-                installing -> "安装中…"
-                enabled -> "完成"
-                else -> "启用本地AI"
+                installing -> LangManager.t("onboarding.localai.installing", "安装中…")
+                enabled -> LangManager.t("common.done", "完成")
+                else -> LangManager.t("onboarding.localai.enable", "启用本地AI")
             },
             nextEnabled = !installing && (enabled || selected != null),
             onSkip = { onNext() },
-            skipLabel = "跳过"
+            skipLabel = LangManager.t("common.skip", "跳过")
         )
     }
 
@@ -899,36 +917,43 @@ private fun LocalModelStep(
 
         ObLocalAiDialog.WARNING -> AlertDialog(
             onDismissRequest = { dialog = ObLocalAiDialog.NONE },
-            title = { Text("启用本地AI？") },
+            title = { Text(LangManager.t("localai.enable.title", "启用本地AI？")) },
             text = {
                 Text(buildAnnotatedString {
-                    append("本地AI可能更慢，甚至导致发热卡顿\n")
+                    append(LangManager.t("localai.enable.warn1", "本地AI可能更慢，甚至导致发热卡顿"))
+                    append("\n")
                     pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
-                    append("严重的会导致死机")
+                    append(LangManager.t("localai.enable.warn2", "严重的会导致死机"))
                     pop()
-                    append("\n是否继续？")
+                    append("\n")
+                    append(LangManager.t("localai.enable.warn3", "是否继续？"))
                 }, lineHeight = 22.sp)
             },
-            confirmButton = { TextButton(onClick = { beginEnable() }) { Text("继续") } },
-            dismissButton = { TextButton(onClick = { dialog = ObLocalAiDialog.NONE }) { Text("取消") } }
+            confirmButton = { TextButton(onClick = { beginEnable() }) { Text(LangManager.t("common.continue", "继续")) } },
+            dismissButton = { TextButton(onClick = { dialog = ObLocalAiDialog.NONE }) { Text(LangManager.t("common.cancel", "取消")) } }
         )
 
         ObLocalAiDialog.UNSUPPORTED -> AlertDialog(
             onDismissRequest = { dialog = ObLocalAiDialog.NONE },
-            title = { Text("机型不在支持名单") },
+            title = { Text(LangManager.t("localai.unsupported.title", "机型不在支持名单")) },
             text = {
-                Text((support?.reason ?: "该设备不满足本地AI要求") +
-                    "\n\n支持名单按内存分档：低档 4-6GB、中档 6-8GB、高档 ≥8GB（需 arm64）。")
+                Text((support?.reason ?: LangManager.t("localai.unsupported.defaultReason", "该设备不满足本地AI要求")) +
+                    "\n\n" + LangManager.t(
+                        "localai.unsupported.tiers",
+                        "支持名单按内存分档：低档 4-6GB、中档 6-8GB、高档 ≥8GB（需 arm64）。"
+                    ))
             },
-            confirmButton = { TextButton(onClick = { dialog = ObLocalAiDialog.NONE }) { Text("关闭") } }
+            confirmButton = { TextButton(onClick = { dialog = ObLocalAiDialog.NONE }) { Text(LangManager.t("common.close", "关闭")) } }
         )
 
         ObLocalAiDialog.BATTERY -> AlertDialog(
             onDismissRequest = { dialog = ObLocalAiDialog.NONE },
-            title = { Text("先设置省电策略") },
+            title = { Text(LangManager.t("localai.battery.title", "先设置省电策略")) },
             text = {
-                Text("准备安装本地模型前，需要把本应用的省电策略设为「无限制」，" +
-                    "否则下载和推理过程可能被系统杀掉。\n\n$statusMsg")
+                Text(LangManager.t(
+                    "localai.battery.body",
+                    "准备安装本地模型前，需要把本应用的省电策略设为「无限制」，否则下载和推理过程可能被系统杀掉。"
+                ) + "\n\n$statusMsg")
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -936,27 +961,33 @@ private fun LocalModelStep(
                         dialog = ObLocalAiDialog.NONE
                         confirmOrInstall()
                     } else {
-                        statusMsg = "仍未设为「无限制」，请修改后重试"
+                        statusMsg = LangManager.t("onboarding.localai.battery.retryHint", "仍未设为「无限制」，请修改后重试")
                     }
-                }) { Text("我已设置") }
+                }) { Text(LangManager.t("localai.battery.done", "我已设置")) }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.openLocalAiBatterySettings() }) { Text("去设置") }
+                TextButton(onClick = { viewModel.openLocalAiBatterySettings() }) { Text(LangManager.t("localai.battery.goto", "去设置")) }
             }
         )
 
         ObLocalAiDialog.INSTALL_CONFIRM -> AlertDialog(
             onDismissRequest = { dialog = ObLocalAiDialog.NONE },
-            title = { Text("准备安装") },
+            title = { Text(LangManager.t("localai.install.title", "准备安装")) },
             text = {
                 val m = selected
                 Text(buildString {
-                    append("将下载并安装本地模型：\n")
+                    append(LangManager.t("localai.install.intro", "将下载并安装本地模型："))
+                    append('\n')
                     append("· ").append(m?.displayName ?: "—").append('\n')
                     if (m != null && m.paramsB > 0) {
-                        append("· 约 ").append("%.1f".format(m.paramsB * 0.74)).append(" GB（4bit）\n")
+                        append(
+                            LangManager.t("localai.install.size", "· 约 {size} GB（4bit）")
+                                .replace("{size}", "%.1f".format(m.paramsB * 0.74))
+                        )
+                        append('\n')
                     }
-                    append("\n下载期间会通过灵动岛显示进度，完成后提醒你。")
+                    append('\n')
+                    append(LangManager.t("localai.install.islandNote", "下载期间会通过灵动岛显示进度，完成后提醒你。"))
                 }, lineHeight = 22.sp)
             },
             confirmButton = {
@@ -966,22 +997,23 @@ private fun LocalModelStep(
                     viewModel.installLocalModel(m) { ok, msg ->
                         if (ok) viewModel.setLocalAiEnabled(true, m.displayName)
                         else scope.launch {
-                            statusMsg = "安装失败: $msg"
+                            statusMsg = LangManager.t("localai.install.failed", "安装失败: {error}")
+                                .replace("{error}", msg)
                             dialog = ObLocalAiDialog.ERROR
                         }
                     }
-                }) { Text("开始安装") }
+                }) { Text(LangManager.t("localai.install.confirm", "开始安装")) }
             },
             dismissButton = {
-                TextButton(onClick = { dialog = ObLocalAiDialog.NONE }) { Text("取消") }
+                TextButton(onClick = { dialog = ObLocalAiDialog.NONE }) { Text(LangManager.t("common.cancel", "取消")) }
             }
         )
 
         ObLocalAiDialog.ERROR -> AlertDialog(
             onDismissRequest = { dialog = ObLocalAiDialog.NONE },
-            title = { Text("本地AI出错了") },
+            title = { Text(LangManager.t("onboarding.localai.error.title", "本地AI出错了")) },
             text = { Text(statusMsg) },
-            confirmButton = { TextButton(onClick = { dialog = ObLocalAiDialog.NONE }) { Text("关闭") } }
+            confirmButton = { TextButton(onClick = { dialog = ObLocalAiDialog.NONE }) { Text(LangManager.t("common.close", "关闭")) } }
         )
     }
 }
@@ -996,26 +1028,29 @@ private fun AgentToggleStep(
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         ObStepColumn(modifier = Modifier.weight(1f)) {
-            ObHeading("智能体模式", "开启后 AI 可以读写文件、执行命令，在你的设备上自主工作。")
+            ObHeading(
+                LangManager.t("onboarding.agent.title", "智能体模式"),
+                LangManager.t("onboarding.agent.subtitle", "开启后 AI 可以读写文件、执行命令，在你的设备上自主工作。")
+            )
 
             ObFeatureCard(
                 icon = Icons.Default.FolderOpen,
-                title = "本地文件工作区",
-                desc = "在 /sdcard/知白/ 读写文档、代码和笔记",
+                title = LangManager.t("onboarding.agent.feature1.title", "本地文件工作区"),
+                desc = LangManager.t("onboarding.agent.feature1.desc", "在 /sdcard/知白/ 读写文档、代码和笔记"),
                 highlight = enabled
             )
             Spacer(modifier = Modifier.height(10.dp))
             ObFeatureCard(
                 icon = Icons.Default.SmartToy,
-                title = "自主工具调用",
-                desc = "搜索、编辑、下载，敏感操作仍会先问你",
+                title = LangManager.t("onboarding.agent.feature2.title", "自主工具调用"),
+                desc = LangManager.t("onboarding.agent.feature2.desc", "搜索、编辑、下载，敏感操作仍会先问你"),
                 highlight = enabled
             )
             Spacer(modifier = Modifier.height(10.dp))
             ObFeatureCard(
                 icon = Icons.Default.PhoneAndroid,
-                title = "手机控制",
-                desc = "打开应用、获取设备信息（需额外授权）",
+                title = LangManager.t("onboarding.agent.feature3.title", "手机控制"),
+                desc = LangManager.t("onboarding.agent.feature3.desc", "打开应用、获取设备信息（需额外授权）"),
                 highlight = enabled
             )
             Spacer(modifier = Modifier.height(28.dp))
@@ -1036,14 +1071,19 @@ private fun AgentToggleStep(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            if (enabled) "智能体已开启" else "暂不开启",
+                            LangManager.t(
+                                if (enabled) "onboarding.agent.on" else "onboarding.agent.off",
+                                if (enabled) "智能体已开启" else "暂不开启"
+                            ),
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 16.sp
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            if (enabled) "后续可在此页重新配置接入"
-                                else "仅使用聊天功能，随时可在设置里开启",
+                            LangManager.t(
+                                if (enabled) "onboarding.agent.on.desc" else "onboarding.agent.off.desc",
+                                if (enabled) "后续可在此页重新配置接入" else "仅使用聊天功能，随时可在设置里开启"
+                            ),
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1061,7 +1101,7 @@ private fun AgentToggleStep(
             }
         }
 
-        ObBottomBar(onNext = onNext, nextLabel = "继续")
+        ObBottomBar(onNext = onNext, nextLabel = LangManager.t("common.continue", "继续"))
     }
 }
 
@@ -1127,15 +1167,15 @@ private fun AgentApiStep(
     Column(modifier = Modifier.fillMaxSize()) {
         ObStepColumn(modifier = Modifier.weight(1f)) {
             ObHeading(
-                "智能体接入",
-                "为 Agent 单独指定服务地址和 Key。留空则与主聊天共用。"
+                LangManager.t("onboarding.agentapi.title", "智能体接入"),
+                LangManager.t("onboarding.agentapi.subtitle", "为 Agent 单独指定服务地址和 Key。留空则与主聊天共用。")
             )
 
             OutlinedTextField(
                 value = url,
                 onValueChange = { url = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("请求地址 Base URL") },
+                label = { Text(LangManager.t("onboarding.agentapi.url.label", "请求地址 Base URL")) },
                 placeholder = { Text("https://api.xiaomimimo.com/v1") },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
@@ -1178,8 +1218,8 @@ private fun AgentApiStep(
                 value = key,
                 onValueChange = { key = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Agent API Key（可留空）") },
-                placeholder = { Text("与主 Key 相同则留空") },
+                label = { Text(LangManager.t("onboarding.agentapi.key.label", "Agent API Key（可留空）")) },
+                placeholder = { Text(LangManager.t("onboarding.agentapi.key.placeholder", "与主 Key 相同则留空")) },
                 singleLine = true,
                 visualTransformation = if (keyVisible) VisualTransformation.None
                     else PasswordVisualTransformation(),
@@ -1196,7 +1236,7 @@ private fun AgentApiStep(
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                "使用第三方中转服务时填写自定义地址；官方直连保持默认即可。",
+                LangManager.t("onboarding.agentapi.hint", "使用第三方中转服务时填写自定义地址；官方直连保持默认即可。"),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.outline,
                 lineHeight = 18.sp
@@ -1209,13 +1249,13 @@ private fun AgentApiStep(
                 viewModel.setAgentApiKey(key.trim())
                 onNext()
             },
-            nextLabel = "保存并继续",
+            nextLabel = LangManager.t("onboarding.saveContinue", "保存并继续"),
             onSkip = {
                 viewModel.setAgentBaseUrl("https://api.xiaomimimo.com/v1")
                 viewModel.setAgentApiKey("")
                 onNext()
             },
-            skipLabel = "跳过，用默认"
+            skipLabel = LangManager.t("onboarding.agentapi.skipDefault", "跳过，用默认")
         )
     }
 }
@@ -1232,7 +1272,10 @@ private fun FontSizeStep(
 
     Column(modifier = Modifier.fillMaxSize()) {
         ObStepColumn(modifier = Modifier.weight(1f)) {
-            ObHeading("文字大小", "调整聊天消息的阅读字号。")
+            ObHeading(
+                LangManager.t("onboarding.font.title", "文字大小"),
+                LangManager.t("onboarding.font.subtitle", "调整聊天消息的阅读字号。")
+            )
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1243,7 +1286,7 @@ private fun FontSizeStep(
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text(
-                        "预览",
+                        LangManager.t("onboarding.font.preview", "预览"),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium
@@ -1257,7 +1300,7 @@ private fun FontSizeStep(
                             .padding(horizontal = 14.dp, vertical = 10.dp)
                     ) {
                         Text(
-                            "今天天气怎么样？",
+                            LangManager.t("onboarding.font.sample.question", "今天天气怎么样？"),
                             fontSize = slider.toInt().sp,
                             color = MaterialTheme.colorScheme.background
                         )
@@ -1270,7 +1313,10 @@ private fun FontSizeStep(
                             .padding(horizontal = 14.dp, vertical = 10.dp)
                     ) {
                         Text(
-                            "温州今天多云转晴，气温 22-28°C，适合出门。\nThe spring breeze brushes the willows as birds sing and call,\nUpon the rippling azure waves, a lone boat drifts along.\n春风拂柳鸟啼鸣，碧波荡漾孤舟行。",
+                            LangManager.t(
+                                "onboarding.font.sample.answer",
+                                "温州今天多云转晴，气温 22-28°C，适合出门。\nThe spring breeze brushes the willows as birds sing and call,\nUpon the rippling azure waves, a lone boat drifts along.\n春风拂柳鸟啼鸣，碧波荡漾孤舟行。"
+                            ),
                             fontSize = slider.toInt().sp,
                             lineHeight = (slider.toInt() + 6).sp,
                             color = MaterialTheme.colorScheme.onSurface
@@ -1324,19 +1370,19 @@ private fun FontSizeStep(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    "小",
+                    LangManager.t("onboarding.font.small", "小"),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    "标准 15",
+                    LangManager.t("onboarding.font.standard", "标准 15"),
                     fontSize = 12.sp,
                     color = if (slider.toInt() == 15) MiMoColors.Primary
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = if (slider.toInt() == 15) FontWeight.Bold else FontWeight.Normal
                 )
                 Text(
-                    "大",
+                    LangManager.t("onboarding.font.large", "大"),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1363,10 +1409,10 @@ private fun TtsVoiceStep(
     var selected by remember { mutableStateOf(savedVoice) }
 
     val voices = listOf(
-        Triple("冰糖", "甜美女声", true),
-        Triple("茉莉", "温柔女声", true),
-        Triple("苏打", "清爽男声", true),
-        Triple("白桦", "沉稳男声", true),
+        Triple("冰糖", LangManager.t("tts.voice.bingtang", "甜美女声"), true),
+        Triple("茉莉", LangManager.t("tts.voice.moli", "温柔女声"), true),
+        Triple("苏打", LangManager.t("tts.voice.suda", "清爽男声"), true),
+        Triple("白桦", LangManager.t("tts.voice.baihua", "沉稳男声"), true),
         Triple("Mia", "English female", false),
         Triple("Chloe", "English female", false),
         Triple("Milo", "English male", false),
@@ -1375,7 +1421,10 @@ private fun TtsVoiceStep(
 
     Column(modifier = Modifier.fillMaxSize()) {
         ObStepColumn(modifier = Modifier.weight(1f)) {
-            ObHeading("讲述人音色", "选择长按消息朗读时使用的默认声音。")
+            ObHeading(
+                LangManager.t("onboarding.tts.title", "讲述人音色"),
+                LangManager.t("onboarding.tts.subtitle", "选择长按消息朗读时使用的默认声音。")
+            )
 
             voices.forEach { (id, desc, isCn) ->
                 val isSelected = selected == id
@@ -1458,7 +1507,10 @@ private fun InputStyleStep(
 
     Column(modifier = Modifier.fillMaxSize()) {
         ObStepColumn(modifier = Modifier.weight(1f)) {
-            ObHeading("输入框外观", "选择聊天输入框的视觉风格。")
+            ObHeading(
+                LangManager.t("onboarding.inputstyle.title", "输入框外观"),
+                LangManager.t("onboarding.inputstyle.subtitle", "选择聊天输入框的视觉风格。")
+            )
 
             // Glass option
             Card(
@@ -1483,7 +1535,10 @@ private fun InputStyleStep(
                                 else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.width(10.dp))
-                        Text("磨砂玻璃（推荐）", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                        Text(
+                            LangManager.t("onboarding.inputstyle.glass.title", "磨砂玻璃（推荐）"),
+                            fontWeight = FontWeight.SemiBold, fontSize = 16.sp
+                        )
                         Spacer(modifier = Modifier.weight(1f))
                         if (selected == "glass") {
                             Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -1491,7 +1546,10 @@ private fun InputStyleStep(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "悬浮半透明，输入时变不透明，上下滑动可透视下方消息。支持自定义磨砂颜色与阴影开关，圆角固定 32dp。",
+                        LangManager.t(
+                            "onboarding.inputstyle.glass.desc",
+                            "悬浮半透明，输入时变不透明，上下滑动可透视下方消息。支持自定义磨砂颜色与阴影开关，圆角固定 32dp。"
+                        ),
                         fontSize = 13.sp,
                         lineHeight = 20.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1524,7 +1582,10 @@ private fun InputStyleStep(
                                 else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.width(10.dp))
-                        Text("经典样式", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                        Text(
+                            LangManager.t("onboarding.inputstyle.classic.title", "经典样式"),
+                            fontWeight = FontWeight.SemiBold, fontSize = 16.sp
+                        )
                         Spacer(modifier = Modifier.weight(1f))
                         if (selected == "classic") {
                             Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -1532,7 +1593,7 @@ private fun InputStyleStep(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "传统不透明输入框，简洁稳定。适合喜欢简约风格的用户。",
+                        LangManager.t("onboarding.inputstyle.classic.desc", "传统不透明输入框，简洁稳定。适合喜欢简约风格的用户。"),
                         fontSize = 13.sp,
                         lineHeight = 20.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1559,37 +1620,42 @@ private fun AgentProfileStep(
 ) {
     var userName by rememberSaveable { mutableStateOf("") }
     var agentName by rememberSaveable { mutableStateOf("") }
-    var location by rememberSaveable { mutableStateOf("温州，浙江，中国") }
+    var location by rememberSaveable {
+        mutableStateOf(LangManager.t("onboarding.profile.defaultLocation", "温州，浙江，中国"))
+    }
     var vibe by rememberSaveable { mutableStateOf("") }
 
     Column(modifier = Modifier.fillMaxSize()) {
         ObStepColumn(modifier = Modifier.weight(1f)) {
             ObHeading(
-                "个性化智能体",
-                "填写后会写入 Agent 的工作区文件（IDENTITY / USER / SOUL），让它更懂你。"
+                LangManager.t("onboarding.profile.title", "个性化智能体"),
+                LangManager.t(
+                    "onboarding.profile.subtitle",
+                    "填写后会写入 Agent 的工作区文件（IDENTITY / USER / SOUL），让它更懂你。"
+                )
             )
 
             ObProfileField(
-                label = "你的名字",
-                placeholder = "希望 Agent 怎么称呼你",
+                label = LangManager.t("onboarding.profile.name.label", "你的名字"),
+                placeholder = LangManager.t("onboarding.profile.name.placeholder", "希望 Agent 怎么称呼你"),
                 value = userName,
                 onValueChange = { userName = it }
             )
             ObProfileField(
-                label = "Agent 的名字",
-                placeholder = "给你的智能体取个名字",
+                label = LangManager.t("onboarding.profile.agentName.label", "Agent 的名字"),
+                placeholder = LangManager.t("onboarding.profile.agentName.placeholder", "给你的智能体取个名字"),
                 value = agentName,
                 onValueChange = { agentName = it }
             )
             ObProfileField(
-                label = "所在城市",
-                placeholder = "用于时区与本地信息",
+                label = LangManager.t("onboarding.profile.city.label", "所在城市"),
+                placeholder = LangManager.t("onboarding.profile.city.placeholder", "用于时区与本地信息"),
                 value = location,
                 onValueChange = { location = it }
             )
             ObProfileField(
-                label = "性格偏好（可选）",
-                placeholder = "例如：说话简洁，别废话",
+                label = LangManager.t("onboarding.profile.vibe.label", "性格偏好（可选）"),
+                placeholder = LangManager.t("onboarding.profile.vibe.placeholder", "例如：说话简洁，别废话"),
                 value = vibe,
                 onValueChange = { vibe = it },
                 singleLine = false,
@@ -1598,7 +1664,10 @@ private fun AgentProfileStep(
 
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                "以上均可留空，Agent 会使用默认人格。之后也能在工作区直接编辑这些 .md 文件。",
+                LangManager.t(
+                    "onboarding.profile.hint",
+                    "以上均可留空，Agent 会使用默认人格。之后也能在工作区直接编辑这些 .md 文件。"
+                ),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.outline,
                 lineHeight = 18.sp
@@ -1646,7 +1715,7 @@ ${vibe.trim()}""".trimIndent()
                 onNext()
             },
             onSkip = onNext,
-            skipLabel = "跳过"
+            skipLabel = LangManager.t("common.skip", "跳过")
         )
     }
 }
@@ -1848,7 +1917,7 @@ private fun DoneStep(onEnter: () -> Unit) {
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            "一切就绪",
+            LangManager.t("onboarding.done.title", "一切就绪"),
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier
@@ -1857,7 +1926,7 @@ private fun DoneStep(onEnter: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(10.dp))
         Text(
-            "开始你的知白之旅",
+            LangManager.t("onboarding.done.subtitle", "开始你的知白之旅"),
             fontSize = 15.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
@@ -1986,125 +2055,125 @@ fun UpdatePreviewScreen(onDismiss: () -> Unit) {
                         UpStep.WELCOME -> UpWelcomeStep(onStart = { advanceFrom(UpStep.WELCOME) })
                         UpStep.GLASS -> UpFeatureStep(
                             icon = Icons.Default.ClearAll,
-                            title = "磨砂玻璃输入框",
-                            desc = "半透明悬浮设计，输入时自动变不透明。颜色、磨砂度可调，圆角固定 32dp。",
+                            title = LangManager.t("update.glass.title", "磨砂玻璃输入框"),
+                            desc = LangManager.t("update.glass.desc", "半透明悬浮设计，输入时自动变不透明。颜色、磨砂度可调，圆角固定 32dp。"),
                             bullets = listOf(
-                                "设置 → 输入框外观 可自定义",
-                                "6 种颜色预设 + 自定义颜色",
-                                "磨砂度 0~100% 独立调节",
-                                "圆角固定 32dp 胶囊形"
+                                LangManager.t("update.glass.b1", "设置 → 输入框外观 可自定义"),
+                                LangManager.t("update.glass.b2", "6 种颜色预设 + 自定义颜色"),
+                                LangManager.t("update.glass.b3", "磨砂度 0~100% 独立调节"),
+                                LangManager.t("update.glass.b4", "圆角固定 32dp 胶囊形")
                             ),
                             onNext = { advanceFrom(UpStep.GLASS) }
                         )
                         UpStep.AGENT -> UpFeatureStep(
                             icon = Icons.Default.AcUnit,
-                            title = "Agent 任务系统",
-                            desc = "T1~T999 任务清单，四种状态追踪。执行时雪花旋转指示。",
+                            title = LangManager.t("update.agent.title", "Agent 任务系统"),
+                            desc = LangManager.t("update.agent.desc", "T1~T999 任务清单，四种状态追踪。执行时雪花旋转指示。"),
                             bullets = listOf(
-                                "任务状态：待办 / 进行中 / 已完成 / 已取消",
-                                "自动判定成功或失败",
-                                "输入框上方雪花动画实时反馈",
-                                "完成时蓝色下雪庆祝"
+                                LangManager.t("update.agent.b1", "任务状态：待办 / 进行中 / 已完成 / 已取消"),
+                                LangManager.t("update.agent.b2", "自动判定成功或失败"),
+                                LangManager.t("update.agent.b3", "输入框上方雪花动画实时反馈"),
+                                LangManager.t("update.agent.b4", "完成时蓝色下雪庆祝")
                             ),
                             onNext = { advanceFrom(UpStep.AGENT) }
                         )
                         UpStep.THINKING -> UpFeatureStep(
                             icon = Icons.Default.Psychology,
-                            title = "思考等级 Off ~ MAX",
-                            desc = "五档推理深度可选，精确控制 token 预算。",
+                            title = LangManager.t("update.thinking.title", "思考等级 Off ~ MAX"),
+                            desc = LangManager.t("update.thinking.desc", "五档推理深度可选，精确控制 token 预算。"),
                             bullets = listOf(
-                                "关 — 不启用思考",
-                                "低 1K / 中 4K / 高 8K tokens",
-                                "MAX 16K tokens 深度推理",
-                                "输入框工具栏「思考」按钮切换"
+                                LangManager.t("update.thinking.b1", "关 — 不启用思考"),
+                                LangManager.t("update.thinking.b2", "低 1K / 中 4K / 高 8K tokens"),
+                                LangManager.t("update.thinking.b3", "MAX 16K tokens 深度推理"),
+                                LangManager.t("update.thinking.b4", "输入框工具栏「思考」按钮切换")
                             ),
                             onNext = { advanceFrom(UpStep.THINKING) }
                         )
                         UpStep.ADB -> UpFeatureStep(
                             icon = Icons.Default.Cable,
-                            title = "无线调试 ADB",
-                            desc = "接入系统无线调试，Agent 的 run_adb 从沙箱假权限升级为真实 shell。",
+                            title = LangManager.t("update.adb.title", "无线调试 ADB"),
+                            desc = LangManager.t("update.adb.desc", "接入系统无线调试，Agent 的 run_adb 从沙箱假权限升级为真实 shell。"),
                             bullets = listOf(
-                                "Shizuku 同源协议，SPAKE2 安全配对",
-                                "配对一次，之后自动连接",
-                                "mDNS 自动发现配对/连接端口",
-                                "设置 → AI Agent → 无线调试 ADB"
+                                LangManager.t("update.adb.b1", "Shizuku 同源协议，SPAKE2 安全配对"),
+                                LangManager.t("update.adb.b2", "配对一次，之后自动连接"),
+                                LangManager.t("update.adb.b3", "mDNS 自动发现配对/连接端口"),
+                                LangManager.t("update.adb.b4", "设置 → AI Agent → 无线调试 ADB")
                             ),
                             onNext = { advanceFrom(UpStep.ADB) }
                         )
                         UpStep.ISLAND -> UpFeatureStep(
                             icon = Icons.Default.Notifications,
-                            title = "超级岛状态上岛",
-                            desc = "对话与 Agent 运行状态实时显示在超级岛胶囊，退出 App 也能看。",
+                            title = LangManager.t("update.island.title", "超级岛状态上岛"),
+                            desc = LangManager.t("update.island.desc", "对话与 Agent 运行状态实时显示在超级岛胶囊，退出 App 也能看。"),
                             bullets = listOf(
-                                "等待响应 / 思考中 / 输出中 / 任务完成",
-                                "走秒计时 + 系统动画，不闪屏",
-                                "工具审批可在岛上直接允许/拒绝",
-                                "输出完成停留 20 秒自动收起",
-                                "设置主页可跳转「实时动态」开关"
+                                LangManager.t("update.island.b1", "等待响应 / 思考中 / 输出中 / 任务完成"),
+                                LangManager.t("update.island.b2", "走秒计时 + 系统动画，不闪屏"),
+                                LangManager.t("update.island.b3", "工具审批可在岛上直接允许/拒绝"),
+                                LangManager.t("update.island.b4", "输出完成停留 20 秒自动收起"),
+                                LangManager.t("update.island.b5", "设置主页可跳转「实时动态」开关")
                             ),
                             onNext = { advanceFrom(UpStep.ISLAND) }
                         )
                         UpStep.QUESTIONNAIRE -> UpFeatureStep(
                             icon = Icons.Default.Assessment,
-                            title = "Agent 问卷",
-                            desc = "需要你做决定时，AI 直接在聊天里发一张可填写的问卷卡片。",
+                            title = LangManager.t("update.questionnaire.title", "Agent 问卷"),
+                            desc = LangManager.t("update.questionnaire.desc", "需要你做决定时，AI 直接在聊天里发一张可填写的问卷卡片。"),
                             bullets = listOf(
-                                "单选 / 多选 / 填空 / 评分",
-                                "答案结构化回传，AI 继续执行任务",
-                                "必填项校验，跳过需明确放弃",
-                                "工具 create_questionnaire"
+                                LangManager.t("update.questionnaire.b1", "单选 / 多选 / 填空 / 评分"),
+                                LangManager.t("update.questionnaire.b2", "答案结构化回传，AI 继续执行任务"),
+                                LangManager.t("update.questionnaire.b3", "必填项校验，跳过需明确放弃"),
+                                LangManager.t("update.questionnaire.b4", "工具 create_questionnaire")
                             ),
                             onNext = { advanceFrom(UpStep.QUESTIONNAIRE) }
                         )
                         UpStep.NEWLIST -> UpFeatureStep(
                             icon = Icons.Default.NewReleases,
-                            title = "新功能",
-                            desc = "本轮追加的中小功能。",
+                            title = LangManager.t("update.newlist.title", "新功能"),
+                            desc = LangManager.t("update.newlist.desc", "本轮追加的中小功能。"),
                             bullets = listOf(
-                                "Markdown 表格网格渲染，长表格可横滑",
-                                "代码块保存/查看直达 /sdcard/知白",
-                                "设置主页「超级岛状态显示」入口",
-                                "高风险回复自动换成友好中文提示"
+                                LangManager.t("update.newlist.b1", "Markdown 表格网格渲染，长表格可横滑"),
+                                LangManager.t("update.newlist.b2", "代码块保存/查看直达 /sdcard/知白"),
+                                LangManager.t("update.newlist.b3", "设置主页「超级岛状态显示」入口"),
+                                LangManager.t("update.newlist.b4", "高风险回复自动换成友好中文提示")
                             ),
                             onNext = { advanceFrom(UpStep.NEWLIST) }
                         )
                         UpStep.OPTLIST -> UpFeatureStep(
                             icon = Icons.Default.AutoAwesome,
-                            title = "新优化",
-                            desc = "细节手感打磨。",
+                            title = LangManager.t("update.optlist.title", "新优化"),
+                            desc = LangManager.t("update.optlist.desc", "细节手感打磨。"),
                             bullets = listOf(
-                                "岛展示改阶段快照，输出过程不再闪屏",
-                                "思考不足 1 秒按 1 秒计",
-                                "思考完成后 Thinking 变 Thought",
-                                "风控消息隐藏思考/复制/重答",
-                                "被拒回合不写入长期记忆（含你的消息）"
+                                LangManager.t("update.optlist.b1", "岛展示改阶段快照，输出过程不再闪屏"),
+                                LangManager.t("update.optlist.b2", "思考不足 1 秒按 1 秒计"),
+                                LangManager.t("update.optlist.b3", "思考完成后 Thinking 变 Thought"),
+                                LangManager.t("update.optlist.b4", "风控消息隐藏思考/复制/重答"),
+                                LangManager.t("update.optlist.b5", "被拒回合不写入长期记忆（含你的消息）")
                             ),
                             onNext = { advanceFrom(UpStep.OPTLIST) }
                         )
                         UpStep.FIXLIST -> UpFeatureStep(
                             icon = Icons.Default.Build,
-                            title = "修复已知问题",
-                            desc = "本轮修复。",
+                            title = LangManager.t("update.fixlist.title", "修复已知问题"),
+                            desc = LangManager.t("update.fixlist.desc", "本轮修复。"),
                             bullets = listOf(
-                                "「输出完成」被 finally 误删，现停留 20 秒",
-                                "岛权限缺失不上岛（已声明系统权限）",
-                                "表格部分场景渲染为空气",
-                                "包名迁移残留（com.zhibai.app）"
+                                LangManager.t("update.fixlist.b1", "「输出完成」被 finally 误删，现停留 20 秒"),
+                                LangManager.t("update.fixlist.b2", "岛权限缺失不上岛（已声明系统权限）"),
+                                LangManager.t("update.fixlist.b3", "表格部分场景渲染为空气"),
+                                LangManager.t("update.fixlist.b4", "包名迁移残留（com.zhibai.app）")
                             ),
                             onNext = { advanceFrom(UpStep.FIXLIST) }
                         )
                         UpStep.FIXES -> UpFeatureStep(
                             icon = Icons.Default.Build,
-                            title = "优化与修复",
-                            desc = "大量底层优化，使用更流畅稳定。",
+                            title = LangManager.t("update.fixes.title", "优化与修复"),
+                            desc = LangManager.t("update.fixes.desc", "大量底层优化，使用更流畅稳定。"),
                             bullets = listOf(
-                                "单次对话无限制，长回复 32K 不截断",
-                                "输出不再闪屏",
-                                "自动滚动不再跳动",
-                                "LaTeX 溢出修复、表格横滑",
-                                "代码块保存/查看、SVG 保存",
-                                "深色模式按钮颜色修复"
+                                LangManager.t("update.fixes.b1", "单次对话无限制，长回复 32K 不截断"),
+                                LangManager.t("update.fixes.b2", "输出不再闪屏"),
+                                LangManager.t("update.fixes.b3", "自动滚动不再跳动"),
+                                LangManager.t("update.fixes.b4", "LaTeX 溢出修复、表格横滑"),
+                                LangManager.t("update.fixes.b5", "代码块保存/查看、SVG 保存"),
+                                LangManager.t("update.fixes.b6", "深色模式按钮颜色修复")
                             ),
                             onNext = { advanceFrom(UpStep.FIXES) }
                         )
@@ -2143,11 +2212,11 @@ private fun UpWelcomeStep(onStart: () -> Unit) {
             modifier = Modifier.size(48.dp).alpha(contentAlpha * 0.6f)
         )
         Spacer(modifier = Modifier.height(20.dp))
-        Text("v2.6 雪", fontSize = 36.sp, fontWeight = FontWeight.Bold, modifier = Modifier.alpha(contentAlpha))
+        Text(LangManager.t("update.welcome.title", "v2.6 雪"), fontSize = 36.sp, fontWeight = FontWeight.Bold, modifier = Modifier.alpha(contentAlpha))
         Spacer(modifier = Modifier.height(12.dp))
-        Text("这次更新了什么？", fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.alpha(contentAlpha))
+        Text(LangManager.t("update.welcome.subtitle", "这次更新了什么？"), fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.alpha(contentAlpha))
         Spacer(modifier = Modifier.height(8.dp))
-        Text("花一分钟看看新功能", fontSize = 13.sp, color = MaterialTheme.colorScheme.outline, modifier = Modifier.alpha(contentAlpha))
+        Text(LangManager.t("update.welcome.desc", "花一分钟看看新功能"), fontSize = 13.sp, color = MaterialTheme.colorScheme.outline, modifier = Modifier.alpha(contentAlpha))
         Spacer(modifier = Modifier.height(48.dp))
         Button(
             onClick = onStart,
@@ -2155,7 +2224,7 @@ private fun UpWelcomeStep(onStart: () -> Unit) {
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             shape = RoundedCornerShape(26.dp)
         ) {
-            Text("开始查看", fontSize = 17.sp, fontWeight = FontWeight.Medium)
+            Text(LangManager.t("update.welcome.start", "开始查看"), fontSize = 17.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -2191,7 +2260,7 @@ private fun UpFeatureStep(
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             shape = RoundedCornerShape(26.dp)
         ) {
-            Text("继续", fontSize = 16.sp)
+            Text(LangManager.t("common.continue", "继续"), fontSize = 16.sp)
         }
         Spacer(modifier = Modifier.height(24.dp))
     }
@@ -2201,27 +2270,42 @@ private fun UpFeatureStep(
 private fun UpOverviewStep(onDone: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
         Spacer(modifier = Modifier.height(32.dp))
-        Text("总览", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Text(LangManager.t("update.overview.title", "总览"), fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
-        Text("v2.6 雪 · 全部更新内容", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(LangManager.t("update.overview.subtitle", "v2.6 雪 · 全部更新内容"), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(24.dp))
 
         val sections = listOf(
-            "磨砂玻璃输入框" to "半透明悬浮，输入时变不透明，颜色/磨砂度可调，圆角 32dp",
-            "Agent 任务系统" to "T1~T999 清单，雪花动画指示，自动判定成败",
-            "思考等级 Off~MAX" to "五档推理深度，精确控制 token 预算",
-            "无限制对话" to "单次 32K tokens，思考模式 65K，不再截断",
-            "代码块增强" to "保存到 workspace、外部查看、按语言选扩展名",
-            "表格与公式" to "表格左右滑动，LaTeX 溢出修复",
-            "性能优化" to "输出不再闪屏，自动滚动优化，消息动画",
-            "深色模式" to "按钮颜色修复，全面适配",
-            "无线调试 ADB" to "SPAKE2 配对，Agent 获得真实 shell 权限",
-            "超级岛上岛" to "五状态胶囊、走秒动画、岛内审批、完成停留 20 秒",
-            "Agent 问卷" to "AI 发问卷卡片，单选/多选/填空/评分结构化收集",
-            "表格网格渲染" to "Markdown 表格显示为网格，可横滑",
-            "代码块存知白" to "保存/查看直达 /sdcard/知白",
-            "风控友好提示" to "高风险英文替换为中文，隐藏思考/复制/重答",
-            "完成通知修复" to "不再被 finally 秒杀，正常停留"
+            LangManager.t("update.glass.title", "磨砂玻璃输入框") to
+                LangManager.t("update.overview.s1.d", "半透明悬浮，输入时变不透明，颜色/磨砂度可调，圆角 32dp"),
+            LangManager.t("update.agent.title", "Agent 任务系统") to
+                LangManager.t("update.overview.s2.d", "T1~T999 清单，雪花动画指示，自动判定成败"),
+            LangManager.t("update.overview.s3.t", "思考等级 Off~MAX") to
+                LangManager.t("update.overview.s3.d", "五档推理深度，精确控制 token 预算"),
+            LangManager.t("update.overview.s4.t", "无限制对话") to
+                LangManager.t("update.overview.s4.d", "单次 32K tokens，思考模式 65K，不再截断"),
+            LangManager.t("update.overview.s5.t", "代码块增强") to
+                LangManager.t("update.overview.s5.d", "保存到 workspace、外部查看、按语言选扩展名"),
+            LangManager.t("update.overview.s6.t", "表格与公式") to
+                LangManager.t("update.overview.s6.d", "表格左右滑动，LaTeX 溢出修复"),
+            LangManager.t("update.overview.s7.t", "性能优化") to
+                LangManager.t("update.overview.s7.d", "输出不再闪屏，自动滚动优化，消息动画"),
+            LangManager.t("update.overview.s8.t", "深色模式") to
+                LangManager.t("update.overview.s8.d", "按钮颜色修复，全面适配"),
+            LangManager.t("update.adb.title", "无线调试 ADB") to
+                LangManager.t("update.overview.s9.d", "SPAKE2 配对，Agent 获得真实 shell 权限"),
+            LangManager.t("update.overview.s10.t", "超级岛上岛") to
+                LangManager.t("update.overview.s10.d", "五状态胶囊、走秒动画、岛内审批、完成停留 20 秒"),
+            LangManager.t("update.questionnaire.title", "Agent 问卷") to
+                LangManager.t("update.overview.s11.d", "AI 发问卷卡片，单选/多选/填空/评分结构化收集"),
+            LangManager.t("update.overview.s12.t", "表格网格渲染") to
+                LangManager.t("update.overview.s12.d", "Markdown 表格显示为网格，可横滑"),
+            LangManager.t("update.overview.s13.t", "代码块存知白") to
+                LangManager.t("update.overview.s13.d", "保存/查看直达 /sdcard/知白"),
+            LangManager.t("update.overview.s14.t", "风控友好提示") to
+                LangManager.t("update.overview.s14.d", "高风险英文替换为中文，隐藏思考/复制/重答"),
+            LangManager.t("update.overview.s15.t", "完成通知修复") to
+                LangManager.t("update.overview.s15.d", "不再被 finally 秒杀，正常停留")
         )
         sections.forEachIndexed { i, (t, d) ->
             ObAnimatedItem(delayMs = i * 60L) {
@@ -2234,7 +2318,10 @@ private fun UpOverviewStep(onDone: () -> Unit) {
 
         Spacer(modifier = Modifier.height(32.dp))
         Text(
-            "想重新看一遍？\n设置 → 关于 → 长按版本号 → 隐藏设置 → 查看更新内容",
+            LangManager.t(
+                "update.overview.replay",
+                "想重新看一遍？\n设置 → 关于 → 长按版本号 → 隐藏设置 → 查看更新内容"
+            ),
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.outline,
             lineHeight = 18.sp
@@ -2246,7 +2333,7 @@ private fun UpOverviewStep(onDone: () -> Unit) {
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             shape = RoundedCornerShape(26.dp)
         ) {
-            Text("开始使用", fontSize = 16.sp)
+            Text(LangManager.t("update.overview.start", "开始使用"), fontSize = 16.sp)
         }
         Spacer(modifier = Modifier.height(24.dp))
     }

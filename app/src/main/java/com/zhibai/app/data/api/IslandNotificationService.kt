@@ -16,6 +16,7 @@ import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.zhibai.app.MainActivity
+import com.zhibai.app.i18n.LangManager
 
 /** One Super Island permission row for the settings checklist. */
 data class IslandPermissionStatus(
@@ -159,29 +160,29 @@ class IslandNotificationService(private val context: Context) {
             return listOf(
                 IslandPermissionStatus(
                     id = "battery",
-                    title = "省电策略 · 无限制",
-                    detail = if (isBatteryUnrestricted(context)) "已允许后台运行" else "点此去系统设置关闭省电限制",
+                    title = LangManager.t("island.perm.battery.title", "省电策略 · 无限制"),
+                    detail = if (isBatteryUnrestricted(context)) LangManager.t("island.perm.battery.ok", "已允许后台运行") else LangManager.t("island.perm.battery.hint", "点此去系统设置关闭省电限制"),
                     granted = isBatteryUnrestricted(context)
                 ),
                 IslandPermissionStatus(
                     id = "focus",
-                    title = "允许通知 · 焦点通知",
-                    detail = if (focus) "焦点通知已开启" else "点此检查焦点通知 / 实时动态开关",
+                    title = LangManager.t("island.perm.focus.title", "允许通知 · 焦点通知"),
+                    detail = if (focus) LangManager.t("island.perm.focus.ok", "焦点通知已开启") else LangManager.t("island.perm.focus.hint", "点此检查焦点通知 / 实时动态开关"),
                     granted = focus
                 ),
                 IslandPermissionStatus(
                     id = "ongoing",
-                    title = "允许通知 · 实时动态常驻",
-                    detail = if (live) "常驻通知与 Live Activity 权限正常" else "点此允许通知并开启实时动态",
+                    title = LangManager.t("island.perm.ongoing.title", "允许通知 · 实时动态常驻"),
+                    detail = if (live) LangManager.t("island.perm.ongoing.ok", "常驻通知与 Live Activity 权限正常") else LangManager.t("island.perm.ongoing.hint", "点此允许通知并开启实时动态"),
                     granted = live
                 ),
                 IslandPermissionStatus(
                     id = "promoted",
-                    title = "允许通知 · Live Activity",
+                    title = LangManager.t("island.perm.promoted.title", "允许通知 · Live Activity"),
                     detail = if (promotedOk) {
-                        if (canPostPromoted(context)) "可发布提升通知（上岛）" else "焦点通知通道可用（上岛）"
+                        if (canPostPromoted(context)) LangManager.t("island.perm.promoted.okA", "可发布提升通知（上岛）") else LangManager.t("island.perm.promoted.okB", "焦点通知通道可用（上岛）")
                     } else {
-                        "点此开启「实时动态 / 提升通知」"
+                        LangManager.t("island.perm.promoted.hint", "点此开启「实时动态 / 提升通知」")
                     },
                     granted = promotedOk
                 )
@@ -329,17 +330,17 @@ class IslandNotificationService(private val context: Context) {
      */
     fun showPhoneAgentRunning(instruction: String, step: Int, totalSteps: Int) {
         showAgentTaskNotification(
-            taskTitle = "手机助手",
-            taskStatus = "第 $step 步 · $instruction",
+            taskTitle = LangManager.t("phone.assistant.name", "手机助手"),
+            taskStatus = LangManager.t("phone.step", "第 {n} 步 · {text}").replace("{n}", step.toString()).replace("{text}", instruction),
             livePhase = true,
             phase = PHASE_RUN,
             forceExpand = true,
             actions = listOf(
-                "终止" to phoneAgentPendingIntent(
+                LangManager.t("phone.stop", "终止") to phoneAgentPendingIntent(
                     AgentNotificationActionReceiver.ACTION_PHONE_AGENT_STOP,
                     AgentNotificationActionReceiver.REQ_PHONE_AGENT_STOP
                 ),
-                "暂时接管" to phoneAgentPendingIntent(
+                LangManager.t("phone.takeover", "暂时接管") to phoneAgentPendingIntent(
                     AgentNotificationActionReceiver.ACTION_PHONE_AGENT_TAKEOVER,
                     AgentNotificationActionReceiver.REQ_PHONE_AGENT_TAKEOVER
                 )
@@ -349,12 +350,12 @@ class IslandNotificationService(private val context: Context) {
 
     fun showPhoneAgentTakenOver(instruction: String) {
         showAgentTaskNotification(
-            taskTitle = "手机助手 · 等待接管",
-            taskStatus = "已暂停，可手动操作：$instruction",
+            taskTitle = LangManager.t("phone.paused.title", "手机助手 · 等待接管"),
+            taskStatus = LangManager.t("phone.paused.status", "已暂停，可手动操作：{text}").replace("{text}", instruction),
             phase = PHASE_AUTH,
             forceExpand = true,
             actions = listOf(
-                "终止" to phoneAgentPendingIntent(
+                LangManager.t("phone.stop", "终止") to phoneAgentPendingIntent(
                     AgentNotificationActionReceiver.ACTION_PHONE_AGENT_STOP,
                     AgentNotificationActionReceiver.REQ_PHONE_AGENT_STOP
                 )
@@ -500,14 +501,14 @@ class IslandNotificationService(private val context: Context) {
             builder.addAction(
                 Notification.Action.Builder(
                     Icon.createWithResource(context, android.R.drawable.ic_menu_revert),
-                    "拒绝",
+                    LangManager.t("common.deny", "拒绝"),
                     actionPendingIntent(approve = false)
                 ).build()
             )
             builder.addAction(
                 Notification.Action.Builder(
                     Icon.createWithResource(context, android.R.drawable.ic_menu_send),
-                    "允许",
+                    LangManager.t("common.allow", "允许"),
                     actionPendingIntent(approve = true)
                 ).build()
             )

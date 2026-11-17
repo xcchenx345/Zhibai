@@ -51,6 +51,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhibai.app.data.model.ChatMessage
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.ui.theme.MiMoColors
 
 /**
@@ -106,14 +107,14 @@ fun ProcessGroupCard(
                 .padding(vertical = 8.dp)
         ) {
             Text(
-                "共用时 $totalSec 秒",
+                LangManager.t("step.totalTime", "共用时 {sec} 秒").replace("{sec}", totalSec.toString()),
                 fontSize = (fontSize - 4).sp,
                 color = secondaryColor
             )
             Spacer(modifier = Modifier.weight(1f))
             Icon(
                 Icons.Default.KeyboardArrowRight,
-                contentDescription = if (expanded) "收起" else "展开",
+                contentDescription = if (expanded) LangManager.t("chat.collapse", "收起") else LangManager.t("common.expand", "展开"),
                 modifier = Modifier
                     .size(14.dp)
                     .rotate(chevron),
@@ -146,18 +147,29 @@ private data class GroupRowModel(
     val running: Boolean
 )
 
+/** Matches both the zh-cn wording (persisted history) and the current language's
+ *  step.* values, so icon picking survives language switches. */
+internal fun stepRowIcon(content: String): ImageVector {
+    fun prefix(key: String, zhFallback: String): String =
+        LangManager.t(key, zhFallback).substringBefore("{").trim()
+    val think = listOf("思考", LangManager.t("step.thinking", "正在思考"), LangManager.t("step.thought", "已深度思考"))
+    val search = listOf("搜索", prefix("step.search", "搜索 {n} 个关键词，参考 {m} 篇资料"))
+    val browse = listOf("浏览", prefix("step.fetch", "浏览页面，参考了 {n} 篇资料"))
+    return when {
+        think.any { content.contains(it) } -> Icons.Default.Lightbulb
+        search.any { it.isNotEmpty() && content.startsWith(it) } -> Icons.Default.Search
+        browse.any { it.isNotEmpty() && content.startsWith(it) } -> Icons.Default.Public
+        else -> Icons.Default.Description
+    }
+}
+
 private fun buildGroupRows(messages: List<ChatMessage>): List<GroupRowModel> {
     val rows = mutableListOf<GroupRowModel>()
     for (m in messages) {
         when (m.role) {
             "step" -> rows.add(
                 GroupRowModel(
-                    icon = when {
-                        m.content.contains("思考") -> Icons.Default.Lightbulb
-                        m.content.startsWith("搜索") -> Icons.Default.Search
-                        m.content.startsWith("浏览") -> Icons.Default.Public
-                        else -> Icons.Default.Description
-                    },
+                    icon = stepRowIcon(m.content),
                     title = m.content,
                     detail = m.reasoningContent,
                     running = m.isStreaming
@@ -183,7 +195,7 @@ private fun buildGroupRows(messages: List<ChatMessage>): List<GroupRowModel> {
                         rows.add(
                             GroupRowModel(
                                 icon = iconForToolKey(null),
-                                title = o.get("tool")?.asString ?: "操作",
+                                title = o.get("tool")?.asString ?: LangManager.t("step.opFallback", "操作"),
                                 detail = o.get("result")?.asString ?: "",
                                 running = false
                             )
@@ -198,7 +210,7 @@ private fun buildGroupRows(messages: List<ChatMessage>): List<GroupRowModel> {
 
 private fun parseLegacyTool(content: String): Pair<String, String> {
     val match = Regex("^\\[([^\\]]+)\\]").find(content)
-    return (match?.groupValues?.get(1) ?: "工具") to
+    return (match?.groupValues?.get(1) ?: LangManager.t("step.toolFallback", "工具")) to
         content.replaceFirst(Regex("^\\[[^\\]]+\\]\\s*"), "")
 }
 
@@ -250,7 +262,7 @@ private fun GroupRow(
             )
             Icon(
                 Icons.Default.KeyboardArrowRight,
-                contentDescription = if (open) "收起" else "展开",
+                contentDescription = if (open) LangManager.t("chat.collapse", "收起") else LangManager.t("common.expand", "展开"),
                 modifier = Modifier
                     .size(13.dp)
                     .rotate(chevron),
@@ -272,7 +284,7 @@ private fun GroupRow(
             ) {
                 if (detail.isBlank()) {
                     Text(
-                        if (row.running) "进行中…" else "无详情",
+                        if (row.running) LangManager.t("step.running", "进行中…") else LangManager.t("step.noDetail", "无详情"),
                         fontSize = (fontSize - 5).sp,
                         color = secondaryColor.copy(alpha = 0.7f)
                     )

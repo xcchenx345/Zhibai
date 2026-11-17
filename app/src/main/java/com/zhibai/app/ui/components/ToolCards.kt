@@ -65,6 +65,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhibai.app.data.model.ChatMessage
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.ui.theme.MiMoColors
 
 private val AddGreen = Color(0xFF2E9E4F)
@@ -172,9 +173,9 @@ fun ToolCard(
                 )
                 Text(
                     text = when {
-                        running -> "运行中"
-                        message.toolStatus == "error" -> "执行失败"
-                        message.toolStatus == "ok" -> "已完成"
+                        running -> LangManager.t("tool.running", "运行中")
+                        message.toolStatus == "error" -> LangManager.t("tool.failed", "执行失败")
+                        message.toolStatus == "ok" -> LangManager.t("agent.taskDone", "已完成")
                         else -> legacyResult.firstLine()
                     },
                     fontSize = (fontSize - 5).sp,
@@ -232,7 +233,7 @@ fun ToolCard(
         } else if (expanded && running && live.isBlank()) {
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                "等待输出…",
+                LangManager.t("tool.waitingOutput", "等待输出…"),
                 fontSize = (fontSize - 4).sp,
                 color = textColor.copy(alpha = 0.55f)
             )
@@ -300,7 +301,10 @@ fun FileChangesCard(
             Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (undone) "已撤销 ${changes.size} 个文件的更改" else "已更改 ${changes.size} 个文件",
+                    text = if (undone)
+                        LangManager.t("tool.filesUndone", "已撤销 {n} 个文件的更改").replace("{n}", changes.size.toString())
+                    else
+                        LangManager.t("tool.filesChanged", "已更改 {n} 个文件").replace("{n}", changes.size.toString()),
                     fontSize = (fontSize - 2).sp,
                     fontWeight = FontWeight.SemiBold,
                     color = textColor,
@@ -341,7 +345,7 @@ fun FileChangesCard(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             CardActionButton(
-                text = if (undone) "已撤销" else "撤销",
+                text = if (undone) LangManager.t("tool.undone", "已撤销") else LangManager.t("tool.undo", "撤销"),
                 enabled = !undone && onUndo != null,
                 textColor = textColor,
                 onClick = {
@@ -352,7 +356,7 @@ fun FileChangesCard(
                 }
             )
             CardActionButton(
-                text = if (reviewing) "收起文件" else "打开查看（审阅）",
+                text = if (reviewing) LangManager.t("tool.collapseFiles", "收起文件") else LangManager.t("tool.openReview", "打开查看（审阅）"),
                 enabled = true,
                 textColor = textColor,
                 onClick = { reviewing = !reviewing }
@@ -438,11 +442,14 @@ private fun CardActionButton(
 private fun FileReviewRow(path: String, fontSize: Int, isDarkTheme: Boolean) {
     var open by remember(path) { mutableStateOf(false) }
     val textColor = if (isDarkTheme) MiMoColors.ThinkingTextDark else MiMoColors.ThinkingText
-    val content = remember(open) {
+    val content = remember(open, LangManager.currentCode) {
         if (!open) "" else try {
             val f = java.io.File(path)
-            if (f.exists() && f.length() < 200_000) f.readText() else "(文件不存在或过大)"
-        } catch (e: Exception) { "(无法读取: ${e.message})" }
+            if (f.exists() && f.length() < 200_000) f.readText()
+            else LangManager.t("tool.fileMissing", "(文件不存在或过大)")
+        } catch (e: Exception) {
+            LangManager.t("tool.fileReadError", "(无法读取: {error})").replace("{error}", e.message ?: "")
+        }
     }
     Column(
         modifier = Modifier
@@ -464,7 +471,7 @@ private fun FileReviewRow(path: String, fontSize: Int, isDarkTheme: Boolean) {
                 modifier = Modifier.weight(1f)
             )
             Text(
-                text = if (open) "收起" else "查看",
+                text = if (open) LangManager.t("chat.collapse", "收起") else LangManager.t("code.view", "查看"),
                 fontSize = (fontSize - 5).sp,
                 color = textColor.copy(alpha = 0.55f)
             )
@@ -500,22 +507,22 @@ fun FileCard(
     if (!file.exists()) return
     val ext = file.extension.lowercase()
     val (kindLabel, icon) = when (ext) {
-        "jpg", "jpeg", "png", "webp", "gif" -> "图片" to Icons.Default.Image
-        "mp4", "mkv", "webm", "3gp", "mov" -> "视频" to Icons.Default.VideoFile
-        "mp3", "wav", "ogg", "m4a", "aac", "flac" -> "音频" to Icons.Default.AudioFile
-        "html", "htm" -> "落地页" to Icons.Default.Public
-        "md", "txt", "pdf", "doc", "docx", "json", "kt", "java", "py", "js", "ts", "xml" -> "文本" to Icons.Default.Description
-        else -> "文件" to Icons.Default.Description
+        "jpg", "jpeg", "png", "webp", "gif" -> LangManager.t("file.type.image", "图片") to Icons.Default.Image
+        "mp4", "mkv", "webm", "3gp", "mov" -> LangManager.t("file.type.video", "视频") to Icons.Default.VideoFile
+        "mp3", "wav", "ogg", "m4a", "aac", "flac" -> LangManager.t("file.type.audio", "音频") to Icons.Default.AudioFile
+        "html", "htm" -> LangManager.t("file.type.page", "落地页") to Icons.Default.Public
+        "md", "txt", "pdf", "doc", "docx", "json", "kt", "java", "py", "js", "ts", "xml" -> LangManager.t("file.type.text", "文本") to Icons.Default.Description
+        else -> LangManager.t("file.type.other", "文件") to Icons.Default.Description
     }
     val textColor = if (isDarkTheme) MiMoColors.ThinkingTextDark else MiMoColors.ThinkingText
     val bg = if (isDarkTheme) MiMoColors.ThinkingBgDark else MiMoColors.ThinkingBg
-    val relTime = remember(message.timestamp) {
+    val relTime = remember(message.timestamp, LangManager.currentCode) {
         val diff = System.currentTimeMillis() - message.timestamp
         when {
-            diff < 60_000 -> "刚刚"
-            diff < 3_600_000 -> "${diff / 60_000} 分钟前"
-            diff < 86_400_000 -> "${diff / 3_600_000} 小时前"
-            else -> "${diff / 86_400_000} 天前"
+            diff < 60_000 -> LangManager.t("time.justNow", "刚刚")
+            diff < 3_600_000 -> LangManager.t("time.minutesAgo", "{n} 分钟前").replace("{n}", (diff / 60_000).toString())
+            diff < 86_400_000 -> LangManager.t("time.hoursAgo", "{n} 小时前").replace("{n}", (diff / 3_600_000).toString())
+            else -> LangManager.t("time.daysAgo", "{n} 天前").replace("{n}", (diff / 86_400_000).toString())
         }
     }
 

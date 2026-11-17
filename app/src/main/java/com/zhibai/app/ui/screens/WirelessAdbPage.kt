@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhibai.app.adb.AdbManager
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.ui.theme.MiMoColors
 import kotlinx.coroutines.launch
 
@@ -43,14 +44,14 @@ fun WirelessAdbPage(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            "无线调试 ADB",
+            LangManager.t("settings.adb.title", "无线调试 ADB"),
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = MiMoColors.TextPrimary
         )
 
         if (!supported) {
-            Text("需要 Android 11 及以上版本。", color = MiMoColors.Error, fontSize = 13.sp)
+            Text(LangManager.t("adb.needAndroid11", "需要 Android 11 及以上版本。"), color = MiMoColors.Error, fontSize = 13.sp)
             return@Column
         }
 
@@ -59,11 +60,11 @@ fun WirelessAdbPage(
             colors = CardDefaults.cardColors(containerColor = MiMoColors.SurfaceElevated)
         ) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("使用步骤", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                Text("1. 开发者选项 → 无线调试 → 打开开关", fontSize = 13.sp)
-                Text("2. 点「使用配对码配对设备」，把弹窗里的配对码输到下面", fontSize = 13.sp)
-                Text("3. 配对一次即可，之后 AI 的 run_adb 工具就拥有真实 shell 权限", fontSize = 13.sp)
-                Text("提示：HyperOS 需把知白的省电策略改为「无限制」，否则后台可能被杀", fontSize = 12.sp, color = MiMoColors.TextSecondary)
+                Text(LangManager.t("adb.steps.title", "使用步骤"), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(LangManager.t("adb.steps.1", "1. 开发者选项 → 无线调试 → 打开开关"), fontSize = 13.sp)
+                Text(LangManager.t("adb.steps.2", "2. 点「使用配对码配对设备」，把弹窗里的配对码输到下面"), fontSize = 13.sp)
+                Text(LangManager.t("adb.steps.3", "3. 配对一次即可，之后 AI 的 run_adb 工具就拥有真实 shell 权限"), fontSize = 13.sp)
+                Text(LangManager.t("adb.steps.tip", "提示：HyperOS 需把知白的省电策略改为「无限制」，否则后台可能被杀"), fontSize = 12.sp, color = MiMoColors.TextSecondary)
             }
         }
 
@@ -77,9 +78,9 @@ fun WirelessAdbPage(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("连接端口", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text(LangManager.t("adb.connectPort", "连接端口"), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     Text(
-                        if (lastConnectPort > 0) lastConnectPort.toString() else "未发现",
+                        if (lastConnectPort > 0) lastConnectPort.toString() else LangManager.t("adb.notFound", "未发现"),
                         fontSize = 13.sp,
                         fontFamily = FontFamily.Monospace
                     )
@@ -87,14 +88,14 @@ fun WirelessAdbPage(
                 OutlinedButton(onClick = {
                     scope.launch {
                         busy = true
-                        status = "测试连接中..."
+                        status = LangManager.t("adb.testing", "测试连接中...")
                         val ok = AdbManager.testConnection()
-                        status = if (ok) "连接正常，ADB shell 可用" else "连接失败，请确认无线调试已开启"
+                        status = if (ok) LangManager.t("adb.connectOk", "连接正常，ADB shell 可用") else LangManager.t("adb.connectFail", "连接失败，请确认无线调试已开启")
                         lastConnectPort = AdbManager.lastConnectPort()
                         busy = false
                     }
                 }) {
-                    Text("测试连接")
+                    Text(LangManager.t("adb.test", "测试连接"))
                 }
             }
         }
@@ -107,7 +108,7 @@ fun WirelessAdbPage(
                 modifier = Modifier.padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("配对", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(LangManager.t("adb.pair", "配对"), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
 
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -118,26 +119,33 @@ fun WirelessAdbPage(
                         onClick = {
                             scope.launch {
                                 busy = true
-                                status = "正在通过 mDNS 发现配对服务..."
+                                status = LangManager.t("adb.discovering", "正在通过 mDNS 发现配对服务...")
                                 val port = AdbManager.discoverPairingPort()
                                 pairingPort = port
-                                status = if (port != null) "发现配对端口：$port" else "未发现配对服务，请确认无线调试已打开且弹出了配对码窗口"
+                                status = if (port != null)
+                                    LangManager.t("adb.pairPortFound", "发现配对端口：{port}").replace("{port}", port.toString())
+                                else
+                                    LangManager.t("adb.pairServiceNotFound", "未发现配对服务，请确认无线调试已打开且弹出了配对码窗口")
                                 busy = false
                             }
                         }
                     ) {
-                        Text("自动发现端口")
+                        Text(LangManager.t("adb.autoDiscover", "自动发现端口"))
                     }
                     if (pairingPort != null) {
-                        Text("端口 $pairingPort", fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                        Text(
+                            LangManager.t("adb.port", "端口 {port}").replace("{port}", pairingPort.toString()),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 13.sp
+                        )
                     }
                 }
 
                 OutlinedTextField(
                     value = manualPort,
                     onValueChange = { manualPort = it.filter { c -> c.isDigit() } },
-                    label = { Text("端口（可手动填弹窗里的）") },
-                    placeholder = { Text("如 37125") },
+                    label = { Text(LangManager.t("adb.portLabel", "端口（可手动填弹窗里的）")) },
+                    placeholder = { Text(LangManager.t("adb.portPlaceholder", "如 37125")) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
@@ -147,7 +155,7 @@ fun WirelessAdbPage(
                 OutlinedTextField(
                     value = pairCode,
                     onValueChange = { pairCode = it.filter { c -> c.isDigit() }.take(6) },
-                    label = { Text("6 位配对码") },
+                    label = { Text(LangManager.t("adb.codeLabel", "6 位配对码")) },
                     placeholder = { Text("123456") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -161,14 +169,17 @@ fun WirelessAdbPage(
                         val port = manualPort.toIntOrNull() ?: pairingPort ?: return@Button
                         scope.launch {
                             busy = true
-                            status = "配对中..."
+                            status = LangManager.t("adb.pairing", "配对中...")
                             val result = AdbManager.pair("127.0.0.1", port, pairCode)
                             status = result.fold(
                                 onSuccess = {
                                     lastConnectPort = AdbManager.discoverConnectPort() ?: -1
-                                    "配对成功"
+                                    LangManager.t("adb.pairOk", "配对成功")
                                 },
-                                onFailure = { e -> "配对失败：${e.message ?: e.javaClass.simpleName}" }
+                                onFailure = { e ->
+                                    LangManager.t("adb.pairFail", "配对失败：{error}")
+                                        .replace("{error}", e.message ?: e.javaClass.simpleName)
+                                }
                             )
                             busy = false
                         }
@@ -176,7 +187,12 @@ fun WirelessAdbPage(
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
-                    Text(if (busy) "处理中..." else "开始配对")
+                    Text(
+                        LangManager.t(
+                            if (busy) "common.processing" else "adb.startPair",
+                            if (busy) "处理中..." else "开始配对"
+                        )
+                    )
                 }
             }
         }

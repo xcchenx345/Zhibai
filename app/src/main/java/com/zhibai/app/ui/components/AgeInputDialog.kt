@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zhibai.app.i18n.LangManager
 
 /**
  * Mandatory age prompt (voluntary number, no real-name / ID check).
@@ -43,13 +44,13 @@ fun AgeInputDialog(
             TextButton(
                 onClick = { if (valid) onConfirm(parsed!!) },
                 enabled = valid
-            ) { Text("确定") }
+            ) { Text(LangManager.t("common.ok", "确定")) }
         },
-        title = { Text("请填写你的年龄", fontWeight = FontWeight.SemiBold) },
+        title = { Text(LangManager.t("youth.age.title", "请填写你的年龄"), fontWeight = FontWeight.SemiBold) },
         text = {
             Column {
                 Text(
-                    "用于合理安排休息提醒（不会做实名认证，仅保存在本机）。",
+                    LangManager.t("youth.age.desc", "用于合理安排休息提醒（不会做实名认证，仅保存在本机）。"),
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -62,8 +63,8 @@ fun AgeInputDialog(
                         text = input.filter { it.isDigit() }.take(3)
                     },
                     singleLine = true,
-                    label = { Text("年龄") },
-                    placeholder = { Text("例如 16") },
+                    label = { Text(LangManager.t("youth.age.label", "年龄")) },
+                    placeholder = { Text(LangManager.t("youth.age.placeholder", "例如 16")) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -71,9 +72,9 @@ fun AgeInputDialog(
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
                         if (isMinor)
-                            "未满 18 岁：连续使用 30 分钟会温馨提醒，并提供青少年求助热线。"
+                            LangManager.t("youth.age.minorNote", "未满 18 岁：连续使用 30 分钟会温馨提醒，并提供青少年求助热线。")
                         else
-                            "已满 18 岁：连续使用 60 分钟会提醒你休息一下。",
+                            LangManager.t("youth.age.adultNote", "已满 18 岁：连续使用 60 分钟会提醒你休息一下。"),
                         fontSize = 12.sp,
                         lineHeight = 17.sp,
                         color = MaterialTheme.colorScheme.primary

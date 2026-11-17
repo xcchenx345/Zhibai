@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.zhibai.app.i18n.LangManager
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -77,10 +78,10 @@ fun RichRenderer(
                                 )
                                 ClipboardHelper.copyWithToast(context, svg, label = "svg")
                             } catch (e: Exception) {
-                                Toast.makeText(context, "SVG 解码失败", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, LangManager.t("artifacts.svgDecodeFailed", "SVG 解码失败"), Toast.LENGTH_SHORT).show()
                             }
                         } else {
-                            Toast.makeText(context, "未找到 SVG（图表可能未渲染完成）", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, LangManager.t("artifacts.svgNotFound", "未找到 SVG（图表可能未渲染完成）"), Toast.LENGTH_SHORT).show()
                         }
                     }
                 },
@@ -114,9 +115,17 @@ fun RichRenderer(
                         val ext = if (type == "svg") "svg" else "$type.txt"
                         val fileName = "${type}_${System.currentTimeMillis()}.$ext"
                         java.io.File(dir, fileName).writeText(content)
-                        Toast.makeText(context, "已保存到 workspace/$fileName", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            context,
+                            LangManager.t("artifacts.savedTo", "已保存到 workspace/{file}").replace("{file}", fileName),
+                            Toast.LENGTH_SHORT
+                        ).show()
                     } catch (e: Exception) {
-                        Toast.makeText(context, "保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            context,
+                            LangManager.t("common.saveFailed", "保存失败: {error}").replace("{error}", e.message ?: ""),
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                 },
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
@@ -124,7 +133,7 @@ fun RichRenderer(
             ) {
                 Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(14.dp))
                 Spacer(modifier = Modifier.width(2.dp))
-                Text("保存", fontSize = 11.sp)
+                Text(LangManager.t("common.save", "保存"), fontSize = 11.sp)
             }
         }
 

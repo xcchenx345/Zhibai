@@ -3,6 +3,7 @@ package com.zhibai.app.agent
 import android.content.Context
 import android.os.Environment
 import com.zhibai.app.data.api.MiMoApiService
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.rootfs.ProotShell
 import com.zhibai.app.rootfs.Rootfs
 import com.zhibai.app.rootfs.RootfsInstaller
@@ -1872,22 +1873,23 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
                 return@AgentTool "Error: phase must be plan or build"
             }
             val question = if (target == "build") {
-                "规划已完成，切换到 Build 执行阶段？"
+                LangManager.t("agent.phase.askBuild", "规划已完成，切换到 Build 执行阶段？")
             } else {
-                "需要重新规划，切换到 Plan 规划阶段？"
+                LangManager.t("agent.phase.askPlan", "需要重新规划，切换到 Plan 规划阶段？")
             }
+            val optConfirm = LangManager.t("agent.phase.confirm", "确认切换")
             val answers = requestQuestionnaire(listOf(
                 QuestionnaireItem(
                     id = "phase",
                     type = "single",
                     question = question,
-                    options = listOf("确认切换", "留在当前阶段"),
+                    options = listOf(optConfirm, LangManager.t("agent.phase.stay", "留在当前阶段")),
                     required = true,
                 )
             ))
             when {
                 answers.contains("USER_CANCELLED") -> "PHASE_SWITCH:cancelled"
-                answers.contains("确认切换") -> "PHASE_SWITCH:$target"
+                answers.contains(optConfirm) -> "PHASE_SWITCH:$target"
                 else -> "PHASE_SWITCH:declined"
             }
         })
@@ -1916,7 +1918,7 @@ Tasks: ${scheduledTasks.size}""".trimIndent()
                 try { live(tagged) } catch (_: Exception) {}
             } else emitOutput(tagged)
         }
-        emit("开始子任务：${task.replace('\n', ' ').take(80)}")
+        emit(LangManager.t("agent.subtask.start", "开始子任务：{task}").replace("{task}", task.replace('\n', ' ').take(80)))
         val apiMessages = mutableListOf<com.zhibai.app.data.model.Message>(
             com.zhibai.app.data.model.Message(role = "system", content = """
 You are ${if (name.isNullOrBlank()) "a focused subagent" else "subagent \"$label\""} of a phone assistant. Complete the EXACT subtask you are given.
@@ -1932,7 +1934,7 @@ ${getToolsDescription()}
             })
         )
         for (round in 0 until maxRounds) {
-            emit("第 ${round + 1} 轮：请求模型…")
+            emit(LangManager.t("agent.subtask.round", "第 {n} 轮：请求模型…").replace("{n}", (round + 1).toString()))
             val request = com.zhibai.app.data.model.ChatRequest(
                 model = "mimo-v2.6-flash",
                 messages = apiMessages,
@@ -1953,18 +1955,18 @@ ${getToolsDescription()}
             val calls = parsed?.toolCalls.orEmpty()
             if (calls.isEmpty()) {
                 val answer = (parsed?.response ?: raw).ifBlank { "Error: subagent returned empty result" }
-                emit("完成：${answer.replace('\n', ' ').take(100)}")
+                emit(LangManager.t("agent.subtask.done", "完成：{answer}").replace("{answer}", answer.replace('\n', ' ').take(100)))
                 return answer
             }
             val results = mutableListOf<String>()
             calls.forEach { tc ->
                 val tcArgs = tc.args ?: emptyMap<String, Any>()
                 if (tc.tool == "run_subagent" || tc.tool == "spawn_subagent") {
-                    emit("拒绝 ${tc.tool}：子代理不能再派生子代理")
+                    emit(LangManager.t("agent.subtask.rejectNested", "拒绝 {tool}：子代理不能再派生子代理").replace("{tool}", tc.tool))
                     results.add("[tool result: ${tc.tool}]\nError: subagents cannot spawn subagents")
                     return@forEach
                 }
-                emit("调用 ${tc.tool}")
+                emit(LangManager.t("agent.subtask.call", "调用 {tool}").replace("{tool}", tc.tool))
                 val out = try {
                     executeTool(tc.tool, tcArgs, MODE_DEFAULT)
                 } catch (e: Exception) {
@@ -1976,7 +1978,7 @@ ${getToolsDescription()}
             apiMessages.add(com.zhibai.app.data.model.Message(role = "assistant", content = raw))
             apiMessages.add(com.zhibai.app.data.model.Message(role = "user", content = results.joinToString("\n\n")))
         }
-        emit("达到工具轮次上限")
+        emit(LangManager.t("agent.subtask.roundLimit", "达到工具轮次上限"))
         return "Error: subagent hit the tool-round limit before answering"
     }
 

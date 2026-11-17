@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhibai.app.data.api.TTSService
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.ui.theme.MiMoColors
 import com.zhibai.app.viewmodel.ChatViewModel
 import kotlinx.coroutines.Dispatchers
@@ -69,17 +70,48 @@ val presetVoices = listOf(
     TTSVoice("Dean (EN)", "Dean")
 )
 
-private val tabTitles = listOf("语音合成", "音色设计", "音色克隆")
-
-private val synthFeatures = listOf(
-    Triple("丰富的多元表达", "方言、角色、唱歌", Icons.Default.RecordVoiceOver),
-    Triple("细粒度的情绪调节", "一句话多种情绪", Icons.Default.SentimentSatisfied),
-    Triple("强大的文本理解", "导演演绎、高级富文本", Icons.Default.AutoStories)
+// Localized at call time (functions, not vals) so a language switch takes effect.
+private fun tabTitles() = listOf(
+    LangManager.t("tts.tab.synth", "语音合成"),
+    LangManager.t("tts.tab.design", "音色设计"),
+    LangManager.t("tts.tab.clone", "音色克隆")
 )
 
-private val styleExamples = listOf("东北话", "四川话", "河南话", "广东话")
-private val designExamples = listOf("武侠小说", "高能广告", "新闻直播", "DJ 电台")
-private val tagModeLabels = listOf("风格标签", "音频标签", "唱歌")
+private fun synthFeatures() = listOf(
+    Triple(
+        LangManager.t("tts.feature.express.title", "丰富的多元表达"),
+        LangManager.t("tts.feature.express.sub", "方言、角色、唱歌"),
+        Icons.Default.RecordVoiceOver
+    ),
+    Triple(
+        LangManager.t("tts.feature.emotion.title", "细粒度的情绪调节"),
+        LangManager.t("tts.feature.emotion.sub", "一句话多种情绪"),
+        Icons.Default.SentimentSatisfied
+    ),
+    Triple(
+        LangManager.t("tts.feature.text.title", "强大的文本理解"),
+        LangManager.t("tts.feature.text.sub", "导演演绎、高级富文本"),
+        Icons.Default.AutoStories
+    )
+)
+
+private fun styleExamples() = listOf(
+    LangManager.t("tts.styleEx.1", "东北话"),
+    LangManager.t("tts.styleEx.2", "四川话"),
+    LangManager.t("tts.styleEx.3", "河南话"),
+    LangManager.t("tts.styleEx.4", "广东话")
+)
+private fun designExamples() = listOf(
+    LangManager.t("tts.designEx.1", "武侠小说"),
+    LangManager.t("tts.designEx.2", "高能广告"),
+    LangManager.t("tts.designEx.3", "新闻直播"),
+    LangManager.t("tts.designEx.4", "DJ 电台")
+)
+private fun tagModeLabels() = listOf(
+    LangManager.t("tts.tag.style", "风格标签"),
+    LangManager.t("tts.tag.audio", "音频标签"),
+    LangManager.t("tts.tag.sing", "唱歌")
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -374,7 +406,7 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                     TTSMode.CLONE -> {
                         val audio = cloneAudioData
                         if (audio == null) {
-                            errorMsg = "请先上传或录制参考音频"
+                            errorMsg = LangManager.t("tts.needRefAudio", "请先上传或录制参考音频")
                             isGenerating = false
                             return@launch
                         }
@@ -477,7 +509,7 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            tabTitles.forEachIndexed { index, title ->
+            tabTitles().forEachIndexed { index, title ->
                 val selected = selectedTab == index
                 Box(
                     modifier = Modifier
@@ -510,7 +542,7 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                 // ── 语音合成 ──────────────────────────────────────
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "Xiaomi MIMO 语音合成",
+                        LangManager.t("tts.synth.title", "Xiaomi MIMO 语音合成"),
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -530,7 +562,7 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    synthFeatures.forEach { (title, sub, icon) ->
+                    synthFeatures().forEach { (title, sub, icon) ->
                         Surface(
                             modifier = Modifier.width(170.dp),
                             shape = RoundedCornerShape(14.dp),
@@ -564,7 +596,7 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                 }
 
                 SectionCard {
-                    Text("音频标签控制", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(LangManager.t("tts.tagControl", "音频标签控制"), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -585,7 +617,7 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(tagModeLabels[tagMode], fontSize = 13.sp)
+                                    Text(tagModeLabels()[tagMode], fontSize = 13.sp)
                                     Icon(
                                         Icons.Default.ArrowDropDown,
                                         contentDescription = null,
@@ -597,7 +629,7 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                                 expanded = showTagMenu,
                                 onDismissRequest = { showTagMenu = false }
                             ) {
-                                tagModeLabels.forEachIndexed { i, label ->
+                                tagModeLabels().forEachIndexed { i, label ->
                                     DropdownMenuItem(
                                         text = { Text(label) },
                                         onClick = { tagMode = i; showTagMenu = false }
@@ -649,10 +681,10 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                     }
                     // Tag-type chips + director toggle
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        tagModeLabels.forEachIndexed { i, label ->
+                        tagModeLabels().forEachIndexed { i, label ->
                             ToggleChip(label = label, selected = tagMode == i) { tagMode = i }
                         }
-                        ToggleChip(label = "导演演绎", selected = directorMode) {
+                        ToggleChip(label = LangManager.t("tts.director", "导演演绎"), selected = directorMode) {
                             directorMode = !directorMode
                             selectedMode = syncMode()
                         }
@@ -660,12 +692,12 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                 }
 
                 SectionCard {
-                    RequiredLabel("风格指令", required = false)
+                    RequiredLabel(LangManager.t("tts.styleLabel", "风格指令"), required = false)
                     OutlinedTextField(
                         value = stylePrompt,
                         onValueChange = { stylePrompt = it },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("请用 1-3 个短词描述", fontSize = 13.sp) },
+                        placeholder = { Text(LangManager.t("tts.stylePlaceholder", "请用 1-3 个短词描述"), fontSize = 13.sp) },
                         minLines = 2,
                         maxLines = 4,
                         shape = RoundedCornerShape(12.dp),
@@ -675,7 +707,7 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        styleExamples.forEach { ex ->
+                        styleExamples().forEach { ex ->
                             ExampleChip(ex) { stylePrompt = ex }
                         }
                     }
@@ -689,14 +721,17 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                     )
 
                     if (directorMode) {
-                        RequiredLabel("导演指令", required = false)
+                        RequiredLabel(LangManager.t("tts.directorLabel", "导演指令"), required = false)
                         OutlinedTextField(
                             value = directorText,
                             onValueChange = { directorText = it },
                             modifier = Modifier.fillMaxWidth(),
                             placeholder = {
                                 Text(
-                                    "【角色】青年男性，自信张扬…\n【场景】刚查到竞赛成绩，忍不住得意惊呼…\n【指导】语速偏快，高亢明亮…",
+                                    LangManager.t(
+                                        "tts.directorPlaceholder",
+                                        "【角色】青年男性，自信张扬…\n【场景】刚查到竞赛成绩，忍不住得意惊呼…\n【指导】语速偏快，高亢明亮…"
+                                    ),
                                     fontSize = 12.sp
                                 )
                             },
@@ -706,7 +741,7 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                             colors = fieldColors
                         )
                         Text(
-                            "也可以一句话描述，例如：用轻快上扬的语调向领导报喜，语速稍快，带着压抑不住的激动。",
+                            LangManager.t("tts.directorTip", "也可以一句话描述，例如：用轻快上扬的语调向领导报喜，语速稍快，带着压抑不住的激动。"),
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -714,19 +749,19 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                 }
 
                 SectionCard {
-                    RequiredLabel("播报文本")
+                    RequiredLabel(LangManager.t("tts.textLabel", "播报文本"))
                     OutlinedTextField(
                         value = inputText,
                         onValueChange = { inputText = it },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("输入要合成的文本，开启试听之旅吧", fontSize = 13.sp) },
+                        placeholder = { Text(LangManager.t("tts.textHintSynth", "输入要合成的文本，开启试听之旅吧"), fontSize = 13.sp) },
                         minLines = 3,
                         maxLines = 8,
                         shape = RoundedCornerShape(12.dp),
                         colors = fieldColors
                     )
                     Text(
-                        "${inputText.length} 字",
+                        LangManager.t("tts.charCount", "{n} 字").replace("{n}", inputText.length.toString()),
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.fillMaxWidth(),
@@ -754,24 +789,24 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
             1 -> {
                 // ── 音色设计 ──────────────────────────────────────
                 Text(
-                    "Xiaomi MIMO 音色设计",
+                    LangManager.t("tts.design.title", "Xiaomi MIMO 音色设计"),
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    "自然语言描绘理想声线，AI 一键定制专属音色，轻松拥有独特音质。",
+                    LangManager.t("tts.design.subtitle", "自然语言描绘理想声线，AI 一键定制专属音色，轻松拥有独特音质。"),
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 SectionCard {
-                    RequiredLabel("音色描述")
+                    RequiredLabel(LangManager.t("tts.voiceDescLabel", "音色描述"))
                     OutlinedTextField(
                         value = stylePrompt,
                         onValueChange = { stylePrompt = it },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("例如：年轻女性，温暖温柔，略带气声……", fontSize = 13.sp) },
+                        placeholder = { Text(LangManager.t("tts.voiceDescPlaceholder", "例如：年轻女性，温暖温柔，略带气声……"), fontSize = 13.sp) },
                         minLines = 2,
                         maxLines = 4,
                         shape = RoundedCornerShape(12.dp),
@@ -781,7 +816,7 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        designExamples.forEach { ex ->
+                        designExamples().forEach { ex ->
                             ExampleChip(ex) { stylePrompt = ex }
                         }
                     }
@@ -795,24 +830,24 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                         ),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("生成")
+                        Text(LangManager.t("tts.generate", "生成"))
                     }
                 }
 
                 SectionCard {
-                    RequiredLabel("播报文本")
+                    RequiredLabel(LangManager.t("tts.textLabel", "播报文本"))
                     OutlinedTextField(
                         value = inputText,
                         onValueChange = { inputText = it },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("输入播报文本，开启试听之旅吧", fontSize = 13.sp) },
+                        placeholder = { Text(LangManager.t("tts.textHint", "输入播报文本，开启试听之旅吧"), fontSize = 13.sp) },
                         minLines = 3,
                         maxLines = 8,
                         shape = RoundedCornerShape(12.dp),
                         colors = fieldColors
                     )
                     Text(
-                        "${inputText.length} 字",
+                        LangManager.t("tts.charCount", "{n} 字").replace("{n}", inputText.length.toString()),
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.fillMaxWidth(),
@@ -840,19 +875,19 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
             else -> {
                 // ── 音色克隆 ──────────────────────────────────────
                 Text(
-                    "Xiaomi MIMO 音色克隆",
+                    LangManager.t("tts.clone.title", "Xiaomi MIMO 音色克隆"),
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    "一段原声即刻复刻，语音内容创作，随心随意更自由。",
+                    LangManager.t("tts.clone.subtitle", "一段原声即刻复刻，语音内容创作，随心随意更自由。"),
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 SectionCard {
-                    RequiredLabel("克隆音频")
+                    RequiredLabel(LangManager.t("tts.cloneAudioLabel", "克隆音频"))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -860,17 +895,22 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                         DashedActionCard(
                             modifier = Modifier.weight(1f),
                             icon = if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
-                            title = if (isRecording) "停止录制" else "录制音频",
-                            subtitle = if (isRecording) "录制中…再次点击结束"
-                            else "请在安静环境，录制 5-30s 的音频",
+                            title = LangManager.t(
+                                if (isRecording) "tts.stopRecording" else "tts.recordAudio",
+                                if (isRecording) "停止录制" else "录制音频"
+                            ),
+                            subtitle = LangManager.t(
+                                if (isRecording) "tts.recordingHint" else "tts.recordHint",
+                                if (isRecording) "录制中…再次点击结束" else "请在安静环境，录制 5-30s 的音频"
+                            ),
                             highlighted = isRecording,
                             onClick = { if (isRecording) stopRecording() else startRecording() }
                         )
                         DashedActionCard(
                             modifier = Modifier.weight(1f),
                             icon = Icons.Default.Upload,
-                            title = "上传音频",
-                            subtitle = "请上传 5-30s、10MB 以内的音频",
+                            title = LangManager.t("tts.uploadAudio", "上传音频"),
+                            subtitle = LangManager.t("tts.uploadHint", "请上传 5-30s、10MB 以内的音频"),
                             highlighted = false,
                             onClick = { audioPicker.launch("audio/*") }
                         )
@@ -914,19 +954,19 @@ fun TTSScreen(viewModel: ChatViewModel, initialMode: String = "read") {
                 }
 
                 SectionCard {
-                    RequiredLabel("播报文本")
+                    RequiredLabel(LangManager.t("tts.textLabel", "播报文本"))
                     OutlinedTextField(
                         value = inputText,
                         onValueChange = { inputText = it },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("输入播报文本，开启试听之旅吧", fontSize = 13.sp) },
+                        placeholder = { Text(LangManager.t("tts.textHint", "输入播报文本，开启试听之旅吧"), fontSize = 13.sp) },
                         minLines = 3,
                         maxLines = 8,
                         shape = RoundedCornerShape(12.dp),
                         colors = fieldColors
                     )
                     Text(
-                        "${inputText.length} 字",
+                        LangManager.t("tts.charCount", "{n} 字").replace("{n}", inputText.length.toString()),
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.fillMaxWidth(),
@@ -1156,7 +1196,7 @@ private fun SynthesisResultPanel(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "合成结果",
+                    LangManager.t("tts.resultTitle", "合成结果"),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -1179,13 +1219,13 @@ private fun SynthesisResultPanel(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        "还未生成语音",
+                        LangManager.t("tts.emptyTitle", "还未生成语音"),
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        "输入播报文本，开启试听之旅吧",
+                        LangManager.t("tts.textHint", "输入播报文本，开启试听之旅吧"),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1240,7 +1280,7 @@ private fun SynthesisResultPanel(
                 ) {
                     Icon(
                         Icons.Default.FastRewind,
-                        contentDescription = "后退",
+                        contentDescription = LangManager.t("tts.seekBack", "后退"),
                         modifier = Modifier.size(26.dp)
                     )
                 }
@@ -1256,7 +1296,10 @@ private fun SynthesisResultPanel(
                 ) {
                     Icon(
                         if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "暂停" else "播放",
+                        contentDescription = LangManager.t(
+                            if (isPlaying) "common.pause" else "common.play",
+                            if (isPlaying) "暂停" else "播放"
+                        ),
                         modifier = Modifier.size(28.dp)
                     )
                 }
@@ -1268,7 +1311,7 @@ private fun SynthesisResultPanel(
                 ) {
                     Icon(
                         Icons.Default.FastForward,
-                        contentDescription = "前进",
+                        contentDescription = LangManager.t("tts.seekForward", "前进"),
                         modifier = Modifier.size(26.dp)
                     )
                 }
@@ -1296,9 +1339,9 @@ private fun SynthesisResultPanel(
                             strokeWidth = 2.dp
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("生成中……")
+                        Text(LangManager.t("tts.generating", "生成中……"))
                     } else {
-                        Text("生成语音")
+                        Text(LangManager.t("tts.generateVoice", "生成语音"))
                     }
                 }
                 OutlinedButton(
@@ -1309,7 +1352,7 @@ private fun SynthesisResultPanel(
                 ) {
                     Icon(
                         Icons.Default.Download,
-                        contentDescription = "下载",
+                        contentDescription = LangManager.t("common.download", "下载"),
                         modifier = Modifier.size(18.dp)
                     )
                 }

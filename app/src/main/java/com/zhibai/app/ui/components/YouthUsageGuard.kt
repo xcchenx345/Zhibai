@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.zhibai.app.i18n.LangManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -56,15 +57,44 @@ data class YouthHotline(
 )
 
 /** National youth / mental-health hotlines — tap to open the dialer. */
-val YouthSupportHotlines = listOf(
-    YouthHotline("12355 青少年服务台", "12355", "团中央青少年服务热线"),
-    YouthHotline("希望24热线", "400-161-9995", "24小时心理援助"),
-    YouthHotline("教育部心理援助热线", "400-9678920", "华中师范大学心理支持"),
-    YouthHotline("北京心理危机研究与干预中心", "010-82951332", "24小时危机干预"),
-    YouthHotline("全国统一心理援助热线", "12356", "国家卫健委心理热线"),
-    YouthHotline("紧急求助 · 公安", "110", "人身安全受到威胁时"),
-    YouthHotline("医疗急救", "120", "身体不适或紧急医疗情况")
-)
+val YouthSupportHotlines: List<YouthHotline>
+    get() = listOf(
+        YouthHotline(
+            LangManager.t("youth.hotline.12355.name", "12355 青少年服务台"),
+            "12355",
+            LangManager.t("youth.hotline.12355.note", "团中央青少年服务热线")
+        ),
+        YouthHotline(
+            LangManager.t("youth.hotline.hope24.name", "希望24热线"),
+            "400-161-9995",
+            LangManager.t("youth.hotline.hope24.note", "24小时心理援助")
+        ),
+        YouthHotline(
+            LangManager.t("youth.hotline.moe.name", "教育部心理援助热线"),
+            "400-9678920",
+            LangManager.t("youth.hotline.moe.note", "华中师范大学心理支持")
+        ),
+        YouthHotline(
+            LangManager.t("youth.hotline.bjcrisis.name", "北京心理危机研究与干预中心"),
+            "010-82951332",
+            LangManager.t("youth.hotline.bjcrisis.note", "24小时危机干预")
+        ),
+        YouthHotline(
+            LangManager.t("youth.hotline.12356.name", "全国统一心理援助热线"),
+            "12356",
+            LangManager.t("youth.hotline.12356.note", "国家卫健委心理热线")
+        ),
+        YouthHotline(
+            LangManager.t("youth.hotline.police.name", "紧急求助 · 公安"),
+            "110",
+            LangManager.t("youth.hotline.police.note", "人身安全受到威胁时")
+        ),
+        YouthHotline(
+            LangManager.t("youth.hotline.120.name", "医疗急救"),
+            "120",
+            LangManager.t("youth.hotline.120.note", "身体不适或紧急医疗情况")
+        )
+    )
 
 /** Match if message text contains any hotline number (for AI output cards). */
 fun findHotlinesInText(text: String): List<YouthHotline> {
@@ -123,10 +153,10 @@ fun HotlineRow(hot: YouthHotline, modifier: Modifier = Modifier) {
 fun HotlineDrawerSheet() {
     ModalDrawerSheet {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("求助与心理热线", fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+            Text(LangManager.t("youth.hotline.drawerTitle", "求助与心理热线"), fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
             Spacer(Modifier.height(4.dp))
             Text(
-                "点击条目可跳转系统拨号盘",
+                LangManager.t("youth.hotline.drawerHint", "点击条目可跳转系统拨号盘"),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -206,13 +236,13 @@ fun YouthUsageGuard(
                             foregroundMs = 0L
                             showDialog = false
                             scope.launch { drawerState.close() }
-                        }) { Text("继续使用") }
+                        }) { Text(LangManager.t("youth.continueUsing", "继续使用")) }
                     },
                     dismissButton = {
                         Row {
                             TextButton(onClick = {
                                 scope.launch { if (drawerState.isClosed) drawerState.open() else drawerState.close() }
-                            }) { Text("求助热线") }
+                            }) { Text(LangManager.t("youth.hotlineBtn", "求助热线")) }
                             TextButton(onClick = {
                                 try {
                                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
@@ -221,16 +251,18 @@ fun YouthUsageGuard(
                                     }
                                     context.startActivity(intent)
                                 } catch (_: Exception) {}
-                            }) { Text("关闭") }
+                            }) { Text(LangManager.t("common.close", "关闭")) }
                         }
                     },
                     icon = { Icon(Icons.Default.SelfImprovement, contentDescription = null) },
-                    title = { Text("请注意合理安排使用时间", fontWeight = FontWeight.SemiBold) },
+                    title = { Text(LangManager.t("youth.usage.title", "请注意合理安排使用时间"), fontWeight = FontWeight.SemiBold) },
                     text = {
                         Column {
                             Text(
-                                "你已连续使用 $minutes 分钟。青少年应优先保障学习、运动与休息，" +
-                                    "请合理规划时间。需要倾诉或帮助时，可打开「求助热线」。",
+                                LangManager.t(
+                                    "youth.usage.minorBody",
+                                    "你已连续使用 {min} 分钟。青少年应优先保障学习、运动与休息，请合理规划时间。需要倾诉或帮助时，可打开「求助热线」。"
+                                ).replace("{min}", minutes.toString()),
                                 fontSize = 14.sp,
                                 lineHeight = 20.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -239,13 +271,13 @@ fun YouthUsageGuard(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.MenuBook, null, tint = MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.width(8.dp))
-                                Text("少刷手机，多读一页书", fontSize = 13.sp)
+                                Text(LangManager.t("youth.tip.read", "少刷手机，多读一页书"), fontSize = 13.sp)
                             }
                             Spacer(Modifier.height(6.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.SelfImprovement, null, tint = MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.width(8.dp))
-                                Text("起来走走，看看远处", fontSize = 13.sp)
+                                Text(LangManager.t("youth.tip.walk", "起来走走，看看远处"), fontSize = 13.sp)
                             }
                         }
                     },
@@ -259,14 +291,15 @@ fun YouthUsageGuard(
                     TextButton(onClick = {
                         foregroundMs = 0L
                         showDialog = false
-                    }) { Text("好的，继续") }
+                    }) { Text(LangManager.t("youth.adult.continue", "好的，继续")) }
                 },
                 icon = { Icon(Icons.Default.LocalCafe, contentDescription = null) },
-                title = { Text("休息一下") },
+                title = { Text(LangManager.t("youth.adult.title", "休息一下")) },
                 text = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            "已经用了 $minutes 分钟了，喝杯热咖啡休息一下吧。",
+                            LangManager.t("youth.adult.body", "已经用了 {min} 分钟了，喝杯热咖啡休息一下吧。")
+                                .replace("{min}", minutes.toString()),
                             fontSize = 14.sp,
                             lineHeight = 20.sp,
                             textAlign = TextAlign.Center,

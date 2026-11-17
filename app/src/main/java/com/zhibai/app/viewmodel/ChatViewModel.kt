@@ -18,6 +18,7 @@ import com.zhibai.app.data.api.StreamChunk
 import com.zhibai.app.data.api.TTSService
 import com.zhibai.app.data.api.filterForSpeech
 import com.zhibai.app.data.model.*
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.util.AppLog
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -282,10 +283,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val ok = com.zhibai.app.agent.AgentConfig.reset(engine.workspaceDir)
         if (ok) {
             _agentConfigName.value = "MiMo"
-            _agentConfigError.value = "已重置为默认配置"
+            _agentConfigError.value = LangManager.t("agent.config.reset", "已重置为默认配置")
             _agentConfigBroken.value = false
         } else {
-            _agentConfigError.value = "修复失败，请检查存储权限"
+            _agentConfigError.value = LangManager.t("agent.config.resetFail", "修复失败，请检查存储权限")
         }
     }
 
@@ -624,7 +625,7 @@ $convoText
             } catch (e: kotlinx.coroutines.CancellationException) {
                 // user pressed stop
             } catch (e: Exception) {
-                _error.value = "压缩失败: ${e.message}"
+                _error.value = LangManager.t("chat.compress.fail", "压缩失败: {error}").replace("{error}", e.message ?: "")
             } finally {
                 _isCompressing.value = false
             }
@@ -1037,15 +1038,15 @@ $convoText
         onDone: (Boolean, String) -> Unit,
     ) {
         if (_localAiInstalling.value) {
-            onDone(false, "已有安装任务进行中")
+            onDone(false, LangManager.t("localai.install.busy", "已有安装任务进行中"))
             return
         }
         _localAiInstalling.value = true
         viewModelScope.launch {
             try {
                 islandService.showAgentTaskNotification(
-                    taskTitle = "下载本地模型",
-                    taskStatus = "准备 ${model.displayName} ...",
+                    taskTitle = LangManager.t("localai.download.title", "下载本地模型"),
+                    taskStatus = LangManager.t("localai.download.preparing", "准备 {name} ...").replace("{name}", model.displayName),
                     phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_RUN
                 )
                 val dest = com.zhibai.app.localai.LocalAiManager.modelDir(context, model.displayName)
@@ -1067,14 +1068,14 @@ $convoText
                             filesTotal = p.filesTotal,
                         )
                         islandService.showAgentTaskNotification(
-                            taskTitle = "下载本地模型",
+                            taskTitle = LangManager.t("localai.download.title", "下载本地模型"),
                             taskStatus = buildString {
                                 if (pct >= 0) append(pct).append("% · ")
                                 if (p.bytesTotal != null && p.bytesTotal > 0) {
                                     append(humanBytes(p.bytesDone)).append('/')
                                     append(humanBytes(p.bytesTotal))
                                 } else {
-                                    append("${p.filesDone}/${p.filesTotal} 文件")
+                                    append(LangManager.t("localai.download.files", "{done}/{total} 文件").replace("{done}", p.filesDone.toString()).replace("{total}", p.filesTotal.toString()))
                                 }
                                 if (p.speedBps > 0) {
                                     append(" · ").append(humanBytes(p.speedBps)).append("/s")
@@ -1088,16 +1089,16 @@ $convoText
                     }
                 }
                 islandService.showAgentTaskComplete(
-                    taskTitle = "本地模型安装完成",
-                    result = "${model.displayName} 已就绪"
+                    taskTitle = LangManager.t("localai.install.doneTitle", "本地模型安装完成"),
+                    result = LangManager.t("localai.install.ready", "{name} 已就绪").replace("{name}", model.displayName)
                 )
                 onDone(true, "ok")
             } catch (e: Exception) {
                 islandService.showAgentTaskComplete(
-                    taskTitle = "本地模型安装失败",
-                    result = e.message ?: "未知错误"
+                    taskTitle = LangManager.t("localai.install.failTitle", "本地模型安装失败"),
+                    result = e.message ?: LangManager.t("common.unknownError", "未知错误")
                 )
-                onDone(false, e.message ?: "未知错误")
+                onDone(false, e.message ?: LangManager.t("common.unknownError", "未知错误"))
             } finally {
                 _localAiInstalling.value = false
                 _localAiProgress.value = null
@@ -1176,8 +1177,8 @@ $convoText
             }
             refreshModelList()
             islandService.showAgentTaskComplete(
-                taskTitle = "本地AI已删除",
-                result = "模型文件已清理，本地模型已从列表移除"
+                taskTitle = LangManager.t("localai.deleted.title", "本地AI已删除"),
+                result = LangManager.t("localai.deleted.detail", "模型文件已清理，本地模型已从列表移除")
             )
         }
     }
@@ -1211,8 +1212,10 @@ $convoText
                 viewModelScope.launch(Dispatchers.IO) {
                     com.zhibai.app.localai.LocalAiManager.ensureStarted(context, name)
                     if (!com.zhibai.app.localai.LocalAiManager.isReady) {
-                        _error.value = "本地模型加载失败: " +
-                            (com.zhibai.app.localai.LocalAiManager.lastError ?: "未知错误")
+                        _error.value = LangManager.t("localai.load.fail", "本地模型加载失败: {error}").replace(
+                            "{error}",
+                            com.zhibai.app.localai.LocalAiManager.lastError ?: LangManager.t("common.unknownError", "未知错误")
+                        )
                     }
                 }
             }
@@ -1303,7 +1306,7 @@ $convoText
                 )
                 // Show the approval card on the Super Island with inline allow/deny buttons
                 islandService.showAgentTaskNotification(
-                    taskTitle = "需要授权",
+                    taskTitle = LangManager.t("island.needAuth.title", "需要授权"),
                     taskStatus = com.zhibai.app.agent.describeToolCall(tool, args).take(80),
                     progress = -1,
                     showConfirmActions = true,
@@ -1316,8 +1319,8 @@ $convoText
                 _pendingQuestionnaire.value = questions
                 // Super Island: agent is waiting on a questionnaire — come back to answer.
                 islandService.showAgentTaskNotification(
-                    taskTitle = "需要答题",
-                    taskStatus = "MiMo 发来了问卷，请回到 App 继续填写（共 ${questions.size} 题）",
+                    taskTitle = LangManager.t("island.needQuiz.title", "需要答题"),
+                    taskStatus = LangManager.t("island.needQuiz.status", "MiMo 发来了问卷，请回到 App 继续填写（共 {n} 题）").replace("{n}", questions.size.toString()),
                     progress = -1,
                     phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_AUTH,
                     forceExpand = true,
@@ -1601,7 +1604,7 @@ SUGGESTIONS: [用户可以做什么，如改设置/重装/无法自行解决需�
             // Parse response
             val severity = Regex("SEVERITY:\\s*(\\d)").find(result)?.groupValues?.get(1)?.toIntOrNull() ?: 3
             val responsibility = Regex("RESPONSIBILITY:\\s*([ABC])").find(result)?.groupValues?.get(1) ?: "B"
-            val summary = Regex("SUMMARY:\\s*(.+)").find(result)?.groupValues?.get(1)?.trim() ?: "未知原因"
+            val summary = Regex("SUMMARY:\\s*(.+)").find(result)?.groupValues?.get(1)?.trim() ?: LangManager.t("crash.unknownReason", "未知原因")
             val suggestions = Regex("SUGGESTIONS:\\s*(.+)").find(result)?.groupValues?.get(1)?.trim() ?: ""
 
             com.zhibai.app.ui.screens.CrashAnalysis(
@@ -1952,16 +1955,16 @@ AI：$assistantReply
                 List::class.java, ChatSession::class.java
             ).type
             val imported: List<ChatSession> = gson.fromJson(payload, type)
-            if (imported.isEmpty()) return "没有可导入的对话"
+            if (imported.isEmpty()) return LangManager.t("archive.import.none", "没有可导入的对话")
             // Merge: keep existing, append new ones that don't have same id
             val existingIds = _sessions.value.map { it.id }.toSet()
             val newOnes = imported.filter { it.id !in existingIds }.map { it.copy(archived = true) }
-            if (newOnes.isEmpty()) return "所有对话已存在"
+            if (newOnes.isEmpty()) return LangManager.t("archive.import.exists", "所有对话已存在")
             _sessions.value = _sessions.value + newOnes
             saveSessions()
-            "已导入 ${newOnes.size} 个对话"
+            LangManager.t("archive.import.done", "已导入 {n} 个对话").replace("{n}", newOnes.size.toString())
         } catch (e: Exception) {
-            "导入失败: ${e.message}"
+            LangManager.t("archive.import.fail", "导入失败: {error}").replace("{error}", e.message ?: "")
         }
     }
 
@@ -2070,7 +2073,7 @@ AI：$assistantReply
                                 s.copy(messages = s.messages.map {
                                     if (it.isStreaming) it.copy(
                                         isStreaming = false,
-                                        content = it.content.ifBlank { "响应超时（300 秒无数据）" }
+                                        content = it.content.ifBlank { LangManager.t("chat.timeout.300", "响应超时（300 秒无数据）") }
                                     ) else it
                                 })
                             }
@@ -2109,8 +2112,8 @@ AI：$assistantReply
                             watchdogJob.cancel()
                             lastStreamCompleted = true
                             islandService.showAgentTaskComplete(
-                                taskTitle = "输出完成",
-                                result = fullContent.takeLast(80).ifBlank { "回复已完成，点击查看" }
+                                taskTitle = LangManager.t("island.done.title", "输出完成"),
+                                result = fullContent.takeLast(80).ifBlank { LangManager.t("island.done.hint", "回复已完成，点击查看") }
                             )
                             val cur = _sessions.value.find { it.id == session.id }
                             chunk.usage?.let { calibrateTokenBias(it, cur?.messages ?: emptyList()) }
@@ -2230,7 +2233,7 @@ AI：$assistantReply
         // conversations may generate in parallel (each run owns its session).
         if (_generatingSessionIds.value.contains(session.id)) return
         if (_isCompressing.value) {
-            _error.value = "正在压缩会话，请稍候再发送"
+            _error.value = LangManager.t("chat.compress.running", "正在压缩会话，请稍候再发送")
             return
         }
 
@@ -2248,7 +2251,9 @@ AI：$assistantReply
             val skillName = skillMatch.groupValues[1].trim()
             val skillContent = agentEngine?.readSkillContent(skillName)
             if (skillContent == null) {
-                _error.value = "未找到技能「$skillName」。可用：${agentEngine?.listSkillsDetailed()?.joinToString("、") { it.name } ?: "（无）"}"
+                _error.value = LangManager.t("chat.skillNotFound", "未找到技能「{name}」。可用：{list}")
+                    .replace("{name}", skillName)
+                    .replace("{list}", agentEngine?.listSkillsDetailed()?.joinToString("、") { it.name } ?: LangManager.t("common.none", "（无）"))
                 return
             }
             skillPrefix = "[skill: $skillName]\n$skillContent\n\n[task]\n"
@@ -2263,7 +2268,7 @@ AI：$assistantReply
 
         // Context limit check
         if (isContextLimitReached) {
-            _error.value = "上下文已达 ${MAX_CONTEXT_TOKENS / 1000}K Token 上限。请开启新对话，或长按进度圆圈压缩会话。"
+            _error.value = LangManager.t("chat.contextLimit", "上下文已达 {n}K Token 上限。请开启新对话，或长按进度圆圈压缩会话。").replace("{n}", (MAX_CONTEXT_TOKENS / 1000).toString())
             return
         }
 
@@ -2291,7 +2296,10 @@ AI：$assistantReply
                 // or failure below must never swallow the message itself.
                 val userMessage = ChatMessage(
                     role = "user",
-                    content = text.ifBlank { fileName?.let { "[附件] $it" } ?: "[附件]" },
+                    content = text.ifBlank {
+                        fileName?.let { LangManager.t("chat.attachmentNamed", "[附件] {name}").replace("{name}", it) }
+                            ?: LangManager.t("chat.attachment", "[附件]")
+                    },
                     imageUri = persistedImages.joinToString("|").ifBlank { null },
                     fileName = fileName
                 )
@@ -2331,8 +2339,8 @@ AI：$assistantReply
                 // Non-vision models can't consume image_url parts — extract to text first
                 if (imageBase64List.isNotEmpty() && !supportsVision(_currentModel.value)) {
                     islandService.showAgentTaskNotification(
-                        taskTitle = "运行中",
-                        taskStatus = "正在提取图片内容...",
+                        taskTitle = LangManager.t("island.running.title", "运行中"),
+                        taskStatus = LangManager.t("island.extractingImage", "正在提取图片内容..."),
                         progress = -1,
                         phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_RUN
                     )
@@ -2464,8 +2472,8 @@ AI：$assistantReply
 
         try {
             islandService.showAgentTaskNotification(
-                taskTitle = "等待响应",
-                taskStatus = "等待模型响应...",
+                taskTitle = LangManager.t("island.waiting.title", "等待响应"),
+                taskStatus = LangManager.t("island.waiting.status", "等待模型响应..."),
                 progress = -1,
                 phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_WAIT
             )
@@ -2636,8 +2644,8 @@ AI：$assistantReply
             val placeholderId = ensureStreamPlaceholder()
 
             islandService.showAgentTaskNotification(
-                taskTitle = "等待响应",
-                taskStatus = "第 $round 轮：等待模型响应...",
+                taskTitle = LangManager.t("island.waiting.title", "等待响应"),
+                taskStatus = LangManager.t("island.waiting.round", "第 {n} 轮：等待模型响应...").replace("{n}", round.toString()),
                 progress = -1,
                 phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_WAIT
             )
@@ -2672,8 +2680,8 @@ AI：$assistantReply
                                 // whole thinking phase — flip to 思考中 on first token.
                                 thinkNotified = true
                                 islandService.showAgentTaskNotification(
-                                    taskTitle = "思考中",
-                                    taskStatus = "正在深度思考...",
+                                    taskTitle = LangManager.t("island.thinking.title", "思考中"),
+                                    taskStatus = LangManager.t("island.thinking.status", "正在深度思考..."),
                                     progress = -1,
                                     phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_THINK
                                 )
@@ -2723,7 +2731,7 @@ AI：$assistantReply
                                 thinkStepId = tid
                                 val phIdx = msgs.indexOfLast { it.isStreaming && it.role == "assistant" }
                                 val row = ChatMessage(
-                                    id = tid, role = "step", content = "正在思考",
+                                    id = tid, role = "step", content = LangManager.t("step.thinking", "正在思考"),
                                     isStreaming = true, reasoningContent = thinkOut
                                 )
                                 if (phIdx >= 0) msgs.add(phIdx, row) else msgs.add(row)
@@ -2739,7 +2747,7 @@ AI：$assistantReply
                         if (respOut.isNotBlank() && !narrationNotified) {
                             narrationNotified = true
                             islandService.showAgentTaskNotification(
-                                taskTitle = "输出中",
+                                taskTitle = LangManager.t("island.outputting.title", "输出中"),
                                 taskStatus = respOut.take(80),
                                 progress = -1,
                                 phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_OUTPUT
@@ -2753,7 +2761,7 @@ AI：$assistantReply
                         s.copy(messages = s.messages
                             .filterNot { it.id.startsWith(cardTag) }
                             .map {
-                                if (it.id == thinkStepId) it.copy(content = "已深度思考", isStreaming = false)
+                                if (it.id == thinkStepId) it.copy(content = LangManager.t("step.thought", "已深度思考"), isStreaming = false)
                                 else it
                             })
                     }
@@ -2793,7 +2801,7 @@ AI：$assistantReply
                         updateSessionById(session.id) { s ->
                             s.copy(messages = s.messages.map {
                                 if (it.id == tid) it.copy(
-                                    content = "已深度思考", reasoningContent = thinkOut, isStreaming = false
+                                    content = LangManager.t("step.thought", "已深度思考"), reasoningContent = thinkOut, isStreaming = false
                                 ) else it
                             })
                         }
@@ -2808,7 +2816,8 @@ AI：$assistantReply
                 _error.value = "Agent request failed: ${streamFailure.message}"
                 // Surface the failure in the bubble too — a bare banner (or a blank
                 // bubble) reads as「对话就结束」with no clue why.
-                val errText = "请求失败：${streamFailure.message ?: "未知错误"}"
+                val errText = LangManager.t("agent.toolFailed", "请求失败：{error}")
+                    .replace("{error}", streamFailure.message ?: LangManager.t("common.unknownError", "未知错误"))
                 updateSessionById(session.id) { s ->
                     val msgs = s.messages.toMutableList()
                     // remove this round's pending tool cards
@@ -2876,8 +2885,8 @@ AI：$assistantReply
                     // Recovery exhausted: park the raw JSON in reasoningContent (collapsible,
                     // still diagnosable on-device) and show a short human message instead.
                     val salvaged = extractPartialField(rawText, "response")?.takeIf { it.isNotBlank() }
-                        ?: if (sawLengthTruncation) "回复被输出长度上限截断，本轮中止。"
-                        else "模型输出的 JSON 无法解析，本轮中止。"
+                        ?: if (sawLengthTruncation) LangManager.t("chat.truncated", "回复被输出长度上限截断，本轮中止。")
+                        else LangManager.t("chat.badJson", "模型输出的 JSON 无法解析，本轮中止。")
                     updateSessionById(session.id) { s ->
                         val msgs = s.messages
                             .filterNot { it.id.startsWith(cardTag) }
@@ -2894,7 +2903,7 @@ AI：$assistantReply
                     }
                     lastStreamCompleted = true
                     islandService.showAgentTaskComplete(
-                        taskTitle = "输出异常",
+                        taskTitle = LangManager.t("island.outputError.title", "输出异常"),
                         result = salvaged.takeLast(80)
                     )
                     return
@@ -2913,8 +2922,8 @@ AI：$assistantReply
                 }
                 lastStreamCompleted = true
                 islandService.showAgentTaskComplete(
-                    taskTitle = "输出完成",
-                    result = shown.takeLast(80).ifBlank { "回复已完成" }
+                    taskTitle = LangManager.t("island.done.title", "输出完成"),
+                    result = shown.takeLast(80).ifBlank { LangManager.t("island.done.short", "回复已完成") }
                 )
                 return
             }
@@ -2938,7 +2947,7 @@ AI：$assistantReply
                 }
                 val finalText = responseText.ifBlank {
                     thinkingText.ifBlank {
-                        thinkOut.trim().takeIf { it.isNotBlank() } ?: "模型未输出 response 字段。"
+                        thinkOut.trim().takeIf { it.isNotBlank() } ?: LangManager.t("chat.noResponse", "模型未输出 response 字段。")
                     }
                 }
                 val anns = searchAnnotations.toList().ifEmpty { null }
@@ -2972,7 +2981,7 @@ AI：$assistantReply
                 }
                 lastStreamCompleted = true
                 islandService.showAgentTaskComplete(
-                    taskTitle = "任务完成",
+                    taskTitle = LangManager.t("island.taskDone.title", "任务完成"),
                     result = finalText.takeLast(80)
                 )
                 return
@@ -3086,8 +3095,8 @@ AI：$assistantReply
                         _agentPermissionMode.value != com.zhibai.app.agent.AgentEngine.MODE_ASK_ALL
                     ) {
                         islandService.showAgentTaskNotification(
-                            taskTitle = "运行中",
-                            taskStatus = "并发执行 ${slots.size} 个子代理",
+                            taskTitle = LangManager.t("island.running.title", "运行中"),
+                            taskStatus = LangManager.t("island.subagents", "并发执行 {n} 个子代理").replace("{n}", slots.size.toString()),
                             progress = -1,
                             phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_RUN
                         )
@@ -3170,8 +3179,8 @@ AI：$assistantReply
                     }
                     engine?.fileChangeSink = { fc -> runFileChanges.add(fc) }
                     islandService.showAgentTaskNotification(
-                        taskTitle = "运行中",
-                        taskStatus = "执行 ${tc.tool}",
+                        taskTitle = LangManager.t("island.running.title", "运行中"),
+                        taskStatus = LangManager.t("island.execTool", "执行 {tool}").replace("{tool}", tc.tool),
                         progress = ((idx) * 100 / toolCalls.size),
                         phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_RUN
                     )
@@ -3187,7 +3196,7 @@ AI：$assistantReply
                     // can snow without going through the engine or a network call.
                     if (tc.tool == "let_it_snow") {
                         snowNow()
-                        "雪已经下了起来。"
+                        LangManager.t("snow.toolResult", "雪已经下了起来。")
                     } else if (tc.tool == "mental_health_support") {
                         // Built-in support tool — every mode can raise the hotline card
                         // (replaces the old scan of each AI reply).
@@ -3246,8 +3255,10 @@ AI：$assistantReply
                     _pendingPermission.value = PermissionRequest(type, reason)
                     // Notify user: agent needs a permission
                     islandService.showAgentTaskComplete(
-                        taskTitle = "MiMo Agent 需要权限",
-                        result = "需要「${permissionLabel(type)}」权限：$reason\n点按返回 App 授权",
+                        taskTitle = LangManager.t("island.needPerm.title", "MiMo Agent 需要权限"),
+                        result = LangManager.t("agent.needPermission", "需要「{name}」权限：{reason}")
+                            .replace("{name}", permissionLabel(type))
+                            .replace("{reason}", reason) + "\n" + LangManager.t("agent.permReturnHint", "点按返回 App 授权"),
                         phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_AUTH
                     )
                     openPermissionSettings(type)
@@ -3256,8 +3267,8 @@ AI：$assistantReply
                     _pendingPermission.value = null
                     if (granted) {
                         islandService.showAgentTaskNotification(
-                            taskTitle = "运行中",
-                            taskStatus = "重试 ${tc.tool}...",
+                            taskTitle = LangManager.t("island.running.title", "运行中"),
+                            taskStatus = LangManager.t("island.retryTool", "重试 {tool}...").replace("{tool}", tc.tool),
                             progress = ((idx) * 100 / toolCalls.size),
                             phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_RUN
                         )
@@ -3323,10 +3334,12 @@ AI：$assistantReply
                 if (searchOnly && (tc.tool == "web_search" || tc.tool == "fetch_url")) {
                     val label = if (tc.tool == "web_search") {
                         searchCount++
-                        "搜索 $searchCount 个关键词，参考 ${searchAnnotations.size} 篇资料"
+                        LangManager.t("step.search", "搜索 {n} 个关键词，参考 {m} 篇资料")
+                    .replace("{n}", searchCount.toString())
+                    .replace("{m}", searchAnnotations.size.toString())
                     } else {
                         fetchCount++
-                        "浏览页面，参考了 $fetchCount 篇资料"
+                        LangManager.t("step.fetch", "浏览页面，参考了 {n} 篇资料").replace("{n}", fetchCount.toString())
                     }
                     val stepId = if (tc.tool == "web_search") searchStepId else fetchStepId
                     if (stepId == null) {
@@ -3417,8 +3430,8 @@ AI：$assistantReply
         islandService.cancelNotification()
         // Notify user: agent output finished
         islandService.showAgentTaskComplete(
-            taskTitle = "任务完成",
-            result = "Agent 输出完成，点击查看结果"
+            taskTitle = LangManager.t("island.taskDone.title", "任务完成"),
+            result = LangManager.t("island.agentDone.detail", "Agent 输出完成，点击查看结果")
         )
     }
 
@@ -3453,10 +3466,10 @@ AI：$assistantReply
                 "tool" -> if (toolIter.hasNext()) mergedSteps.add(toolIter.next())
                 "assistant" -> if (!m.isStreaming && (m.content.isNotBlank() || m.reasoningContent.isNotBlank())) {
                     if (m.reasoningContent.isNotBlank()) {
-                        mergedSteps.add(mapOf("tool" to "思考", "result" to m.reasoningContent))
+                        mergedSteps.add(mapOf("tool" to LangManager.t("agent.row.think", "思考"), "result" to m.reasoningContent))
                     }
                     if (m.content.isNotBlank()) {
-                        mergedSteps.add(mapOf("tool" to "旁白", "result" to m.content))
+                        mergedSteps.add(mapOf("tool" to LangManager.t("agent.row.aside", "旁白"), "result" to m.content))
                     }
                 }
             }
@@ -3562,7 +3575,7 @@ AI：$assistantReply
                         s.copy(messages = s.messages.map {
                             if (it.isStreaming) it.copy(
                                 isStreaming = false,
-                                content = it.content.ifBlank { "响应超时（90 秒无数据）" }
+                                content = it.content.ifBlank { LangManager.t("chat.timeout.90", "响应超时（90 秒无数据）") }
                             ) else it
                         })
                     }
@@ -3592,7 +3605,7 @@ AI：$assistantReply
                         if (chunk.reasoning.isNotBlank() && thinkStepId == null) {
                             thinkStepId = java.util.UUID.randomUUID().toString().also { id ->
                                 insertStepBeforeAnswer(sessionId, com.zhibai.app.data.model.ChatMessage(
-                                    id = id, role = "step", content = "正在思考", isStreaming = true
+                                    id = id, role = "step", content = LangManager.t("step.thinking", "正在思考"), isStreaming = true
                                 ))
                             }
                         }
@@ -3606,8 +3619,8 @@ AI：$assistantReply
                         if (chunk.reasoning.isNotBlank() && !thinkingNotified) {
                             thinkingNotified = true
                             islandService.showAgentTaskNotification(
-                                taskTitle = "思考中",
-                                taskStatus = "正在深度思考...",
+                                taskTitle = LangManager.t("island.thinking.title", "思考中"),
+                                taskStatus = LangManager.t("island.thinking.status", "正在深度思考..."),
                                 progress = -1,
                                 livePhase = true,
                                 phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_THINK
@@ -3622,7 +3635,7 @@ AI：$assistantReply
                                 islandStreamSeen = fullContent.length
                                 lastIslandStreamMs = nowMs
                                 islandService.showAgentTaskNotification(
-                                    taskTitle = "输出中",
+                                    taskTitle = LangManager.t("island.outputting.title", "输出中"),
                                     taskStatus = fullContent.takeLast(80),
                                     progress = -1,
                                     livePhase = true,
@@ -3637,7 +3650,7 @@ AI：$assistantReply
                                     lastIslandStreamMs = nowMs
                                     val tail = fullContent.takeLast(120)
                                     islandService.showAgentTaskNotification(
-                                        taskTitle = "输出中",
+                                        taskTitle = LangManager.t("island.outputting.title", "输出中"),
                                         taskStatus = if (fullContent.length > 120) "…$tail" else tail,
                                         progress = -1,
                                         livePhase = true,
@@ -3686,11 +3699,11 @@ AI：$assistantReply
                                 com.zhibai.app.agent.ToolCallSchema.parse(extractJson(fullContent))
                                     ?.response?.trim()
                             } catch (e: Exception) { null })?.takeIf { it.isNotBlank() }?.let { sanitizeHighRisk(it) }
-                                ?: "工具调用轮次已用尽，模型未给出最终回答。"
+                                ?: LangManager.t("chat.toolRoundExhausted", "工具调用轮次已用尽，模型未给出最终回答。")
                         } else null
                         islandService.showAgentTaskComplete(
-                            taskTitle = "输出完成",
-                            result = (leakFinal ?: fullContent).takeLast(80).ifBlank { "回复已完成，点击查看" }
+                            taskTitle = LangManager.t("island.done.title", "输出完成"),
+                            result = (leakFinal ?: fullContent).takeLast(80).ifBlank { LangManager.t("island.done.hint", "回复已完成，点击查看") }
                         )
                         if (trackSpeed) {
                             sampleSpeed(force = true)
@@ -3739,7 +3752,7 @@ AI：$assistantReply
                                 if (fullReasoning.isNotBlank()) {
                                     val j = msgs.indexOfFirst { it.id == tid }
                                     if (j >= 0) msgs[j] = msgs[j].copy(
-                                        content = "已深度思考",
+                                        content = LangManager.t("step.thought", "已深度思考"),
                                         reasoningContent = fullReasoning,
                                         isStreaming = false
                                     )
@@ -3783,7 +3796,7 @@ AI：$assistantReply
             // Content already delivered means the answer is done — a tail error is not
             // an error worth a banner (and must never trigger a re-stream).
             AppLog.e("streamResponse failed: content=${fullContent.length} think=${fullReasoning.length}", e)
-            if (fullContent.isBlank()) _error.value = e.message ?: "连接中断"
+            if (fullContent.isBlank()) _error.value = e.message ?: LangManager.t("common.connectionLost", "连接中断")
             watchdogJob.cancel()
             if (trackSpeed) {
                 val prev = _speedStats.value
@@ -3795,8 +3808,8 @@ AI：$assistantReply
                     s.copy(messages = s.messages.map {
                         when {
                             it.id == thinkStepId && fullReasoning.isNotBlank() ->
-                                it.copy(content = "已深度思考", reasoningContent = fullReasoning, isStreaming = false)
-                            it.id == thinkStepId -> it.copy(content = "已深度思考", isStreaming = false)
+                                it.copy(content = LangManager.t("step.thought", "已深度思考"), reasoningContent = fullReasoning, isStreaming = false)
+                            it.id == thinkStepId -> it.copy(content = LangManager.t("step.thought", "已深度思考"), isStreaming = false)
                             it.isStreaming -> it.copy(isStreaming = false, content = it.content.ifBlank { fullContent }, reasoningContent = it.reasoningContent.ifBlank { fullReasoning })
                             else -> it
                         }
@@ -3888,8 +3901,8 @@ AI：$assistantReply
         agentEngine?.submitQuestionnaire(com.google.gson.Gson().toJson(answers))
         // Questionnaire done — alert + expand, then return capsule to the agent stream.
         islandService.showAgentTaskNotification(
-            taskTitle = "回答完成",
-            taskStatus = "问卷已提交，正在根据你的答案继续…",
+            taskTitle = LangManager.t("island.answered.title", "回答完成"),
+            taskStatus = LangManager.t("island.answered.status", "问卷已提交，正在根据你的答案继续…"),
             progress = -1,
             phase = com.zhibai.app.data.api.IslandNotificationService.PHASE_DONE,
             forceExpand = true,
@@ -3904,15 +3917,15 @@ AI：$assistantReply
     }
 
     fun permissionLabel(type: String): String = when (type) {
-        "accessibility" -> "无障碍服务"
-        "overlay" -> "悬浮窗"
-        "storage" -> "所有文件访问"
-        "projection" -> "屏幕录制"
-        "notification" -> "通知"
-        "mic" -> "麦克风"
-        "calendar" -> "日历日程"
-        "alarm" -> "闹钟与提醒"
-        "location" -> "位置信息"
+        "accessibility" -> LangManager.t("perm.accessibility", "无障碍服务")
+        "overlay" -> LangManager.t("perm.overlay", "悬浮窗")
+        "storage" -> LangManager.t("perm.storage", "所有文件访问")
+        "projection" -> LangManager.t("perm.projection", "屏幕录制")
+        "notification" -> LangManager.t("perm.notification", "通知")
+        "mic" -> LangManager.t("perm.mic", "麦克风")
+        "calendar" -> LangManager.t("perm.calendar", "日历日程")
+        "alarm" -> LangManager.t("perm.alarm", "闹钟与提醒")
+        "location" -> LangManager.t("perm.location", "位置信息")
         else -> type
     }
 
@@ -3982,7 +3995,7 @@ AI：$assistantReply
         try {
             context.startActivity(intent)
         } catch (e: Exception) {
-            _error.value = "无法打开系统设置: ${e.message}"
+            _error.value = LangManager.t("perm.openSettingsFail", "无法打开系统设置: {error}").replace("{error}", e.message ?: "")
         }
     }
 
@@ -4401,7 +4414,7 @@ sources inline as [reference:N]."""
         if (annotations.isNullOrEmpty()) return content
         if (content.contains("[reference:")) return content
         val sb = StringBuilder(content.trimEnd())
-        sb.append("\n\n来源 ")
+        sb.append("\n\n").append(LangManager.t("chat.sourceLabel", "来源")).append(" ")
         annotations.forEachIndexed { i, _ ->
             sb.append("[reference:").append(i + 1).append("]")
             if (i < annotations.size - 1) sb.append(" ")

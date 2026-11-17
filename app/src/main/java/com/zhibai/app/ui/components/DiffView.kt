@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zhibai.app.i18n.LangManager
 
 /** One aligned row of the side-by-side diff: nullable on either side means padding. */
 internal data class DiffRow(
@@ -114,7 +115,7 @@ fun DiffView(
     ) {
         // Header
         Text(
-            text = "改动对比",
+            text = LangManager.t("diff.header", "改动对比"),
             fontSize = 11.sp,
             color = dimmed,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
@@ -125,7 +126,7 @@ fun DiffView(
                 .horizontalScroll(rememberScrollState())
         ) {
             DiffColumn(
-                title = "改动前",
+                title = LangManager.t("diff.before", "改动前"),
                 side = DiffSide.LEFT,
                 rows = rows,
                 bgRemoved = bgRemoved,
@@ -136,7 +137,7 @@ fun DiffView(
                 hunkBar = hunkBar
             )
             DiffColumn(
-                title = "改动后",
+                title = LangManager.t("diff.after", "改动后"),
                 side = DiffSide.RIGHT,
                 rows = rows,
                 bgRemoved = bgRemoved,

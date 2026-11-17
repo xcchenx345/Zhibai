@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationCompat
 import com.zhibai.app.MainActivity
+import com.zhibai.app.i18n.LangManager
 
 class WirelessDebugService(private val context: Context) {
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -52,13 +53,13 @@ class WirelessDebugService(private val context: Context) {
 
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
-            .setContentTitle("无线调试配对")
-            .setContentText("点击输入配对码连接设备")
+            .setContentTitle(LangManager.t("notif.adb.pairTitle", "无线调试配对"))
+            .setContentText(LangManager.t("notif.adb.pairBody", "点击输入配对码连接设备"))
             .setStyle(NotificationCompat.BigTextStyle().bigText(pairingInfo))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
-            .addAction(android.R.drawable.ic_menu_send, "输入配对码", pendingIntent)
+            .addAction(android.R.drawable.ic_menu_send, LangManager.t("notif.adb.pairAction", "输入配对码"), pendingIntent)
             .build()
 
         notificationManager.notify(notificationId, notification)
@@ -67,7 +68,7 @@ class WirelessDebugService(private val context: Context) {
     fun showConnectionStatus(status: String, success: Boolean) {
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(if (success) android.R.drawable.ic_dialog_info else android.R.drawable.ic_dialog_alert)
-            .setContentTitle("ADB 连接状态")
+            .setContentTitle(LangManager.t("notif.adb.statusTitle", "ADB 连接状态"))
             .setContentText(status)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setAutoCancel(true)

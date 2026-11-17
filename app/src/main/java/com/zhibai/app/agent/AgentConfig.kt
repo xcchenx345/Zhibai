@@ -2,6 +2,7 @@ package com.zhibai.app.agent
 
 import com.google.gson.Gson
 import com.google.gson.JsonParser
+import com.zhibai.app.i18n.LangManager
 import java.io.File
 
 /**
@@ -54,7 +55,7 @@ object AgentConfig {
             val raw = file.readText()
             if (raw.isBlank()) {
                 file.writeText(defaultJson())
-                return LoadResult.Repaired(AgentConfigData(), "文件为空，已重置为默认配置")
+                return LoadResult.Repaired(AgentConfigData(), LangManager.t("agent.config.emptyReset", "文件为空，已重置为默认配置"))
             }
 
             // Try direct parse
@@ -75,16 +76,16 @@ object AgentConfig {
                     if (json.isJsonObject) {
                         val config = gson.fromJson(json, AgentConfigData::class.java) ?: AgentConfigData()
                         file.writeText(gson.toJson(config))
-                        return LoadResult.Repaired(config, "已自动修复 JSON 语法错误")
+                        return LoadResult.Repaired(config, LangManager.t("agent.config.repaired", "已自动修复 JSON 语法错误"))
                     }
                 } catch (_: Exception) { /* continue to reset */ }
             }
 
             // Reset to default
             file.writeText(defaultJson())
-            LoadResult.Repaired(AgentConfigData(), "配置损坏严重，已重置为默认配置")
+            LoadResult.Repaired(AgentConfigData(), LangManager.t("agent.config.hardReset", "配置损坏严重，已重置为默认配置"))
         } catch (e: Exception) {
-            LoadResult.Broken("无法读写配置文件: ${e.message}")
+            LoadResult.Broken(LangManager.t("agent.config.ioFail", "无法读写配置文件: {error}").replace("{error}", e.message ?: ""))
         }
     }
 

@@ -7,6 +7,7 @@ import android.util.Base64
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import com.zhibai.app.data.model.Message
+import com.zhibai.app.i18n.LangManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -94,7 +95,7 @@ class TTSService(
                 mimeType.contains("wav", ignoreCase = true) -> "audio/wav"
                 mimeType.contains("mpeg", ignoreCase = true) || mimeType.contains("mp3", ignoreCase = true) -> "audio/mpeg"
                 else -> {
-                    lastAsrError = "仅支持 wav / mp3，当前格式：$mimeType"
+                    lastAsrError = LangManager.t("asr.unsupportedFormat", "仅支持 wav / mp3，当前格式：{mime}").replace("{mime}", mimeType)
                     return@withContext null
                 }
             }

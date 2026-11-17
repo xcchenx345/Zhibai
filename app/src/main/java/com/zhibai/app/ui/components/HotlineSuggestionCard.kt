@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhibai.app.R
+import com.zhibai.app.i18n.LangManager
 
 private tailrec fun Context.activity(): Activity? = when (this) {
     is Activity -> this
@@ -99,7 +100,7 @@ fun HotlineSuggestionCard(
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = "我们关乎你的心理健康",
+                    text = LangManager.t("youth.card.title", "我们关乎你的心理健康"),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -111,7 +112,7 @@ fun HotlineSuggestionCard(
                 ) {
                     Icon(
                         Icons.Default.Close,
-                        contentDescription = "关闭",
+                        contentDescription = LangManager.t("common.close", "关闭"),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
@@ -141,7 +142,7 @@ fun HotlineSuggestionCard(
                             modifier = Modifier.size(22.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text("和MiMo继续聊天", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text(LangManager.t("youth.card.continueChat", "和MiMo继续聊天"), fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     }
 
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp))
@@ -165,7 +166,7 @@ fun HotlineSuggestionCard(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("拨打求助热线", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                            Text(LangManager.t("youth.card.call", "拨打求助热线"), fontSize = 15.sp, fontWeight = FontWeight.Medium)
                             Text(
                                 "${primaryHotline.name} · ${primaryHotline.number}",
                                 fontSize = 11.sp,
@@ -194,7 +195,7 @@ fun HotlineSuggestionCard(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            "退出APP",
+                            LangManager.t("youth.card.exit", "退出APP"),
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.error

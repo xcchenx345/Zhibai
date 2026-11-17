@@ -11,6 +11,7 @@ import android.view.*
 import android.widget.*
 import com.zhibai.app.MainActivity
 import com.zhibai.app.R
+import com.zhibai.app.i18n.LangManager
 
 class FloatingControlService : Service() {
     private var windowManager: WindowManager? = null
@@ -23,7 +24,7 @@ class FloatingControlService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(30001, buildNotification("Agent 执行中..."))
+        startForeground(30001, buildNotification(LangManager.t("notif.agent.running", "Agent 执行中...")))
         createFloatingView()
     }
 

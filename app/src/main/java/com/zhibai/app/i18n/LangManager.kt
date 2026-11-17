@@ -3,6 +3,9 @@ package com.zhibai.app.i18n
 import android.content.ComponentCallbacks
 import android.content.Context
 import android.content.res.Configuration
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,8 +39,10 @@ data class LangSwitchRequest(
 object LangManager {
     const val DEFAULT = "zh-cn"
 
-    private var fallbackTable: Map<String, String> = emptyMap()
-    private var table: Map<String, String> = emptyMap()
+    // Snapshot-backed so composables that call t()/currentCode recompose on switch.
+    private var fallbackTable by mutableStateOf<Map<String, String>>(emptyMap())
+    private var table by mutableStateOf<Map<String, String>>(emptyMap())
+    private var currentCodeState by mutableStateOf(DEFAULT)
     private var available: Set<String> = emptySet()
     private var prefs: android.content.SharedPreferences? = null
 
@@ -98,7 +103,7 @@ object LangManager {
     fun t(key: String, fallbackText: String = key): String =
         table[key] ?: fallbackTable[key] ?: fallbackText
 
-    val currentCode: String get() = _current.value
+    val currentCode: String get() = currentCodeState
 
     fun availableLocales(): Set<String> = available
 
@@ -163,6 +168,7 @@ object LangManager {
     // ── internals ──────────────────────────────────────────────────────────
 
     private fun applyLocale(context: Context, code: String) {
+        currentCodeState = code
         _current.value = code
         table = if (code == DEFAULT) fallbackTable else loadTable(context, code)
     }

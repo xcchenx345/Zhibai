@@ -13,6 +13,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhibai.app.agent.AgentEngine
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.ui.theme.MiMoColors
 import androidx.compose.ui.graphics.Color
 
@@ -24,7 +25,7 @@ fun ToolPermissionScreen(
 ) {
     if (agentEngine == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Agent 未初始化")
+            Text(LangManager.t("perm.agentNotInit", "Agent 未初始化"))
         }
         return
     }
@@ -35,7 +36,7 @@ fun ToolPermissionScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("工具权限") },
+                title = { Text(LangManager.t("settings.toolPerms.title", "工具权限")) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Back")
@@ -103,7 +104,7 @@ fun ToolPermissionScreen(
                                         else -> MiMoColors.Error
                                     }
                                     Text(
-                                        "风险等级：${tool.riskLevel}/5",
+                                        LangManager.t("perm.riskLevel", "风险等级：{n}/5").replace("{n}", tool.riskLevel.toString()),
                                         fontSize = 11.sp,
                                         color = riskColor,
                                         fontWeight = FontWeight.Medium
@@ -129,7 +130,7 @@ fun ToolPermissionScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("需要确认", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(LangManager.t("perm.needConfirm", "需要确认"), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Switch(
                                     checked = requireConfirm,
                                     onCheckedChange = { newValue ->
@@ -162,7 +163,7 @@ fun ToolPermissionScreen(
             ) {
                 Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("全部恢复默认")
+                Text(LangManager.t("perm.resetAll", "全部恢复默认"))
             }
 
             Spacer(modifier = Modifier.height(32.dp))

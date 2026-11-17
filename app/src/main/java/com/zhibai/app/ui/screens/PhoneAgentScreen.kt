@@ -30,6 +30,7 @@ import com.zhibai.app.adb.AdbManager
 import com.zhibai.app.agent.PhoneAgentEngine
 import com.zhibai.app.agent.PhoneAgentState
 import com.zhibai.app.agent.PhoneAgentStep
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.ui.theme.MiMoColors
 import kotlinx.coroutines.launch
 
@@ -71,7 +72,7 @@ fun PhoneAgentScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("手机助手") },
+                title = { Text(LangManager.t("phone.title", "手机助手")) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Back")
@@ -118,9 +119,9 @@ fun PhoneAgentScreen(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         when (adbOk) {
-                            true -> "无线 ADB 已连接"
-                            false -> "无线 ADB 未连接 — 去设置 → AutoGLM 配对"
-                            null -> "检测 ADB 中..."
+                            true -> LangManager.t("phone.adbConnected", "无线 ADB 已连接")
+                            false -> LangManager.t("phone.adbDisconnected", "无线 ADB 未连接 — 去设置 → AutoGLM 配对")
+                            null -> LangManager.t("phone.adbChecking", "检测 ADB 中...")
                         },
                         fontSize = 13.sp
                     )
@@ -146,8 +147,8 @@ fun PhoneAgentScreen(
                 value = instruction,
                 onValueChange = { instruction = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("指令") },
-                placeholder = { Text("例如: 打开美团搜索附近的火锅店") },
+                label = { Text(LangManager.t("phone.instruction", "指令")) },
+                placeholder = { Text(LangManager.t("phone.instructionHint", "例如: 打开美团搜索附近的火锅店")) },
                 enabled = !state.isRunning,
                 shape = RoundedCornerShape(12.dp)
             )
@@ -168,7 +169,7 @@ fun PhoneAgentScreen(
                 ) {
                     Icon(Icons.Default.PlayArrow, null)
                     Spacer(Modifier.width(4.dp))
-                    Text("执行")
+                    Text(LangManager.t("phone.execute", "执行"))
                 }
 
                 Button(
@@ -179,14 +180,14 @@ fun PhoneAgentScreen(
                 ) {
                     Icon(Icons.Default.Stop, null)
                     Spacer(Modifier.width(4.dp))
-                    Text("终止")
+                    Text(LangManager.t("phone.terminate", "终止"))
                 }
             }
 
             if (state.isRunning) {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "执行中 — 可在超级岛上下拉选择「终止」或「暂时接管」",
+                    LangManager.t("phone.runningHint", "执行中 — 可在超级岛上下拉选择「终止」或「暂时接管」"),
                     fontSize = 12.sp,
                     color = MiMoColors.TextSecondary
                 )
@@ -204,7 +205,12 @@ fun PhoneAgentScreen(
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(if (state.isPaused) "继续执行" else "继续（接管操作已完成）")
+                    Text(
+                        LangManager.t(
+                            if (state.isPaused) "phone.resume" else "phone.resumeAfterTakeover",
+                            if (state.isPaused) "继续执行" else "继续（接管操作已完成）"
+                        )
+                    )
                 }
             }
 
@@ -225,7 +231,7 @@ fun PhoneAgentScreen(
                     colors = CardDefaults.cardColors(containerColor = MiMoColors.Success.copy(alpha = 0.1f))
                 ) {
                     Column(Modifier.padding(12.dp)) {
-                        Text("任务结果", fontWeight = FontWeight.Bold, color = MiMoColors.Success)
+                        Text(LangManager.t("phone.taskResult", "任务结果"), fontWeight = FontWeight.Bold, color = MiMoColors.Success)
                         Text(result, fontSize = 14.sp)
                     }
                 }
@@ -233,7 +239,12 @@ fun PhoneAgentScreen(
 
             if (state.steps.isNotEmpty()) {
                 Spacer(Modifier.height(16.dp))
-                Text("步骤 (${state.currentStep}/${state.totalSteps})", fontWeight = FontWeight.Bold)
+                Text(
+                    LangManager.t("phone.steps", "步骤 ({cur}/{total})")
+                        .replace("{cur}", state.currentStep.toString())
+                        .replace("{total}", state.totalSteps.toString()),
+                    fontWeight = FontWeight.Bold
+                )
                 state.steps.forEach { step -> StepItem(step) }
             }
         }

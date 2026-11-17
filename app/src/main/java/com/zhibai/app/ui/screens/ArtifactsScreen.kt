@@ -80,6 +80,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.zhibai.app.i18n.LangManager
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -102,7 +103,7 @@ fun ArtifactsScreen(
     var files by remember { mutableStateOf(listOf<File>()) }
     var openFile by remember { mutableStateOf<File?>(null) }
     var searchQuery by remember { mutableStateOf("") }
-    var activeTab by remember { mutableStateOf("全部") }
+    var activeTab by remember { mutableStateOf("all") }
     var gridMode by remember { mutableStateOf(true) }
 
     LaunchedEffect(workspaceDir) {
@@ -142,19 +143,29 @@ fun ArtifactsScreen(
         Triple(produced, shown, referenced)
     }
 
+    // Tab ids stay stable; labels are localized at render time.
+    val tabLabels = mapOf(
+        "all" to LangManager.t("artifacts.tab.all", "全部"),
+        "hidden" to LangManager.t("artifacts.tab.hidden", "中间产物"),
+        "shown" to LangManager.t("artifacts.tab.shown", "产物"),
+        "referenced" to LangManager.t("artifacts.tab.referenced", "参考"),
+        "docs" to LangManager.t("artifacts.tab.docs", "文档"),
+        "apps" to LangManager.t("artifacts.tab.apps", "应用"),
+        "other" to LangManager.t("artifacts.tab.other", "其他")
+    )
     val tabs = remember(files, artifactPaths, sessions) {
         val (produced, shown, referenced) = artifactPaths
         val hidden = produced - shown
         val docs = files.filter { it.extension.lowercase() in docExts }
         val apps = files.filter { it.extension.lowercase() in appExts }
         listOf(
-            "全部" to files.size,
-            "中间产物" to files.count { it.absolutePath in hidden },
-            "产物" to files.count { it.absolutePath in shown },
-            "参考" to files.count { it.absolutePath in referenced },
-            "文档" to docs.size,
-            "应用" to apps.size,
-            "其他" to (files.size - docs.size - apps.size)
+            "all" to files.size,
+            "hidden" to files.count { it.absolutePath in hidden },
+            "shown" to files.count { it.absolutePath in shown },
+            "referenced" to files.count { it.absolutePath in referenced },
+            "docs" to docs.size,
+            "apps" to apps.size,
+            "other" to (files.size - docs.size - apps.size)
         )
     }
 
@@ -163,12 +174,12 @@ fun ArtifactsScreen(
         val hidden = produced - shown
         files.filter { f ->
             val inTab = when (activeTab) {
-                "中间产物" -> f.absolutePath in hidden
-                "产物" -> f.absolutePath in shown
-                "参考" -> f.absolutePath in referenced
-                "文档" -> f.extension.lowercase() in docExts
-                "应用" -> f.extension.lowercase() in appExts
-                "其他" -> f.extension.lowercase() !in docExts && f.extension.lowercase() !in appExts
+                "hidden" -> f.absolutePath in hidden
+                "shown" -> f.absolutePath in shown
+                "referenced" -> f.absolutePath in referenced
+                "docs" -> f.extension.lowercase() in docExts
+                "apps" -> f.extension.lowercase() in appExts
+                "other" -> f.extension.lowercase() !in docExts && f.extension.lowercase() !in appExts
                 else -> true
             }
             val inSearch = searchQuery.isBlank() ||
@@ -187,10 +198,10 @@ fun ArtifactsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("产物中心", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                title = { Text(LangManager.t("drawer.artifacts", "产物中心"), fontWeight = FontWeight.Bold, fontSize = 20.sp) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = LangManager.t("common.back", "返回"))
                     }
                 }
             )
@@ -198,7 +209,7 @@ fun ArtifactsScreen(
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             Text(
-                "这里汇总了你在 Xiaomi MiMo 里生成过的全部产物，可预览、下载或回到对话继续",
+                LangManager.t("artifacts.subtitle", "这里汇总了你在 Xiaomi MiMo 里生成过的全部产物，可预览、下载或回到对话继续"),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -210,14 +221,14 @@ fun ArtifactsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("搜索产物", fontSize = 14.sp) },
+                placeholder = { Text(LangManager.t("artifacts.searchHint", "搜索产物"), fontSize = 14.sp) },
                 leadingIcon = {
                     Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
                 },
                 trailingIcon = {
                     if (searchQuery.isNotBlank()) {
                         IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
-                            Icon(Icons.Default.Close, contentDescription = "清除", modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Close, contentDescription = LangManager.t("common.clear", "清除"), modifier = Modifier.size(16.dp))
                         }
                     }
                 },
@@ -236,8 +247,9 @@ fun ArtifactsScreen(
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    tabs.forEach { (label, count) ->
-                        val selected = activeTab == label
+                    tabs.forEach { (tabId, count) ->
+                        val label = tabLabels[tabId] ?: tabId
+                        val selected = activeTab == tabId
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
@@ -245,7 +257,7 @@ fun ArtifactsScreen(
                                     if (selected) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
                                     else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
                                 )
-                                .clickable { activeTab = label }
+                                .clickable { activeTab = tabId }
                                 .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
                             Text(
@@ -261,7 +273,7 @@ fun ArtifactsScreen(
                 IconButton(onClick = { gridMode = !gridMode }) {
                     Icon(
                         if (gridMode) Icons.Default.ViewList else Icons.Default.GridView,
-                        contentDescription = "视图切换",
+                        contentDescription = LangManager.t("artifacts.viewToggle", "视图切换"),
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -272,7 +284,7 @@ fun ArtifactsScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        if (files.isEmpty()) "工作目录暂无产物" else "没有匹配的产物",
+                        if (files.isEmpty()) LangManager.t("artifacts.emptyWorkspace", "工作目录暂无产物") else LangManager.t("artifacts.noMatch", "没有匹配的产物"),
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -319,20 +331,20 @@ private fun File.kind(): String {
 }
 
 private fun File.typeLabel(): String = when (kind()) {
-    "image" -> "图片"
-    "video" -> "视频"
-    "audio" -> "音频"
-    "web" -> "落地页"
-    else -> if (extension.isBlank()) "文件" else "文本"
+    "image" -> LangManager.t("artifacts.type.image", "图片")
+    "video" -> LangManager.t("artifacts.type.video", "视频")
+    "audio" -> LangManager.t("artifacts.type.audio", "音频")
+    "web" -> LangManager.t("artifacts.type.web", "落地页")
+    else -> if (extension.isBlank()) LangManager.t("artifacts.type.file", "文件") else LangManager.t("artifacts.type.text", "文本")
 }
 
 private fun relTime(millis: Long): String {
     val diff = System.currentTimeMillis() - millis
     return when {
-        diff < 60_000 -> "刚刚"
-        diff < 3_600_000 -> "${diff / 60_000} 分钟前"
-        diff < 86_400_000 -> "${diff / 3_600_000} 小时前"
-        diff < 86_400_000L * 30 -> "${diff / 86_400_000} 天前"
+        diff < 60_000 -> LangManager.t("common.time.justNow", "刚刚")
+        diff < 3_600_000 -> LangManager.t("common.time.minutes", "{n} 分钟前").replace("{n}", (diff / 60_000).toString())
+        diff < 86_400_000 -> LangManager.t("common.time.hours", "{n} 小时前").replace("{n}", (diff / 3_600_000).toString())
+        diff < 86_400_000L * 30 -> LangManager.t("common.time.days", "{n} 天前").replace("{n}", (diff / 86_400_000).toString())
         else -> SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(millis))
     }
 }
@@ -495,7 +507,7 @@ private fun ArtifactViewer(file: File, onBack: () -> Unit) {
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = LangManager.t("common.back", "返回"))
                     }
                 }
             )
@@ -591,7 +603,7 @@ private fun ImageZoomViewer(file: File) {
                 )
             }
         } else {
-            Text("无法解码该图片", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(LangManager.t("artifacts.decodeFailed", "无法解码该图片"), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Icon(
             Icons.Default.ZoomIn,
@@ -691,7 +703,9 @@ private fun AudioPlayerBox(file: File) {
             },
             enabled = player != null
         ) {
-            Text(if (playing) "暂停" else "播放")
+            Text(
+                LangManager.t(if (playing) "common.pause" else "common.play", if (playing) "暂停" else "播放")
+            )
         }
     }
 }
@@ -704,10 +718,13 @@ private fun formatMs(ms: Long): String {
 /** Text/code viewer — full content, scrollable. */
 @Composable
 private fun TextViewerBox(file: File) {
-    val text = remember(file.absolutePath) {
+    val text = remember(file.absolutePath, LangManager.currentCode) {
         try {
-            if (file.length() < 500_000) file.readText() else "（文件过大，仅显示前 5000 字符）\n" + file.readText().take(5000)
-        } catch (e: Exception) { "无法读取：${e.message}" }
+            if (file.length() < 500_000) file.readText()
+            else LangManager.t("artifacts.truncated", "（文件过大，仅显示前 5000 字符）") + "\n" + file.readText().take(5000)
+        } catch (e: Exception) {
+            LangManager.t("artifacts.readFailed", "无法读取：{error}").replace("{error}", e.message ?: "")
+        }
     }
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {

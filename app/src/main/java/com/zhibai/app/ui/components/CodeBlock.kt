@@ -33,6 +33,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import com.zhibai.app.i18n.LangManager
 import java.io.File
 
 // ── Lightweight regex syntax highlight (no external deps) ─────────────
@@ -239,7 +240,7 @@ fun CodeBlock(
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                 Icon(
                     if (collapsed) Icons.Default.KeyboardArrowRight else Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (collapsed) "展开代码" else "折叠代码",
+                    contentDescription = if (collapsed) LangManager.t("code.expand", "展开代码") else LangManager.t("code.collapse", "折叠代码"),
                     modifier = Modifier.size(14.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -252,7 +253,7 @@ fun CodeBlock(
                 if (collapsed) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "${code.lineCount()} 行",
+                        text = LangManager.t("code.lines", "{n} 行").replace("{n}", code.lineCount().toString()),
                         fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
@@ -271,7 +272,7 @@ fun CodeBlock(
                 ) {
                     Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(11.dp))
                     Spacer(modifier = Modifier.width(3.dp))
-                    Text(if (copied) "已复制" else "复制", fontSize = 10.sp)
+                    Text(if (copied) LangManager.t("code.copied", "已复制") else LangManager.t("code.copy", "复制"), fontSize = 10.sp)
                 }
 
                 // Save
@@ -304,10 +305,18 @@ fun CodeBlock(
                             }
                             val fileName = "code_${System.currentTimeMillis()}.$ext"
                             File(dir, fileName).writeText(code)
-                            android.widget.Toast.makeText(context, "已保存到 知白/$fileName", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(
+                                context,
+                                LangManager.t("code.savedTo", "已保存到 知白/{file}").replace("{file}", fileName),
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
                             saved = true
                         } catch (e: Exception) {
-                            android.widget.Toast.makeText(context, "保存失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(
+                                context,
+                                LangManager.t("common.saveFailed", "保存失败: {error}").replace("{error}", e.message ?: ""),
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
                         }
                     },
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
@@ -315,7 +324,7 @@ fun CodeBlock(
                 ) {
                     Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(11.dp))
                     Spacer(modifier = Modifier.width(3.dp))
-                    Text(if (saved) "已保存" else "保存", fontSize = 10.sp)
+                    Text(if (saved) LangManager.t("code.saved", "已保存") else LangManager.t("code.save", "保存"), fontSize = 10.sp)
                 }
 
                 // View in new activity
@@ -342,7 +351,11 @@ fun CodeBlock(
                             }
                             context.startActivity(intent)
                         } catch (e: Exception) {
-                            android.widget.Toast.makeText(context, "无法打开: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(
+                                context,
+                                LangManager.t("code.openFailed", "无法打开: {error}").replace("{error}", e.message ?: ""),
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
                         }
                     },
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
@@ -350,7 +363,7 @@ fun CodeBlock(
                 ) {
                     Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(11.dp))
                     Spacer(modifier = Modifier.width(3.dp))
-                    Text("查看", fontSize = 10.sp)
+                    Text(LangManager.t("code.view", "查看"), fontSize = 10.sp)
                 }
             }
         }

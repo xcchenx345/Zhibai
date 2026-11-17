@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import com.zhibai.app.i18n.LangManager
 
 /**
  * Robust clipboard helper.
@@ -46,7 +47,8 @@ object ClipboardHelper {
         val ok = copy(context, text, label)
         Toast.makeText(
             context,
-            if (ok) "已复制到剪贴板" else "复制失败，请长按文本手动复制",
+            if (ok) LangManager.t("clipboard.copied", "已复制到剪贴板")
+            else LangManager.t("clipboard.copyFailed", "复制失败，请长按文本手动复制"),
             Toast.LENGTH_SHORT
         ).show()
     }

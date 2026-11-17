@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.ui.theme.MiMoColors
 
 private const val GITHUB_ISSUE_URL = "https://github.com/xcchenx345/Zhibai/issues/new"
@@ -45,8 +46,8 @@ fun CrashReportDialog(
     var saved by remember { mutableStateOf(false) }
     var showAnalysisDialog by remember { mutableStateOf(false) }
 
-    val displayLog = remember(crashLog) {
-        if (crashLog.length > 5000) crashLog.take(5000) + "\n\n... (截断，复制/保存为完整)"
+    val displayLog = remember(crashLog, LangManager.currentCode) {
+        if (crashLog.length > 5000) crashLog.take(5000) + "\n\n" + LangManager.t("crash.truncated", "... (截断，复制/保存为完整)")
         else crashLog
     }
 
@@ -63,10 +64,10 @@ fun CrashReportDialog(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.BugReport, null, tint = MiMoColors.Error, modifier = Modifier.size(22.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("应用崩溃了", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text(LangManager.t("crash.title", "应用崩溃了"), fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("上次运行时发生异常。关闭后不会再次显示。", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(LangManager.t("crash.subtitle", "上次运行时发生异常。关闭后不会再次显示。"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(modifier = Modifier.height(6.dp))
 
                 // Crash log
@@ -88,37 +89,44 @@ fun CrashReportDialog(
                     OutlinedButton(onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clipboard.setPrimaryClip(ClipData.newPlainText("Crash Log", crashLog))
-                        Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, LangManager.t("common.copied", "已复制"), Toast.LENGTH_SHORT).show()
                     }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(4.dp)) {
                         Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(13.dp))
-                        Text("复制", fontSize = 11.sp)
+                        Text(LangManager.t("common.copy", "复制"), fontSize = 11.sp)
                     }
                     OutlinedButton(onClick = { saved = saveToDownloads(context, crashLog) }, enabled = !saved,
                         modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(4.dp)) {
                         Icon(Icons.Default.Save, null, modifier = Modifier.size(13.dp))
-                        Text(if (saved) "已存" else "保存", fontSize = 11.sp)
+                        Text(
+                            LangManager.t(if (saved) "common.saved" else "common.save", if (saved) "已存" else "保存"),
+                            fontSize = 11.sp
+                        )
                     }
                     if (onBackupChats != null) {
                         OutlinedButton(onClick = { onBackupChats() }, modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(4.dp)) {
                             Icon(Icons.Default.Storage, null, modifier = Modifier.size(13.dp))
-                            Text("备份", fontSize = 11.sp)
+                            Text(LangManager.t("crash.backup", "备份"), fontSize = 11.sp)
                         }
                     }
                     OutlinedButton(onClick = {
                         try {
                             val title = java.net.URLEncoder.encode("[Bug] App crash", "UTF-8")
-                            val body = java.net.URLEncoder.encode("### 崩溃日志\n```\n$crashLog\n```\n", "UTF-8")
+                            val body = java.net.URLEncoder.encode(
+                                LangManager.t("crash.issue.body", "### 崩溃日志\n```\n{log}\n```\n")
+                                    .replace("{log}", crashLog),
+                                "UTF-8"
+                            )
                             context.startActivity(Intent(Intent.ACTION_VIEW,
                                 android.net.Uri.parse("$GITHUB_ISSUE_URL?title=$title&body=$body")))
                         } catch (_: Exception) {
-                            Toast.makeText(context, "无法打开浏览器", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, LangManager.t("crash.openBrowserFailed", "无法打开浏览器"), Toast.LENGTH_SHORT).show()
                         }
                     }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = MiMoColors.Error),
                         contentPadding = PaddingValues(4.dp)) {
                         Icon(Icons.Default.Feedback, null, modifier = Modifier.size(13.dp))
-                        Text("反馈", fontSize = 11.sp)
+                        Text(LangManager.t("crash.feedback", "反馈"), fontSize = 11.sp)
                     }
                 }
 
@@ -134,13 +142,13 @@ fun CrashReportDialog(
                     ) {
                         Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("AI 分析崩溃原因", fontSize = 13.sp)
+                        Text(LangManager.t("crash.analyze.button", "AI 分析崩溃原因"), fontSize = 13.sp)
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                 }
 
                 Button(onClick = { onDismiss() }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
-                    Text("关闭")
+                    Text(LangManager.t("common.close", "关闭"))
                 }
             }
         }
@@ -185,11 +193,11 @@ private fun CrashAnalysisDialog(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("AI 崩溃分析", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(LangManager.t("crash.analyze.title", "AI 崩溃分析"), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.weight(1f))
                     if (!analyzing) {
                         IconButton(onClick = { onDismiss() }, modifier = Modifier.size(24.dp)) {
-                            Icon(Icons.Default.Close, "关闭", modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Close, LangManager.t("common.close", "关闭"), modifier = Modifier.size(16.dp))
                         }
                     }
                 }
@@ -202,7 +210,7 @@ private fun CrashAnalysisDialog(
                     ) {
                         CircularProgressIndicator(modifier = Modifier.size(32.dp))
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text("AI 正在分析崩溃原因...", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(LangManager.t("crash.analyze.loading", "AI 正在分析崩溃原因..."), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
                     analysis?.let { a ->
@@ -215,18 +223,24 @@ private fun CrashAnalysisDialog(
                         Surface(shape = RoundedCornerShape(8.dp), color = sevColor.copy(alpha = 0.12f), modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(10.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("严重等级: ${a.severity}/5", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = sevColor)
+                                    Text(
+                                        LangManager.t("crash.analyze.severity", "严重等级: {n}/5").replace("{n}", a.severity.toString()),
+                                        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = sevColor
+                                    )
                                     Spacer(modifier = Modifier.width(12.dp))
-                                    Text("责任归属: ${a.responsibility}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = sevColor)
+                                    Text(
+                                        LangManager.t("crash.analyze.responsibility", "责任归属: {name}").replace("{name}", a.responsibility),
+                                        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = sevColor
+                                    )
                                 }
                                 Spacer(modifier = Modifier.height(6.dp))
-                                Text("C=自身问题  B=应用+自己  A=应用问题", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(LangManager.t("crash.analyze.legend", "C=自身问题  B=应用+自己  A=应用问题"), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         Spacer(modifier = Modifier.height(10.dp))
 
                         // Summary
-                        Text("原因分析", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(LangManager.t("crash.analyze.summary", "原因分析"), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(a.summary, fontSize = 13.sp, lineHeight = 19.sp)
 
@@ -234,12 +248,12 @@ private fun CrashAnalysisDialog(
 
                         // Suggestions
                         if (a.suggestions.isNotBlank()) {
-                            Text("建议操作", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                            Text(LangManager.t("crash.analyze.suggestions", "建议操作"), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(a.suggestions, fontSize = 13.sp, lineHeight = 19.sp, color = MaterialTheme.colorScheme.primary)
                         }
                     } ?: run {
-                        Text("AI 分析失败，请检查网络和 API Key 后重试。", fontSize = 13.sp, color = MiMoColors.Error)
+                        Text(LangManager.t("crash.analyze.failed", "AI 分析失败，请检查网络和 API Key 后重试。"), fontSize = 13.sp, color = MiMoColors.Error)
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -250,11 +264,11 @@ private fun CrashAnalysisDialog(
                             OutlinedButton(onClick = {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 clipboard.setPrimaryClip(ClipData.newPlainText("AI Analysis", a.raw))
-                                Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, LangManager.t("common.copied", "已复制"), Toast.LENGTH_SHORT).show()
                             }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp)) {
                                 Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("复制分析", fontSize = 12.sp)
+                                Text(LangManager.t("crash.analyze.copy", "复制分析"), fontSize = 12.sp)
                             }
                         }
                         // Retry if failed
@@ -263,11 +277,11 @@ private fun CrashAnalysisDialog(
                                 analyzing = true
                                 // re-trigger via LaunchedEffect won't work, use coroutine
                             }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp)) {
-                                Text("重试", fontSize = 12.sp)
+                                Text(LangManager.t("common.retry", "重试"), fontSize = 12.sp)
                             }
                         }
                         Button(onClick = { onDismiss() }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp)) {
-                            Text("关闭", fontSize = 12.sp)
+                            Text(LangManager.t("common.close", "关闭"), fontSize = 12.sp)
                         }
                     }
                 }
@@ -288,16 +302,28 @@ private fun saveToDownloads(context: Context, content: String): Boolean {
             val uri = context.contentResolver.insert(
                 android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
             uri?.let { context.contentResolver.openOutputStream(it)?.use { it.write(content.toByteArray()) } }
-            Toast.makeText(context, "已保存到 Download/$fileName", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                context,
+                LangManager.t("crash.savedTo", "已保存到 {path}").replace("{path}", "Download/$fileName"),
+                Toast.LENGTH_SHORT
+            ).show()
         } else {
             val file = java.io.File(
                 android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), fileName)
             file.writeText(content)
-            Toast.makeText(context, "已保存到 ${file.absolutePath}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                context,
+                LangManager.t("crash.savedTo", "已保存到 {path}").replace("{path}", file.absolutePath),
+                Toast.LENGTH_SHORT
+            ).show()
         }
         true
     } catch (e: Exception) {
-        Toast.makeText(context, "保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        Toast.makeText(
+            context,
+            LangManager.t("common.saveFailed", "保存失败: {error}").replace("{error}", e.message ?: ""),
+            Toast.LENGTH_SHORT
+        ).show()
         false
     }
 }

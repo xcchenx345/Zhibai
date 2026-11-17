@@ -32,6 +32,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhibai.app.ui.theme.MiMoColors
+import com.zhibai.app.i18n.LangManager
 
 private enum class SettingsPage {
     MAIN, API_KEY, VOICE, FONT_SIZE, AGENT, ABOUT, FORBIDDEN, TOOL_PERMISSIONS, INPUT_STYLE, PREFERENCES, WIRELESS_ADB, ISLAND, AUTOGLM
@@ -161,7 +162,7 @@ fun SettingsScreen(
                 modifier = Modifier.padding(paddingValues)
             )
             SettingsPage.AUTOGLM -> AutoGLMSettingsPage(
-                onNavigateToWirelessAdb = { currentPage = SettingsPage.WIRELESS_ADB; pageTitle = "无线调试 ADB" },
+                onNavigateToWirelessAdb = { currentPage = SettingsPage.WIRELESS_ADB; pageTitle = LangManager.t("settings.adb.title", "无线调试 ADB") },
                 modifier = Modifier.padding(paddingValues)
             )
             SettingsPage.API_KEY -> ApiKeyPage(
@@ -191,13 +192,13 @@ fun SettingsScreen(
                 onAgentApiKeyChange = onAgentApiKeyChange,
                 onAgentBaseUrlChange = onAgentBaseUrlChange,
                 onWorkspacePathChange = onWorkspacePathChange,
-                onNavigateToToolPermissions = { currentPage = SettingsPage.TOOL_PERMISSIONS; pageTitle = "工具权限" },
-                onNavigateToWirelessAdb = { currentPage = SettingsPage.WIRELESS_ADB; pageTitle = "无线调试 ADB" },
+                onNavigateToToolPermissions = { currentPage = SettingsPage.TOOL_PERMISSIONS; pageTitle = LangManager.t("settings.toolPerms.title", "工具权限") },
+                onNavigateToWirelessAdb = { currentPage = SettingsPage.WIRELESS_ADB; pageTitle = LangManager.t("settings.adb.title", "无线调试 ADB") },
                 localAiSection = localAiSection,
                 modifier = Modifier.padding(paddingValues)
             )
             SettingsPage.ABOUT -> AboutPage(
-                onNavigateToForbidden = { currentPage = SettingsPage.FORBIDDEN; pageTitle = "隐藏设置" },
+                onNavigateToForbidden = { currentPage = SettingsPage.FORBIDDEN; pageTitle = LangManager.t("settings.forbidden.navTitle", "隐藏设置") },
                 modifier = Modifier.padding(paddingValues)
             )
             SettingsPage.FORBIDDEN -> ForbiddenPage(
@@ -286,7 +287,7 @@ private fun SettingsMainMenu(
         // API Key
         ListItem(
             headlineContent = { Text("API Key") },
-            supportingContent = { Text("配置 MiMo API 访问") },
+            supportingContent = { Text(LangManager.t("settings.apikey.desc", "配置 MiMo API 访问")) },
             leadingContent = { Icon(Icons.Default.Key, contentDescription = null) },
             trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
             modifier = Modifier.clickable { onNavigate(SettingsPage.API_KEY, "API Key") }
@@ -295,7 +296,7 @@ private fun SettingsMainMenu(
 
         // Language
         ListItem(
-            headlineContent = { Text("语言") },
+            headlineContent = { Text(LangManager.t("settings.lang.title", "语言")) },
             supportingContent = { Text(com.zhibai.app.i18n.LangManager.languageName(com.zhibai.app.i18n.LangManager.currentCode)) },
             leadingContent = { Icon(Icons.Default.Language, contentDescription = null) },
             trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
@@ -305,8 +306,8 @@ private fun SettingsMainMenu(
 
         // Default TTS Voice
         ListItem(
-            headlineContent = { Text("默认朗读语音") },
-            supportingContent = { Text("聊天中长按朗读时使用的语音") },
+            headlineContent = { Text(LangManager.t("settings.voice.title", "默认朗读语音")) },
+            supportingContent = { Text(LangManager.t("settings.voice.desc", "聊天中长按朗读时使用的语音")) },
             leadingContent = { Icon(Icons.Default.RecordVoiceOver, contentDescription = null) },
             trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
             modifier = Modifier.clickable { onNavigate(SettingsPage.VOICE, "Read Aloud Voice") }
@@ -315,38 +316,38 @@ private fun SettingsMainMenu(
 
         // Font Size
         ListItem(
-            headlineContent = { Text("字体大小") },
-            supportingContent = { Text("调整聊天文字大小") },
+            headlineContent = { Text(LangManager.t("settings.fontsize.title", "字体大小")) },
+            supportingContent = { Text(LangManager.t("settings.fontsize.desc", "调整聊天文字大小")) },
             leadingContent = { Icon(Icons.Default.FormatSize, contentDescription = null) },
             trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
-            modifier = Modifier.clickable { onNavigate(SettingsPage.FONT_SIZE, "字体大小") }
+            modifier = Modifier.clickable { onNavigate(SettingsPage.FONT_SIZE, LangManager.t("settings.fontsize.title", "字体大小")) }
         )
         HorizontalDivider()
 
         // Input bar appearance
         ListItem(
-            headlineContent = { Text("输入框外观") },
-            supportingContent = { Text("磨砂玻璃 / 经典样式、阴影、磨砂颜色") },
+            headlineContent = { Text(LangManager.t("settings.inputStyle.title", "输入框外观")) },
+            supportingContent = { Text(LangManager.t("settings.inputStyle.desc", "磨砂玻璃 / 经典样式、阴影、磨砂颜色")) },
             leadingContent = { Icon(Icons.Default.Layers, contentDescription = null) },
             trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
-            modifier = Modifier.clickable { onNavigate(SettingsPage.INPUT_STYLE, "输入框外观") }
+            modifier = Modifier.clickable { onNavigate(SettingsPage.INPUT_STYLE, LangManager.t("settings.inputStyle.title", "输入框外观")) }
         )
         HorizontalDivider()
 
         // Preferences (偏好)
         ListItem(
-            headlineContent = { Text("偏好") },
-            supportingContent = { Text("启动行为、思考等级、自动压缩、长期记忆、模型习惯") },
+            headlineContent = { Text(LangManager.t("settings.prefs.title", "偏好")) },
+            supportingContent = { Text(LangManager.t("settings.prefs.desc", "启动行为、思考等级、自动压缩、长期记忆、模型习惯")) },
             leadingContent = { Icon(Icons.Default.Tune, contentDescription = null) },
             trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
-            modifier = Modifier.clickable { onNavigate(SettingsPage.PREFERENCES, "偏好") }
+            modifier = Modifier.clickable { onNavigate(SettingsPage.PREFERENCES, LangManager.t("settings.prefs.title", "偏好")) }
         )
         HorizontalDivider()
 
         // AI Agent
         ListItem(
             headlineContent = { Text("AI Agent") },
-            supportingContent = { Text("权限模式、工作区与工具") },
+            supportingContent = { Text(LangManager.t("settings.agent.desc", "权限模式、工作区与工具")) },
             leadingContent = { Icon(Icons.Default.SmartToy, contentDescription = null) },
             trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
             modifier = Modifier.clickable { onNavigate(SettingsPage.AGENT, "AI Agent") }
@@ -355,33 +356,33 @@ private fun SettingsMainMenu(
 
         // Super Island hub
         ListItem(
-            headlineContent = { Text("超级岛设置") },
-            supportingContent = { Text("开关、流式输出、阶段展开与必要权限") },
+            headlineContent = { Text(LangManager.t("settings.island.title", "超级岛设置")) },
+            supportingContent = { Text(LangManager.t("settings.island.desc", "开关、流式输出、阶段展开与必要权限")) },
             leadingContent = { Icon(Icons.Default.Crop, contentDescription = null) },
             trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
-            modifier = Modifier.clickable { onNavigate(SettingsPage.ISLAND, "超级岛设置") }
+            modifier = Modifier.clickable { onNavigate(SettingsPage.ISLAND, LangManager.t("settings.island.title", "超级岛设置")) }
         )
         HorizontalDivider()
 
         // AutoGLM phone agent
         if (com.zhibai.app.agent.AgentEngine.PHONE_AGENT_ENABLED) {
             ListItem(
-                headlineContent = { Text("AutoGLM 手机助手") },
-                supportingContent = { Text("智谱 Key、步数、无线 ADB") },
+                headlineContent = { Text(LangManager.t("settings.autoglm.title", "AutoGLM 手机助手")) },
+                supportingContent = { Text(LangManager.t("settings.autoglm.desc", "智谱 Key、步数、无线 ADB")) },
                 leadingContent = { Icon(Icons.Default.PhoneAndroid, contentDescription = null) },
                 trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
-                modifier = Modifier.clickable { onNavigate(SettingsPage.AUTOGLM, "AutoGLM 手机助手") }
+                modifier = Modifier.clickable { onNavigate(SettingsPage.AUTOGLM, LangManager.t("settings.autoglm.title", "AutoGLM 手机助手")) }
             )
             HorizontalDivider()
         }
 
         // About
         ListItem(
-            headlineContent = { Text("关于") },
-            supportingContent = { Text("应用信息与版本") },
+            headlineContent = { Text(LangManager.t("settings.about.title", "关于")) },
+            supportingContent = { Text(LangManager.t("settings.about.desc", "应用信息与版本")) },
             leadingContent = { Icon(Icons.Default.Info, contentDescription = null) },
             trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
-            modifier = Modifier.clickable { onNavigate(SettingsPage.ABOUT, "关于") }
+            modifier = Modifier.clickable { onNavigate(SettingsPage.ABOUT, LangManager.t("settings.about.title", "关于")) }
         )
         HorizontalDivider()
     }
@@ -389,7 +390,7 @@ private fun SettingsMainMenu(
     if (showLangDialog) {
         AlertDialog(
             onDismissRequest = { showLangDialog = false },
-            title = { Text("语言") },
+            title = { Text(LangManager.t("settings.lang.title", "语言")) },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     com.zhibai.app.i18n.LangManager.availableLocales().sorted().forEach { code ->
@@ -424,7 +425,7 @@ private fun SettingsMainMenu(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showLangDialog = false }) { Text("取消") }
+                TextButton(onClick = { showLangDialog = false }) { Text(LangManager.t("common.cancel", "取消")) }
             }
         )
     }
@@ -462,13 +463,13 @@ private fun IslandSettingsPage(
             .verticalScroll(rememberScrollState())
     ) {
         ListItem(
-            headlineContent = { Text("开启超级岛") },
+            headlineContent = { Text(LangManager.t("settings.island.enable.title", "开启超级岛")) },
             supportingContent = {
                 Text(
                     when {
-                        !enabled -> "已关闭，Agent 状态不会上岛"
-                        !allGranted -> "权限未齐，补齐下方清单后才会正式上岛"
-                        else -> "已开启——满足权限时 Agent 状态会显示在超级岛"
+                        !enabled -> LangManager.t("settings.island.enable.off", "已关闭，Agent 状态不会上岛")
+                        !allGranted -> LangManager.t("settings.island.enable.noPerms", "权限未齐，补齐下方清单后才会正式上岛")
+                        else -> LangManager.t("settings.island.enable.on", "已开启——满足权限时 Agent 状态会显示在超级岛")
                     }
                 )
             },
@@ -478,17 +479,17 @@ private fun IslandSettingsPage(
         HorizontalDivider()
 
         ListItem(
-            headlineContent = { Text("显示流式输出过程") },
-            supportingContent = { Text("生成时把最新输出片段滚到岛胶囊上（约 4 次/秒）") },
+            headlineContent = { Text(LangManager.t("settings.island.streaming.title", "显示流式输出过程")) },
+            supportingContent = { Text(LangManager.t("settings.island.streaming.desc", "生成时把最新输出片段滚到岛胶囊上（约 4 次/秒）")) },
             leadingContent = { Icon(Icons.Default.Title, contentDescription = null) },
             trailingContent = { Switch(checked = showStreaming, onCheckedChange = onShowStreamingChange) }
         )
         HorizontalDivider()
 
         ListItem(
-            headlineContent = { Text("阶段切换展开岛") },
+            headlineContent = { Text(LangManager.t("settings.island.expand.title", "阶段切换展开岛")) },
             supportingContent = {
-                Text(if (expandOnPhase) "进入下一阶段时重新展开胶囊" else "阶段切换只原地更新，不重新展开")
+                Text(if (expandOnPhase) LangManager.t("settings.island.expand.on", "进入下一阶段时重新展开胶囊") else LangManager.t("settings.island.expand.off", "阶段切换只原地更新，不重新展开"))
             },
             leadingContent = { Icon(Icons.Default.UnfoldMore, contentDescription = null) },
             trailingContent = { Switch(checked = expandOnPhase, onCheckedChange = onExpandOnPhaseChange) }
@@ -498,11 +499,11 @@ private fun IslandSettingsPage(
         ListItem(
             headlineContent = {
                 Text(
-                    if (allGranted) "必要权限 · 全部已开启" else "必要权限 · ${perms.count { it.granted }}/${perms.size}",
+                    if (allGranted) LangManager.t("settings.island.perms.allOn", "必要权限 · 全部已开启") else LangManager.t("settings.island.perms.count", "必要权限 · {n}/{m}").replace("{n}", perms.count { it.granted }.toString()).replace("{m}", perms.size.toString()),
                     fontWeight = FontWeight.SemiBold
                 )
             },
-            supportingContent = { Text("四项全部开启后，才会正式开始上岛") },
+            supportingContent = { Text(LangManager.t("settings.island.perms.desc", "四项全部开启后，才会正式开始上岛")) },
             leadingContent = {
                 Icon(
                     if (allGranted) Icons.Default.CheckCircle else Icons.Default.Warning,
@@ -535,8 +536,8 @@ private fun IslandSettingsPage(
 
         HorizontalDivider()
         ListItem(
-            headlineContent = { Text("从系统设置返回后会自动复查权限") },
-            supportingContent = { Text("全部变绿即可开始上岛，无需重启 App") },
+            headlineContent = { Text(LangManager.t("settings.island.perms.recheck", "从系统设置返回后会自动复查权限")) },
+            supportingContent = { Text(LangManager.t("settings.island.perms.recheckDesc", "全部变绿即可开始上岛，无需重启 App")) },
             leadingContent = { Icon(Icons.Default.Refresh, contentDescription = null) }
         )
     }
@@ -586,7 +587,7 @@ private fun ApiKeyPage(
             enabled = apiKeyInput.isNotBlank(),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
         ) {
-            Text("保存")
+            Text(LangManager.t("common.save", "保存"))
         }
 
         localAiSection()
@@ -598,10 +599,10 @@ private fun ApiKeyPage(
             )
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("如何获取 API Key", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(LangManager.t("settings.apikey.howto", "如何获取 API Key"), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "1. 访问 platform.xiaomimimo.com\n2. 注册账号或登录\n3. 进入 API Keys 区域\n4. 创建新的 API Key\n5. 复制并粘贴到这里",
+                    LangManager.t("settings.apikey.howtoSteps", "1. 访问 platform.xiaomimimo.com\n2. 注册账号或登录\n3. 进入 API Keys 区域\n4. 创建新的 API Key\n5. 复制并粘贴到这里"),
                     fontSize = 13.sp,
                     lineHeight = 20.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -630,7 +631,7 @@ private fun VoicePage(
 
     Column(modifier = modifier.fillMaxSize()) {
         ListItem(
-            headlineContent = { Text("当前语音") },
+            headlineContent = { Text(LangManager.t("settings.voice.current", "当前语音")) },
             supportingContent = { Text(currentVoice) },
             leadingContent = { Icon(Icons.Default.RecordVoiceOver, contentDescription = null) }
         )
@@ -667,7 +668,7 @@ private fun FontSizePage(
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        Text("预览", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text(LangManager.t("settings.fontsize.preview", "预览"), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Surface(
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
@@ -681,7 +682,7 @@ private fun FontSizePage(
             )
         }
 
-        Text("大小：${sliderValue.toInt()}sp", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text(LangManager.t("settings.fontsize.size", "大小：{n}sp").replace("{n}", sliderValue.toInt().toString()), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
 
         // Slider with a dot above the midpoint (15 = default)
         Box(modifier = Modifier.fillMaxWidth()) {
@@ -721,9 +722,9 @@ private fun FontSizePage(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("小", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("标准 (15)", fontSize = 12.sp, color = if (sliderValue.toInt() == 15) MiMoColors.Primary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = if (sliderValue.toInt() == 15) FontWeight.Bold else FontWeight.Normal)
-            Text("大", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(LangManager.t("settings.fontsize.small", "小"), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(LangManager.t("settings.fontsize.standard", "标准 (15)"), fontSize = 12.sp, color = if (sliderValue.toInt() == 15) MiMoColors.Primary else MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = if (sliderValue.toInt() == 15) FontWeight.Bold else FontWeight.Normal)
+            Text(LangManager.t("settings.fontsize.large", "大"), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
         // Reset to default
@@ -732,7 +733,7 @@ private fun FontSizePage(
                 onClick = { sliderValue = 15f; onSelect(15) },
                 modifier = Modifier.align(Alignment.CenterHorizontally)
             ) {
-                Text("恢复默认 (15)")
+                Text(LangManager.t("settings.fontsize.reset", "恢复默认 (15)"))
             }
         }
     }
@@ -771,13 +772,13 @@ private fun AboutPage(
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            "由 Xiaomi MiMo API 提供支持",
+            LangManager.t("settings.about.powered", "由 Xiaomi MiMo API 提供支持"),
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(32.dp))
         Text(
-            "MiMo AI 非官方客户端",
+            LangManager.t("settings.about.unofficial", "MiMo AI 非官方客户端"),
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.outline
         )
@@ -813,7 +814,7 @@ private fun AgentSettingsPage(
     ) {
         ListItem(
             headlineContent = { Text("AI Agent") },
-            supportingContent = { Text(if (agentEnabled) "已开启 — 模型可使用本地工具" else "已关闭") },
+            supportingContent = { Text(if (agentEnabled) LangManager.t("settings.agent.enabled.on", "已开启 — 模型可使用本地工具") else LangManager.t("settings.agent.enabled.off", "已关闭")) },
             leadingContent = { Icon(Icons.Default.SmartToy, contentDescription = null) },
             trailingContent = {
                 Switch(checked = agentEnabled, onCheckedChange = onAgentEnabledChange)
@@ -823,19 +824,19 @@ private fun AgentSettingsPage(
 
         if (agentEnabled) {
             ListItem(
-                headlineContent = { Text("权限模式") },
-                supportingContent = { Text("工具调用的批准方式") },
+                headlineContent = { Text(LangManager.t("settings.agent.permMode.title", "权限模式")) },
+                supportingContent = { Text(LangManager.t("settings.agent.permMode.desc", "工具调用的批准方式")) },
                 leadingContent = { Icon(Icons.Default.Security, contentDescription = null) }
             )
             val permissionOptions = listOf(
                 com.zhibai.app.agent.AgentEngine.MODE_ASK_ALL to
-                    "每次询问 — 每个工具调用都需手动批准" to "最安全",
+                    LangManager.t("settings.agent.permMode.askAll", "每次询问 — 每个工具调用都需手动批准") to LangManager.t("settings.agent.permMode.askAllBadge", "最安全"),
                 com.zhibai.app.agent.AgentEngine.MODE_DEFAULT to
-                    "默认 — 低风险直接运行，高风险询问" to "均衡",
+                    LangManager.t("settings.agent.permMode.default", "默认 — 低风险直接运行，高风险询问") to LangManager.t("settings.agent.permMode.defaultBadge", "均衡"),
                 com.zhibai.app.agent.AgentEngine.MODE_AUTO to
-                    "自动 — 全部直接运行" to "最快",
+                    LangManager.t("settings.agent.permMode.auto", "自动 — 全部直接运行") to LangManager.t("settings.agent.permMode.autoBadge", "最快"),
                 com.zhibai.app.agent.AgentEngine.MODE_AI_APPROVE to
-                    "AI 审批 — AI 决定，被拒时询问你" to "智能"
+                    LangManager.t("settings.agent.permMode.aiApprove", "AI 审批 — AI 决定，被拒时询问你") to LangManager.t("settings.agent.permMode.aiApproveBadge", "智能")
             )
             permissionOptions.forEach { (modePair, badge) ->
                 val (mode, label) = modePair
@@ -854,8 +855,8 @@ private fun AgentSettingsPage(
             HorizontalDivider()
 
             ListItem(
-                headlineContent = { Text("工具权限") },
-                supportingContent = { Text("启用/禁用单个工具") },
+                headlineContent = { Text(LangManager.t("settings.toolPerms.title", "工具权限")) },
+                supportingContent = { Text(LangManager.t("settings.agent.toolPerms.desc", "启用/禁用单个工具")) },
                 leadingContent = { Icon(Icons.Default.Tune, contentDescription = null) },
                 trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
                 modifier = Modifier.clickable { onNavigateToToolPermissions() }
@@ -864,8 +865,8 @@ private fun AgentSettingsPage(
 
             // Wireless debugging ADB (配对后 run_adb 获得真实 shell 权限)
             ListItem(
-                headlineContent = { Text("无线调试 ADB") },
-                supportingContent = { Text("配对后 run_adb 获得真实 shell 权限") },
+                headlineContent = { Text(LangManager.t("settings.adb.title", "无线调试 ADB")) },
+                supportingContent = { Text(LangManager.t("settings.adb.desc", "配对后 run_adb 获得真实 shell 权限")) },
                 leadingContent = { Icon(Icons.Default.Cable, contentDescription = null) },
                 trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
                 modifier = Modifier.clickable { onNavigateToWirelessAdb() }
@@ -874,14 +875,14 @@ private fun AgentSettingsPage(
 
             ListItem(
                 headlineContent = { Text("Agent API Key") },
-                supportingContent = { Text(if (agentApiKey.isBlank()) "留空则使用主密钥" else "已配置独立密钥") },
+                supportingContent = { Text(if (agentApiKey.isBlank()) LangManager.t("settings.agent.key.empty", "留空则使用主密钥") else LangManager.t("settings.agent.key.configured", "已配置独立密钥")) },
                 leadingContent = { Icon(Icons.Default.Key, contentDescription = null) }
             )
             OutlinedTextField(
                 value = agentKeyInput,
                 onValueChange = { agentKeyInput = it },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                placeholder = { Text("tp-xxxxx（留空则使用主密钥）") },
+                placeholder = { Text(LangManager.t("settings.agent.key.placeholder", "tp-xxxxx（留空则使用主密钥）")) },
                 singleLine = true,
                 visualTransformation = if (showAgentKey) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
@@ -948,9 +949,9 @@ private fun AgentSettingsPage(
             localAiSection()
 
             ListItem(
-                headlineContent = { Text("工作区路径") },
+                headlineContent = { Text(LangManager.t("settings.agent.workspace.title", "工作区路径")) },
                 supportingContent = {
-                    Text(if (workspacePath.isBlank()) "默认：/sdcard/知白/" else workspacePath)
+                    Text(if (workspacePath.isBlank()) LangManager.t("settings.agent.workspace.default", "默认：/sdcard/知白/") else workspacePath)
                 },
                 leadingContent = { Icon(Icons.Default.Folder, contentDescription = null) }
             )
@@ -958,7 +959,7 @@ private fun AgentSettingsPage(
                 value = workspaceInput,
                 onValueChange = { workspaceInput = it },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                placeholder = { Text("/sdcard/知白/ 或相对路径如 知白") },
+                placeholder = { Text(LangManager.t("settings.agent.workspace.placeholder", "/sdcard/知白/ 或相对路径如 知白")) },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp)
             )
@@ -973,7 +974,7 @@ private fun AgentSettingsPage(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
-                Text("保存 Agent 配置")
+                Text(LangManager.t("settings.agent.save", "保存 Agent 配置"))
             }
             HorizontalDivider()
         }
@@ -1023,8 +1024,8 @@ private fun ForbiddenPage(
             .verticalScroll(rememberScrollState())
     ) {
         ListItem(
-            headlineContent = { Text("切换模型时强制新建会话") },
-            supportingContent = { Text(if (forceNewSession) "开 — 切换模型时新建对话" else "关 — 保留当前对话") },
+            headlineContent = { Text(LangManager.t("settings.forbidden.forceNew.title", "切换模型时强制新建会话")) },
+            supportingContent = { Text(if (forceNewSession) LangManager.t("settings.forbidden.forceNew.on", "开 — 切换模型时新建对话") else LangManager.t("settings.forbidden.forceNew.off", "关 — 保留当前对话")) },
             leadingContent = { Icon(Icons.Default.SwapHoriz, contentDescription = null) },
             trailingContent = {
                 Switch(checked = forceNewSession, onCheckedChange = onForceNewSessionChange)
@@ -1033,9 +1034,9 @@ private fun ForbiddenPage(
         HorizontalDivider()
 
         ListItem(
-            headlineContent = { Text("严格忠实模式") },
+            headlineContent = { Text(LangManager.t("settings.forbidden.strict.title", "严格忠实模式")) },
             supportingContent = {
-                Text(if (strictFaithful) "开 — 严格参考内容信息，不虚构" else "关 — 允许模型自由发挥")
+                Text(if (strictFaithful) LangManager.t("settings.forbidden.strict.on", "开 — 严格参考内容信息，不虚构") else LangManager.t("settings.forbidden.strict.off", "关 — 允许模型自由发挥"))
             },
             leadingContent = { Icon(Icons.Default.Gavel, contentDescription = null) },
             trailingContent = {
@@ -1045,9 +1046,9 @@ private fun ForbiddenPage(
         HorizontalDivider()
 
         ListItem(
-            headlineContent = { Text("模糊问题先答后问") },
+            headlineContent = { Text(LangManager.t("settings.forbidden.ambiguous.title", "模糊问题先答后问")) },
             supportingContent = {
-                Text(if (promptAmbiguousClarify) "开 — 先尽量回答，再最多追问一句" else "关 — 不注入该提示词")
+                Text(if (promptAmbiguousClarify) LangManager.t("settings.forbidden.ambiguous.on", "开 — 先尽量回答，再最多追问一句") else LangManager.t("settings.forbidden.promptOff", "关 — 不注入该提示词"))
             },
             leadingContent = { Icon(Icons.Default.HelpOutline, contentDescription = null) },
             trailingContent = {
@@ -1057,9 +1058,9 @@ private fun ForbiddenPage(
         HorizontalDivider()
 
         ListItem(
-            headlineContent = { Text("敏感政治/历史限制") },
+            headlineContent = { Text(LangManager.t("settings.forbidden.sensitive.title", "敏感政治/历史限制")) },
             supportingContent = {
-                Text(if (promptSensitiveRefusal) "开 — 拒答外国敏感政治新闻等" else "关 — 不注入该提示词")
+                Text(if (promptSensitiveRefusal) LangManager.t("settings.forbidden.sensitive.on", "开 — 拒答外国敏感政治新闻等") else LangManager.t("settings.forbidden.promptOff", "关 — 不注入该提示词"))
             },
             leadingContent = { Icon(Icons.Default.Public, contentDescription = null) },
             trailingContent = {
@@ -1069,9 +1070,9 @@ private fun ForbiddenPage(
         HorizontalDivider()
 
         ListItem(
-            headlineContent = { Text("无限制附件") },
+            headlineContent = { Text(LangManager.t("settings.forbidden.attach.title", "无限制附件")) },
             supportingContent = {
-                Text(if (unlimitedAttachments) "开 — 解除附件数量/大小限制" else "关 — 视频1份20MB · 音频1份10MB · 图片6张（有音视频时2张）")
+                Text(if (unlimitedAttachments) LangManager.t("settings.forbidden.attach.on", "开 — 解除附件数量/大小限制") else LangManager.t("settings.forbidden.attach.off", "关 — 视频1份20MB · 音频1份10MB · 图片6张（有音视频时2张）"))
             },
             leadingContent = { Icon(Icons.Default.Attachment, contentDescription = null) },
             trailingContent = {
@@ -1082,35 +1083,35 @@ private fun ForbiddenPage(
 
         // === Custom Theme Colors Section ===
         ListItem(
-            headlineContent = { Text("主题颜色自定义", fontWeight = FontWeight.SemiBold) },
-            supportingContent = { Text("自定义字体/背景/气泡/文字颜色，留空恢复默认") },
+            headlineContent = { Text(LangManager.t("settings.forbidden.theme.title", "主题颜色自定义"), fontWeight = FontWeight.SemiBold) },
+            supportingContent = { Text(LangManager.t("settings.forbidden.theme.desc", "自定义字体/背景/气泡/文字颜色，留空恢复默认")) },
             leadingContent = { Icon(Icons.Default.Palette, contentDescription = null) }
         )
 
         // Font color
         ColorPickerRow(
-            label = "字体颜色",
+            label = LangManager.t("settings.color.font", "字体颜色"),
             currentHex = customFontColor,
             presets = listOf("", "#000000", "#FFFFFF", "#333333", "#666666", "#1A1A1A", "#E0E0E0", "#8B5CF6", "#3B82F6", "#10B981"),
             onColorChange = onCustomFontColorChange
         )
         // Background color
         ColorPickerRow(
-            label = "背景颜色",
+            label = LangManager.t("settings.color.bg", "背景颜色"),
             currentHex = customBgColor,
             presets = listOf("", "#F5F5F5", "#FFFFFF", "#0A0A0A", "#121212", "#FAFAFA", "#141414", "#F0F0F0", "#0E0E0E"),
             onColorChange = onCustomBgColorChange
         )
         // Bubble color
         ColorPickerRow(
-            label = "气泡颜色",
+            label = LangManager.t("settings.color.bubble", "气泡颜色"),
             currentHex = customBubbleColor,
             presets = listOf("", "#000000", "#FFFFFF", "#1E1E1E", "#2A2A2A", "#F0F0F0", "#1A1A1A", "#333333"),
             onColorChange = onCustomBubbleColorChange
         )
         // Text color
         ColorPickerRow(
-            label = "文字颜色",
+            label = LangManager.t("settings.color.text", "文字颜色"),
             currentHex = customTextColor,
             presets = listOf("", "#1A1A1A", "#E0E0E0", "#333333", "#CCCCCC", "#666666", "#999999", "#000000", "#FFFFFF"),
             onColorChange = onCustomTextColorChange
@@ -1119,10 +1120,10 @@ private fun ForbiddenPage(
 
         // === Custom Font Section ===
         ListItem(
-            headlineContent = { Text("自定义字体", fontWeight = FontWeight.SemiBold) },
+            headlineContent = { Text(LangManager.t("settings.forbidden.font.title", "自定义字体"), fontWeight = FontWeight.SemiBold) },
             supportingContent = {
                 val fontName = com.zhibai.app.ui.theme.SystemFonts.listFonts()
-                    .firstOrNull { it.path == customFontPath }?.name ?: "系统默认"
+                    .firstOrNull { it.path == customFontPath }?.name ?: LangManager.t("settings.forbidden.font.systemDefault", "系统默认")
                 Text(fontName)
             },
             leadingContent = { Icon(Icons.Default.FontDownload, contentDescription = null) }
@@ -1136,8 +1137,8 @@ private fun ForbiddenPage(
         // Reset onboarding
         var confirmResetOnboarding by remember { mutableStateOf(false) }
         ListItem(
-            headlineContent = { Text("重走初始引导") },
-            supportingContent = { Text("清除引导页完成标记，下次启动重新走一遍") },
+            headlineContent = { Text(LangManager.t("settings.forbidden.resetOnboarding.title", "重走初始引导")) },
+            supportingContent = { Text(LangManager.t("settings.forbidden.resetOnboarding.desc", "清除引导页完成标记，下次启动重新走一遍")) },
             leadingContent = { Icon(Icons.Default.Replay, contentDescription = null) },
             modifier = Modifier.clickable { confirmResetOnboarding = true }
         )
@@ -1146,32 +1147,32 @@ private fun ForbiddenPage(
         if (confirmResetOnboarding) {
             AlertDialog(
                 onDismissRequest = { confirmResetOnboarding = false },
-                title = { Text("重走引导页？") },
-                text = { Text("将清除引导完成标记，下次打开 App 会重新显示引导页。其他设置不受影响。") },
+                title = { Text(LangManager.t("settings.forbidden.resetOnboarding.confirmTitle", "重走引导页？")) },
+                text = { Text(LangManager.t("settings.forbidden.resetOnboarding.confirmText", "将清除引导完成标记，下次打开 App 会重新显示引导页。其他设置不受影响。")) },
                 confirmButton = {
                     TextButton(onClick = {
                         onResetOnboarding()
                         confirmResetOnboarding = false
-                    }) { Text("确认") }
+                    }) { Text(LangManager.t("common.confirm", "确认")) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { confirmResetOnboarding = false }) { Text("取消") }
+                    TextButton(onClick = { confirmResetOnboarding = false }) { Text(LangManager.t("common.cancel", "取消")) }
                 }
             )
         }
 
         // View update preview
         ListItem(
-            headlineContent = { Text("查看更新内容") },
-            supportingContent = { Text("重看 v2.6 新功能介绍，不改任何设置") },
+            headlineContent = { Text(LangManager.t("settings.forbidden.updatePreview.title", "查看更新内容")) },
+            supportingContent = { Text(LangManager.t("settings.forbidden.updatePreview.desc", "重看 v2.6 新功能介绍，不改任何设置")) },
             leadingContent = { Icon(Icons.Default.NewReleases, contentDescription = null) },
             modifier = Modifier.clickable { onShowUpdatePreview() }
         )
         HorizontalDivider()
 
         ListItem(
-            headlineContent = { Text("导出日志") },
-            supportingContent = { Text("导出到 Download 目录，文件管理器可直接查看") },
+            headlineContent = { Text(LangManager.t("settings.forbidden.exportLog.title", "导出日志")) },
+            supportingContent = { Text(LangManager.t("settings.forbidden.exportLog.desc", "导出到 Download 目录，文件管理器可直接查看")) },
             leadingContent = { Icon(Icons.Default.BugReport, contentDescription = null) },
             modifier = Modifier.clickable {
                 try {
@@ -1211,7 +1212,7 @@ private fun ForbiddenPage(
                         logExportPath = file.absolutePath
                     }
                 } catch (e: Exception) {
-                    logExportPath = "导出失败: ${e.message}"
+                    logExportPath = LangManager.t("settings.forbidden.exportLog.failed", "导出失败") + ": ${e.message}"
                 }
                 showLogExported = true
             }
@@ -1219,13 +1220,13 @@ private fun ForbiddenPage(
         HorizontalDivider()
 
         ListItem(
-            headlineContent = { Text("清除日志缓冲") },
-            supportingContent = { Text("清空内存里的 ${com.zhibai.app.util.AppLog.size()} 条诊断日志，不影响导出历史") },
+            headlineContent = { Text(LangManager.t("settings.forbidden.clearLog.title", "清除日志缓冲")) },
+            supportingContent = { Text(LangManager.t("settings.forbidden.clearLog.desc", "清空内存里的 {n} 条诊断日志，不影响导出历史").replace("{n}", com.zhibai.app.util.AppLog.size().toString())) },
             leadingContent = { Icon(Icons.Default.DeleteSweep, contentDescription = null) },
             modifier = Modifier.clickable {
                 com.zhibai.app.util.AppLog.clear()
                 com.zhibai.app.util.AppLog.d("log buffer cleared by user")
-                logExportPath = "日志缓冲已清空"
+                logExportPath = LangManager.t("settings.forbidden.clearLog.done", "日志缓冲已清空")
                 showLogExported = true
             }
         )
@@ -1234,8 +1235,8 @@ private fun ForbiddenPage(
         // === Manual crash test (3-step confirmation) ===
         var crashTestStep by remember { mutableIntStateOf(0) } // 0=off, 1=confirm1, 2=confirm2, 3=mode select
         ListItem(
-            headlineContent = { Text("手动崩溃测试", color = MiMoColors.Error) },
-            supportingContent = { Text("触发崩溃验证日志弹窗，需 3 次确认") },
+            headlineContent = { Text(LangManager.t("settings.forbidden.crash.title", "手动崩溃测试"), color = MiMoColors.Error) },
+            supportingContent = { Text(LangManager.t("settings.forbidden.crash.desc", "触发崩溃验证日志弹窗，需 3 次确认")) },
             leadingContent = { Icon(Icons.Default.Psychology, contentDescription = null, tint = MiMoColors.Error) },
             modifier = Modifier.clickable { if (crashTestStep == 0) crashTestStep = 1 }
         )
@@ -1244,20 +1245,20 @@ private fun ForbiddenPage(
         if (crashTestStep in 1..2) {
             AlertDialog(
                 onDismissRequest = { crashTestStep = 0 },
-                title = { Text("确认手动崩溃") },
+                title = { Text(LangManager.t("settings.forbidden.crash.confirmTitle", "确认手动崩溃")) },
                 text = {
                     Text(
                         if (crashTestStep == 1)
-                            "第 1/3 次确认：这会故意让 App 崩溃，用于测试崩溃日志弹窗。\n\n确定要继续吗？"
+                            LangManager.t("settings.forbidden.crash.step1", "第 1/3 次确认：这会故意让 App 崩溃，用于测试崩溃日志弹窗。\n\n确定要继续吗？")
                         else
-                            "第 2/3 次确认：崩溃后下次启动会弹出崩溃日志窗口。\n\n真的确定吗？"
+                            LangManager.t("settings.forbidden.crash.step2", "第 2/3 次确认：崩溃后下次启动会弹出崩溃日志窗口。\n\n真的确定吗？")
                     )
                 },
                 confirmButton = {
-                    TextButton(onClick = { crashTestStep++ }) { Text("继续") }
+                    TextButton(onClick = { crashTestStep++ }) { Text(LangManager.t("common.continue", "继续")) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { crashTestStep = 0 }) { Text("取消") }
+                    TextButton(onClick = { crashTestStep = 0 }) { Text(LangManager.t("common.cancel", "取消")) }
                 }
             )
         }
@@ -1265,14 +1266,14 @@ private fun ForbiddenPage(
         if (crashTestStep == 3) {
             AlertDialog(
                 onDismissRequest = { crashTestStep = 0 },
-                title = { Text("选择崩溃模式") },
+                title = { Text(LangManager.t("settings.forbidden.crash.modeTitle", "选择崩溃模式")) },
                 text = {
                     Column {
-                        Text("第 3/3 次确认：选择测试模式", fontWeight = FontWeight.SemiBold)
+                        Text(LangManager.t("settings.forbidden.crash.step3", "第 3/3 次确认：选择测试模式"), fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text("单次崩溃：验证崩溃日志弹窗能否正常弹出 + UI 设计检查", fontSize = 13.sp)
+                        Text(LangManager.t("settings.forbidden.crash.singleDesc", "单次崩溃：验证崩溃日志弹窗能否正常弹出 + UI 设计检查"), fontSize = 13.sp)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("连续崩溃两次：第一次崩溃后不关闭弹窗，再触发一次崩溃，验证日志是否被保护（不丢失）", fontSize = 13.sp)
+                        Text(LangManager.t("settings.forbidden.crash.doubleDesc", "连续崩溃两次：第一次崩溃后不关闭弹窗，再触发一次崩溃，验证日志是否被保护（不丢失）"), fontSize = 13.sp)
                     }
                 },
                 confirmButton = {
@@ -1281,7 +1282,7 @@ private fun ForbiddenPage(
                             crashTestStep = 0
                             // Single crash
                             throw RuntimeException("手动崩溃测试（单次）- UI 检查")
-                        }) { Text("单次崩溃", color = MiMoColors.Error) }
+                        }) { Text(LangManager.t("settings.forbidden.crash.single", "单次崩溃"), color = MiMoColors.Error) }
                         TextButton(onClick = {
                             crashTestStep = 0
                             // Double crash: write a fake crash log first, then crash
@@ -1290,18 +1291,18 @@ private fun ForbiddenPage(
                                 file.writeText("=== CRASH REPORT ===\nTime: ${java.time.LocalDateTime.now()}\nThread: main\n手动崩溃测试（连续第1次）\n目的：验证日志保护\n")
                             } catch (_: Exception) {}
                             throw RuntimeException("手动崩溃测试（连续第1次）- 日志保护验证")
-                        }) { Text("连续两次", color = MiMoColors.Error) }
+                        }) { Text(LangManager.t("settings.forbidden.crash.double", "连续两次"), color = MiMoColors.Error) }
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { crashTestStep = 0 }) { Text("取消") }
+                    TextButton(onClick = { crashTestStep = 0 }) { Text(LangManager.t("common.cancel", "取消")) }
                 }
             )
         }
 
         ListItem(
-            headlineContent = { Text("清除所有数据") },
-            supportingContent = { Text("删除所有会话和设置") },
+            headlineContent = { Text(LangManager.t("settings.forbidden.clearData.title", "清除所有数据")) },
+            supportingContent = { Text(LangManager.t("settings.forbidden.clearData.desc", "删除所有会话和设置")) },
             leadingContent = { Icon(Icons.Default.DeleteForever, contentDescription = null, tint = MiMoColors.Error) },
             modifier = Modifier.clickable { confirmClear = true }
         )
@@ -1310,18 +1311,18 @@ private fun ForbiddenPage(
         if (confirmClear) {
             AlertDialog(
                 onDismissRequest = { confirmClear = false },
-                title = { Text("清除所有数据？") },
-                text = { Text("这将删除所有会话、设置和 API Key，且无法撤销。") },
+                title = { Text(LangManager.t("settings.forbidden.clearData.confirmTitle", "清除所有数据？")) },
+                text = { Text(LangManager.t("settings.forbidden.clearData.confirmText", "这将删除所有会话、设置和 API Key，且无法撤销。")) },
                 confirmButton = {
                     TextButton(onClick = {
                         onClearAllData()
                         confirmClear = false
                     }) {
-                        Text("全部删除", color = MiMoColors.Error)
+                        Text(LangManager.t("settings.forbidden.clearData.confirmAction", "全部删除"), color = MiMoColors.Error)
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { confirmClear = false }) { Text("取消") }
+                    TextButton(onClick = { confirmClear = false }) { Text(LangManager.t("common.cancel", "取消")) }
                 }
             )
         }
@@ -1329,9 +1330,9 @@ private fun ForbiddenPage(
         if (showLogExported) {
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                "日志已导出到: $logExportPath",
+                LangManager.t("settings.forbidden.exportLog.result", "日志已导出到: {path}").replace("{path}", logExportPath),
                 fontSize = 13.sp,
-                color = if (logExportPath.startsWith("导出失败")) MiMoColors.Error else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (logExportPath.startsWith(LangManager.t("settings.forbidden.exportLog.failed", "导出失败"))) MiMoColors.Error else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
@@ -1339,8 +1340,8 @@ private fun ForbiddenPage(
         Spacer(modifier = Modifier.height(32.dp))
 
         ListItem(
-            headlineContent = { Text("隐藏功能", color = MiMoColors.Error) },
-            supportingContent = { Text("追加自定义系统提示词（需 3 次确认）") },
+            headlineContent = { Text(LangManager.t("settings.forbidden.hidden.title", "隐藏功能"), color = MiMoColors.Error) },
+            supportingContent = { Text(LangManager.t("settings.forbidden.hidden.desc", "追加自定义系统提示词（需 3 次确认）")) },
             leadingContent = { Icon(Icons.Default.Warning, contentDescription = null, tint = MiMoColors.Error) },
             modifier = Modifier.clickable { confirmLevel1 = true }
         )
@@ -1349,34 +1350,34 @@ private fun ForbiddenPage(
         if (confirmLevel1) {
             AlertDialog(
                 onDismissRequest = { confirmLevel1 = false },
-                title = { Text("警告级别 1/3") },
-                text = { Text("你即将访问一个危险功能。添加自定义系统提示词可能导致异常行为。继续吗？") },
-                confirmButton = { TextButton(onClick = { confirmLevel1 = false; confirmLevel2 = true }) { Text("我已了解") } },
-                dismissButton = { TextButton(onClick = { confirmLevel1 = false }) { Text("取消") } }
+                title = { Text(LangManager.t("settings.forbidden.hidden.warn1Title", "警告级别 1/3")) },
+                text = { Text(LangManager.t("settings.forbidden.hidden.warn1Text", "你即将访问一个危险功能。添加自定义系统提示词可能导致异常行为。继续吗？")) },
+                confirmButton = { TextButton(onClick = { confirmLevel1 = false; confirmLevel2 = true }) { Text(LangManager.t("settings.forbidden.hidden.warn1Action", "我已了解")) } },
+                dismissButton = { TextButton(onClick = { confirmLevel1 = false }) { Text(LangManager.t("common.cancel", "取消")) } }
             )
         }
         if (confirmLevel2) {
             AlertDialog(
                 onDismissRequest = { confirmLevel2 = false },
-                title = { Text("警告级别 2/3") },
-                text = { Text("自定义提示词会追加到现有系统提示词之后。你无法查看或修改原始提示词。继续吗？") },
-                confirmButton = { TextButton(onClick = { confirmLevel2 = false; confirmLevel3 = true }) { Text("我接受") } },
-                dismissButton = { TextButton(onClick = { confirmLevel2 = false }) { Text("取消") } }
+                title = { Text(LangManager.t("settings.forbidden.hidden.warn2Title", "警告级别 2/3")) },
+                text = { Text(LangManager.t("settings.forbidden.hidden.warn2Text", "自定义提示词会追加到现有系统提示词之后。你无法查看或修改原始提示词。继续吗？")) },
+                confirmButton = { TextButton(onClick = { confirmLevel2 = false; confirmLevel3 = true }) { Text(LangManager.t("settings.forbidden.hidden.warn2Action", "我接受")) } },
+                dismissButton = { TextButton(onClick = { confirmLevel2 = false }) { Text(LangManager.t("common.cancel", "取消")) } }
             )
         }
         if (confirmLevel3) {
             AlertDialog(
                 onDismissRequest = { confirmLevel3 = false },
-                title = { Text("最终确认") },
+                title = { Text(LangManager.t("settings.forbidden.hidden.finalTitle", "最终确认")) },
                 text = {
                     Column {
-                        Text("输入附加系统提示词内容：")
+                        Text(LangManager.t("settings.forbidden.hidden.finalLabel", "输入附加系统提示词内容："))
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedTextField(
                             value = customPrompt,
                             onValueChange = { customPrompt = it },
                             modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("例如：始终使用中文回复……") },
+                            placeholder = { Text(LangManager.t("settings.forbidden.hidden.finalPlaceholder", "例如：始终使用中文回复……")) },
                             minLines = 3,
                             maxLines = 5
                         )
@@ -1388,9 +1389,9 @@ private fun ForbiddenPage(
                             onCustomPromptChange(customPrompt)
                             confirmLevel3 = false
                         }
-                    }) { Text("应用") }
+                    }) { Text(LangManager.t("common.apply", "应用")) }
                 },
-                dismissButton = { TextButton(onClick = { confirmLevel3 = false }) { Text("取消") } }
+                dismissButton = { TextButton(onClick = { confirmLevel3 = false }) { Text(LangManager.t("common.cancel", "取消")) } }
             )
         }
     }
@@ -1415,8 +1416,8 @@ private fun InputStylePage(
     ) {
         // Style toggle
         ListItem(
-            headlineContent = { Text("磨砂玻璃输入框") },
-            supportingContent = { Text("悬浮半透明，输入时变不透明，可透视下方消息") },
+            headlineContent = { Text(LangManager.t("settings.inputStyle.glass.title", "磨砂玻璃输入框")) },
+            supportingContent = { Text(LangManager.t("settings.inputStyle.glass.desc", "悬浮半透明，输入时变不透明，可透视下方消息")) },
             trailingContent = {
                 Switch(checked = inputStyle == "glass", onCheckedChange = { onInputStyleChange(if (it) "glass" else "classic") })
             }
@@ -1426,8 +1427,8 @@ private fun InputStylePage(
         if (inputStyle == "glass") {
             // Shadow
             ListItem(
-                headlineContent = { Text("悬浮阴影") },
-                supportingContent = { Text("输入框下方投射柔和阴影") },
+                headlineContent = { Text(LangManager.t("settings.inputStyle.shadow.title", "悬浮阴影")) },
+                supportingContent = { Text(LangManager.t("settings.inputStyle.shadow.desc", "输入框下方投射柔和阴影")) },
                 trailingContent = {
                     Switch(checked = inputShadowEnabled, onCheckedChange = onInputShadowChange)
                 }
@@ -1435,15 +1436,15 @@ private fun InputStylePage(
             HorizontalDivider()
 
             // Blur color presets
-            ListItem(headlineContent = { Text("磨砂颜色") })
+            ListItem(headlineContent = { Text(LangManager.t("settings.inputStyle.blur.title", "磨砂颜色")) })
             val presets = listOf(
-                "auto" to "自动深浅",
-                "#B0FFFFFF" to "经典白",
-                "#80FFFFFF" to "轻透白",
-                "#B01E1E1E" to "深色",
-                "#801E1E1E" to "轻透黑",
-                "#90F5F0E8" to "暖纸",
-                "#90E8EDF5" to "冷雾"
+                "auto" to LangManager.t("settings.inputStyle.preset.auto", "自动深浅"),
+                "#B0FFFFFF" to LangManager.t("settings.inputStyle.preset.classicWhite", "经典白"),
+                "#80FFFFFF" to LangManager.t("settings.inputStyle.preset.lightWhite", "轻透白"),
+                "#B01E1E1E" to LangManager.t("settings.inputStyle.preset.dark", "深色"),
+                "#801E1E1E" to LangManager.t("settings.inputStyle.preset.lightBlack", "轻透黑"),
+                "#90F5F0E8" to LangManager.t("settings.inputStyle.preset.warmPaper", "暖纸"),
+                "#90E8EDF5" to LangManager.t("settings.inputStyle.preset.coldMist", "冷雾")
             )
             Row(
                 modifier = Modifier
@@ -1503,7 +1504,7 @@ private fun InputStylePage(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
-                label = { Text("自定义颜色 (AARRGGBB)") },
+                label = { Text(LangManager.t("settings.inputStyle.customLabel", "自定义颜色 (AARRGGBB)")) },
                 placeholder = { Text("#B0FFFFFF") },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp)
@@ -1511,7 +1512,7 @@ private fun InputStylePage(
             TextButton(
                 onClick = { onInputBlurColorChange(customHex.trim()) },
                 modifier = Modifier.padding(horizontal = 16.dp)
-            ) { Text("应用自定义颜色") }
+            ) { Text(LangManager.t("settings.inputStyle.customApply", "应用自定义颜色")) }
         }
     }
 }
@@ -1548,7 +1549,7 @@ private fun ColorPickerRow(
             )
             Spacer(modifier = Modifier.width(8.dp))
             TextButton(onClick = { expanded = !expanded }) {
-                Text(if (expanded) "收起" else "选择", fontSize = 12.sp)
+                Text(if (expanded) LangManager.t("chat.collapse", "收起") else LangManager.t("common.select", "选择"), fontSize = 12.sp)
             }
         }
 
@@ -1577,7 +1578,7 @@ private fun ColorPickerRow(
                         contentAlignment = Alignment.Center
                     ) {
                         if (hex.isBlank()) {
-                            Text("默", fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(LangManager.t("settings.color.defaultAbbr", "默"), fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -1591,7 +1592,7 @@ private fun ColorPickerRow(
                     value = customInput,
                     onValueChange = { customInput = it },
                     modifier = Modifier.weight(1f),
-                    label = { Text("自定义 #RRGGBB", fontSize = 11.sp) },
+                    label = { Text(LangManager.t("settings.color.customLabel", "自定义 #RRGGBB"), fontSize = 11.sp) },
                     placeholder = { Text("#1A2B3C", fontSize = 11.sp) },
                     singleLine = true,
                     shape = RoundedCornerShape(8.dp),
@@ -1601,7 +1602,7 @@ private fun ColorPickerRow(
                 TextButton(onClick = {
                     val hex = customInput.trim().let { if (it.startsWith("#")) it else "#$it" }
                     if (hex.matches(Regex("^#[0-9A-Fa-f]{6}$"))) onColorChange(hex)
-                }) { Text("应用", fontSize = 12.sp) }
+                }) { Text(LangManager.t("common.apply", "应用"), fontSize = 12.sp) }
             }
         }
     }
@@ -1617,7 +1618,7 @@ private fun FontPickerRow(
 
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
         TextButton(onClick = { expanded = !expanded }) {
-            Text(if (expanded) "收起字体列表" else "选择预设字体 (${fonts.size} 个)", fontSize = 12.sp)
+            Text(if (expanded) LangManager.t("settings.fontPicker.collapse", "收起字体列表") else LangManager.t("settings.fontPicker.select", "选择预设字体 ({n} 个)").replace("{n}", fonts.size.toString()), fontSize = 12.sp)
         }
 
         if (expanded) {

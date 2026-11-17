@@ -31,6 +31,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.localai.LocalAiSupport
 import com.zhibai.app.localai.LocalModel
 import com.zhibai.app.localai.ModelDownloader
@@ -71,7 +72,7 @@ fun LocalAiSettingsSection(viewModel: ChatViewModel) {
     /** Battery ok → fetch registry → installed? enable : confirm install. */
     fun prepareInstall() {
         busy = true
-        statusMsg = "正在获取模型列表…"
+        statusMsg = LangManager.t("localai.fetchingModels", "正在获取模型列表…")
         scope.launch {
             try {
                 val s = support ?: viewModel.localAiSupport().also { support = it }
@@ -82,7 +83,7 @@ fun LocalAiSettingsSection(viewModel: ChatViewModel) {
                 val models = withContext(Dispatchers.IO) { ModelRegistry.fetch() }
                 val def = ModelRegistry.defaultModel(models, s.tier)
                     ?: run {
-                        showError("云端模型列表里没有本档位可用的 MiMo 模型")
+                        showError(LangManager.t("localai.noModelForTier", "云端模型列表里没有本档位可用的 MiMo 模型"))
                         return@launch
                     }
                 pendingModel = def
@@ -93,7 +94,10 @@ fun LocalAiSettingsSection(viewModel: ChatViewModel) {
                     flow = LocalAiFlow.INSTALL_CONFIRM
                 }
             } catch (e: Exception) {
-                showError("获取模型列表失败: ${e.message ?: "网络错误"}")
+                showError(
+                    LangManager.t("localai.fetchFailed", "获取模型列表失败: {error}")
+                        .replace("{error}", e.message ?: LangManager.t("localai.networkError", "网络错误"))
+                )
             } finally {
                 busy = false
                 statusMsg = ""
@@ -105,7 +109,7 @@ fun LocalAiSettingsSection(viewModel: ChatViewModel) {
         if (viewModel.localAiBatteryOk()) {
             prepareInstall()
         } else {
-            statusMsg = "省电策略仍未设为「无限制」，请在系统设置中修改后重试"
+            statusMsg = LangManager.t("localai.batteryNotSet", "省电策略仍未设为「无限制」，请在系统设置中修改后重试")
             flow = LocalAiFlow.BATTERY
         }
     }
@@ -122,22 +126,28 @@ fun humanBytes(b: Long): String = when {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text("使用本地AI", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            Text(LangManager.t("localai.switch.title", "使用本地AI"), fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
             Spacer(modifier = Modifier.height(2.dp))
             val subtitle = when {
                 installing -> dlProgress?.let { p ->
                     buildString {
-                        append(if (p.percent >= 0) "下载中 ${p.percent}%" else "下载中")
+                        append(
+                            if (p.percent >= 0)
+                                LangManager.t("localai.downloadingPct", "下载中 {p}%").replace("{p}", p.percent.toString())
+                            else
+                                LangManager.t("localai.downloading", "下载中")
+                        )
                         if (p.bytesTotal != null && p.bytesTotal > 0) {
                             append(" · ").append(humanBytes(p.bytesDone))
                             append('/').append(humanBytes(p.bytesTotal))
                         }
                         if (p.speedBps > 0) append(" · ").append(humanBytes(p.speedBps)).append("/s")
                     }
-                } ?: "正在安装本地模型…"
-                busy -> statusMsg.ifBlank { "处理中…" }
-                enabled && model.isNotBlank() -> "已启用 · $model（内置 MNN，不依赖云端）"
-                else -> "关闭 — 使用云端 MiMo API"
+                } ?: LangManager.t("localai.installing", "正在安装本地模型…")
+                busy -> statusMsg.ifBlank { LangManager.t("localai.busy", "处理中…") }
+                enabled && model.isNotBlank() ->
+                    LangManager.t("localai.enabled", "已启用 · {model}（内置 MNN，不依赖云端）").replace("{model}", model)
+                else -> LangManager.t("localai.disabled", "关闭 — 使用云端 MiMo API")
             }
             Text(
                 subtitle,
@@ -179,14 +189,14 @@ fun humanBytes(b: Long): String = when {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "删除本地AI",
+                LangManager.t("localai.delete.title", "删除本地AI"),
                 color = MaterialTheme.colorScheme.error,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-                "· 移除已下载的模型文件并关闭",
+                LangManager.t("localai.delete.desc", "· 移除已下载的模型文件并关闭"),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -196,10 +206,13 @@ fun humanBytes(b: Long): String = when {
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("删除本地AI？") },
+            title = { Text(LangManager.t("localai.delete.confirmTitle", "删除本地AI？")) },
             text = {
                 Text(
-                    "将删除已下载的本地模型文件（可能数 GB）并关闭本地AI、从模型列表移除。\n\n之后可以随时重新启用并重新下载。",
+                    LangManager.t(
+                        "localai.delete.confirmBody",
+                        "将删除已下载的本地模型文件（可能数 GB）并关闭本地AI、从模型列表移除。\n\n之后可以随时重新启用并重新下载。"
+                    ),
                     lineHeight = 22.sp
                 )
             },
@@ -207,10 +220,10 @@ fun humanBytes(b: Long): String = when {
                 TextButton(onClick = {
                     confirmDelete = false
                     viewModel.deleteLocalAi()
-                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                }) { Text(LangManager.t("common.delete", "删除"), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text("取消") }
+                TextButton(onClick = { confirmDelete = false }) { Text(LangManager.t("common.cancel", "取消")) }
             }
         )
     }
@@ -221,15 +234,17 @@ fun humanBytes(b: Long): String = when {
 
         LocalAiFlow.WARNING -> AlertDialog(
             onDismissRequest = { flow = LocalAiFlow.NONE },
-            title = { Text("启用本地AI？") },
+            title = { Text(LangManager.t("localai.enable.title", "启用本地AI？")) },
             text = {
                 Text(
                     buildAnnotatedString {
-                        append("本地AI可能更慢，甚至导致发热卡顿\n")
+                        append(LangManager.t("localai.enable.warn1", "本地AI可能更慢，甚至导致发热卡顿"))
+                        append("\n")
                         pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
-                        append("严重的会导致死机")
+                        append(LangManager.t("localai.enable.warn2", "严重的会导致死机"))
                         pop()
-                        append("\n是否继续？")
+                        append("\n")
+                        append(LangManager.t("localai.enable.warn3", "是否继续？"))
                     },
                     lineHeight = 22.sp
                 )
@@ -246,60 +261,71 @@ fun humanBytes(b: Long): String = when {
                     } else {
                         prepareInstall()
                     }
-                }) { Text("继续") }
+                }) { Text(LangManager.t("common.continue", "继续")) }
             },
             dismissButton = {
-                TextButton(onClick = { flow = LocalAiFlow.NONE }) { Text("取消") }
+                TextButton(onClick = { flow = LocalAiFlow.NONE }) { Text(LangManager.t("common.cancel", "取消")) }
             }
         )
 
         LocalAiFlow.UNSUPPORTED -> AlertDialog(
             onDismissRequest = { flow = LocalAiFlow.NONE },
-            title = { Text("机型不在支持名单") },
+            title = { Text(LangManager.t("localai.unsupported.title", "机型不在支持名单")) },
             text = {
                 Text(
-                    (support?.reason ?: "该设备不满足本地AI要求") +
-                        "\n\n支持名单按内存分档：低档 4-6GB、中档 6-8GB、高档 ≥8GB（需 arm64）。"
+                    (support?.reason ?: LangManager.t("localai.unsupported.defaultReason", "该设备不满足本地AI要求")) +
+                        "\n\n" +
+                        LangManager.t(
+                            "localai.unsupported.tiers",
+                            "支持名单按内存分档：低档 4-6GB、中档 6-8GB、高档 ≥8GB（需 arm64）。"
+                        )
                 )
             },
             confirmButton = {
-                TextButton(onClick = { flow = LocalAiFlow.NONE }) { Text("关闭") }
+                TextButton(onClick = { flow = LocalAiFlow.NONE }) { Text(LangManager.t("common.close", "关闭")) }
             }
         )
 
         LocalAiFlow.BATTERY -> AlertDialog(
             onDismissRequest = { flow = LocalAiFlow.NONE },
-            title = { Text("先设置省电策略") },
+            title = { Text(LangManager.t("localai.battery.title", "先设置省电策略")) },
             text = {
                 Text(
-                    "准备安装本地模型前，需要把本应用的省电策略设为「无限制」，" +
-                        "否则下载和推理过程可能被系统杀掉。\n\n" +
-                        statusMsg
+                    LangManager.t(
+                        "localai.battery.body",
+                        "准备安装本地模型前，需要把本应用的省电策略设为「无限制」，否则下载和推理过程可能被系统杀掉。"
+                    ) + "\n\n" + statusMsg
                 )
             },
             confirmButton = {
-                TextButton(onClick = { afterBatteryGate() }) { Text("我已设置") }
+                TextButton(onClick = { afterBatteryGate() }) { Text(LangManager.t("localai.battery.done", "我已设置")) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     viewModel.openLocalAiBatterySettings()
-                }) { Text("去设置") }
+                }) { Text(LangManager.t("localai.battery.goto", "去设置")) }
             }
         )
 
         LocalAiFlow.INSTALL_CONFIRM -> AlertDialog(
             onDismissRequest = { flow = LocalAiFlow.NONE },
-            title = { Text("准备安装") },
+            title = { Text(LangManager.t("localai.install.title", "准备安装")) },
             text = {
                 val m = pendingModel
                 Text(
                     buildString {
-                        append("将下载并安装本地模型：\n")
+                        append(LangManager.t("localai.install.intro", "将下载并安装本地模型："))
+                        append('\n')
                         append("· ").append(m?.displayName ?: "—").append('\n')
                         if (m != null && m.paramsB > 0) {
-                            append("· 约 ").append("%.1f".format(m.paramsB * 0.74)).append(" GB（4bit）\n")
+                            append(
+                                LangManager.t("localai.install.size", "· 约 {size} GB（4bit）")
+                                    .replace("{size}", "%.1f".format(m.paramsB * 0.74))
+                            )
+                            append('\n')
                         }
-                        append("\n下载期间会通过灵动岛显示进度，完成后提醒你。")
+                        append('\n')
+                        append(LangManager.t("localai.install.islandNote", "下载期间会通过灵动岛显示进度，完成后提醒你。"))
                     },
                     lineHeight = 22.sp
                 )
@@ -312,22 +338,26 @@ fun humanBytes(b: Long): String = when {
                         if (ok) {
                             viewModel.setLocalAiEnabled(true, m.displayName)
                         } else {
-                            scope.launch { showError("安装失败: $msg") }
+                            scope.launch {
+                                showError(
+                                    LangManager.t("localai.install.failed", "安装失败: {error}").replace("{error}", msg)
+                                )
+                            }
                         }
                     }
-                }) { Text("开始安装") }
+                }) { Text(LangManager.t("localai.install.confirm", "开始安装")) }
             },
             dismissButton = {
-                TextButton(onClick = { flow = LocalAiFlow.NONE }) { Text("取消") }
+                TextButton(onClick = { flow = LocalAiFlow.NONE }) { Text(LangManager.t("common.cancel", "取消")) }
             }
         )
 
         LocalAiFlow.ERROR -> AlertDialog(
             onDismissRequest = { flow = LocalAiFlow.NONE },
-            title = { Text("无法启用本地AI") },
+            title = { Text(LangManager.t("localai.error.title", "无法启用本地AI")) },
             text = { Text(statusMsg) },
             confirmButton = {
-                TextButton(onClick = { flow = LocalAiFlow.NONE }) { Text("关闭") }
+                TextButton(onClick = { flow = LocalAiFlow.NONE }) { Text(LangManager.t("common.close", "关闭")) }
             }
         )
     }

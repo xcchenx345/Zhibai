@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhibai.app.agent.AgentEngine
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.ui.theme.MiMoColors
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -37,7 +38,7 @@ fun SkillsCenterScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = if (selectedSkill != null) selectedSkill.first else "技能中心",
+                        text = if (selectedSkill != null) selectedSkill.first else LangManager.t("drawer.skillsCenter", "技能中心"),
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -90,7 +91,7 @@ fun SkillsCenterScreen(
                     )
                     Spacer(modifier = Modifier.weight(1f))
                     Text(
-                        text = "${selectedSkill.second.length} 字符",
+                        text = LangManager.t("skills.chars", "{n} 字符").replace("{n}", selectedSkill.second.length.toString()),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
@@ -137,14 +138,14 @@ fun SkillsCenterScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        "暂无技能",
+                        LangManager.t("skills.empty", "暂无技能"),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        "让 Agent 用 save_skill 保存技能\n或在工作目录 skills/ 文件夹创建",
+                        LangManager.t("skills.emptyHint", "让 Agent 用 save_skill 保存技能\n或在工作目录 skills/ 文件夹创建"),
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -194,7 +195,8 @@ fun SkillsCenterScreen(
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        if (skill.isDir) "目录技能 · SKILL.md" else "单文件技能",
+                                        if (skill.isDir) LangManager.t("skills.dirSkill", "目录技能 · SKILL.md")
+                                        else LangManager.t("skills.fileSkill", "单文件技能"),
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )

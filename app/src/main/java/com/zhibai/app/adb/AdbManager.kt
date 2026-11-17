@@ -81,9 +81,9 @@ object AdbManager {
     suspend fun pair(host: String, port: Int, pairCode: String): Result<Unit> = withContext(Dispatchers.IO) {
         init(appContext)
         runCatching<Unit> {
-            check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { "配对需要 Android 11+" }
+            check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { com.zhibai.app.i18n.LangManager.t("adb.err.need11", "配对需要 Android 11+") }
             AdbPairingClient(host, port, pairCode.trim(), adbKey).use { client ->
-                check(client.start()) { "配对握手失败" }
+                check(client.start()) { com.zhibai.app.i18n.LangManager.t("adb.err.handshake", "配对握手失败") }
             }
             Log.i(TAG, "pairing succeeded")
         }

@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zhibai.app.i18n.LangManager
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -73,7 +74,12 @@ fun CapsuleModelBar(
     val scope = rememberCoroutineScope()
     val isDark = isSystemInDarkTheme()
 
-    val segments = listOf("Chat", "Agent", "ASR", "TTS")
+    val segments = listOf(
+        LangManager.t("model.chat", "Chat"),
+        LangManager.t("model.agent", "Agent"),
+        LangManager.t("model.asr", "ASR"),
+        LangManager.t("model.tts", "TTS")
+    )
     val selectedIndex = when {
         currentModel.contains("agent") -> 1
         currentModel == "asr" -> 2
@@ -261,7 +267,13 @@ fun CapsuleModelBar(
             ) {
                 if (models.isEmpty()) {
                     DropdownMenuItem(
-                        text = { Text(if (menuFor == 1) "未启用 Agent" else "无可用模型", fontSize = 13.sp) },
+                        text = {
+                            Text(
+                                if (menuFor == 1) LangManager.t("model.agentDisabled", "未启用 Agent")
+                                else LangManager.t("model.none", "无可用模型"),
+                                fontSize = 13.sp
+                            )
+                        },
                         onClick = { menuFor = -1 }
                     )
                 }
@@ -286,9 +298,14 @@ fun CapsuleModelBar(
 }
 
 private fun modelLabel(id: String): String = when {
-    id.startsWith("local:") && id.endsWith("-agent") -> "本地 Agent · ${id.removePrefix("local:").removeSuffix("-agent")}"
-    id.startsWith("local:") -> "本地 · ${id.removePrefix("local:")}"
-    id.endsWith("-agent") -> "Agent · ${id.removeSuffix("-agent").removePrefix("mimo-")}"
+    id.startsWith("local:") && id.endsWith("-agent") ->
+        LangManager.t("model.localAgent", "本地 Agent · {name}")
+            .replace("{name}", id.removePrefix("local:").removeSuffix("-agent"))
+    id.startsWith("local:") ->
+        LangManager.t("model.local", "本地 · {name}").replace("{name}", id.removePrefix("local:"))
+    id.endsWith("-agent") ->
+        LangManager.t("model.agentNamed", "Agent · {name}")
+            .replace("{name}", id.removeSuffix("-agent").removePrefix("mimo-"))
     id.contains("ultraspeed") -> "UltraSpeed"
     id.contains("pro") -> "Pro"
     id.contains("flash") -> "Flash"

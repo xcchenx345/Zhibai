@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.ui.theme.MiMoColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -146,7 +147,7 @@ private fun VideoPreview(uri: Uri, onDismiss: () -> Unit, onDone: () -> Unit) {
                 Icon(Icons.Default.Close, "Close", tint = Color.White)
             }
             Spacer(modifier = Modifier.weight(1f))
-            Text("视频预览 · 双指缩放", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
+            Text(LangManager.t("media.videoPreviewHint", "视频预览 · 双指缩放"), color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
             Spacer(modifier = Modifier.weight(1f))
             Button(
                 onClick = onDone,
@@ -154,7 +155,7 @@ private fun VideoPreview(uri: Uri, onDismiss: () -> Unit, onDone: () -> Unit) {
             ) {
                 Icon(Icons.Default.Check, null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("完成")
+                Text(LangManager.t("common.done", "完成"))
             }
         }
     }
@@ -230,7 +231,7 @@ private fun ImageEditor(uri: Uri, onDone: (Uri) -> Unit, onDismiss: () -> Unit) 
                 val bmp = context.contentResolver.openInputStream(uri)?.use {
                     BitmapFactory.decodeStream(it, null, opts)
                 }
-                if (bmp != null) { bitmap = bmp } else { loadError = "无法解码图片" }
+                if (bmp != null) { bitmap = bmp } else { loadError = LangManager.t("media.decodeFailed", "无法解码图片") }
             } catch (e: Exception) {
                 loadError = e.message
             }
@@ -270,7 +271,7 @@ private fun ImageEditor(uri: Uri, onDone: (Uri) -> Unit, onDismiss: () -> Unit) 
                 Icon(Icons.Default.Close, "Cancel", tint = Color.White)
             }
             Spacer(Modifier.width(4.dp))
-            Text("编辑图片", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(LangManager.t("media.editImage", "编辑图片"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
             IconButton(
                 onClick = { if (shapes.isNotEmpty()) shapes.removeAt(shapes.lastIndex) },
@@ -304,7 +305,7 @@ private fun ImageEditor(uri: Uri, onDone: (Uri) -> Unit, onDismiss: () -> Unit) 
                         tool = EditTool.BROWSE
                     }
                 }) {
-                    Text("裁剪", color = MiMoColors.Primary, fontWeight = FontWeight.Bold)
+                    Text(LangManager.t("media.crop", "裁剪"), color = MiMoColors.Primary, fontWeight = FontWeight.Bold)
                 }
             }
             Button(
@@ -323,7 +324,11 @@ private fun ImageEditor(uri: Uri, onDone: (Uri) -> Unit, onDismiss: () -> Unit) 
                             onDone(newUri)
                         } catch (e: Exception) {
                             saving = false
-                            android.widget.Toast.makeText(context, "保存失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(
+                                context,
+                                LangManager.t("media.saveFailed", "保存失败: {error}").replace("{error}", e.message ?: ""),
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
                         }
                     }
                 },
@@ -335,14 +340,18 @@ private fun ImageEditor(uri: Uri, onDone: (Uri) -> Unit, onDismiss: () -> Unit) 
                 } else {
                     Icon(Icons.Default.Check, null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("保存")
+                    Text(LangManager.t("common.save", "保存"))
                 }
             }
         }
 
         if (bmp == null && loadError != null) {
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                Text("无法加载图片: $loadError", color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp)
+                Text(
+                    LangManager.t("media.loadFailed", "无法加载图片: {error}").replace("{error}", loadError ?: ""),
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 14.sp
+                )
             }
         }
 
@@ -503,13 +512,13 @@ private fun ImageEditor(uri: Uri, onDone: (Uri) -> Unit, onDismiss: () -> Unit) 
                     .padding(horizontal = 8.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                ToolButton("浏览", Icons.Default.OpenWith, tool == EditTool.BROWSE) { tool = EditTool.BROWSE; cropRect = null }
-                ToolButton("画笔", Icons.Default.Brush, tool == EditTool.PEN) { tool = EditTool.PEN }
-                ToolButton("马赛克", Icons.Default.GridOn, tool == EditTool.MOSAIC) { tool = EditTool.MOSAIC }
-                ToolButton("框", Icons.Default.CropSquare, tool == EditTool.RECT) { tool = EditTool.RECT }
-                ToolButton("箭头", Icons.Default.ArrowUpward, tool == EditTool.ARROW) { tool = EditTool.ARROW }
-                ToolButton("圆", Icons.Default.Circle, tool == EditTool.CIRCLE) { tool = EditTool.CIRCLE }
-                ToolButton("裁剪", Icons.Default.Crop, tool == EditTool.CROP) {
+                ToolButton(LangManager.t("media.tool.browse", "浏览"), Icons.Default.OpenWith, tool == EditTool.BROWSE) { tool = EditTool.BROWSE; cropRect = null }
+                ToolButton(LangManager.t("media.tool.pen", "画笔"), Icons.Default.Brush, tool == EditTool.PEN) { tool = EditTool.PEN }
+                ToolButton(LangManager.t("media.tool.mosaic", "马赛克"), Icons.Default.GridOn, tool == EditTool.MOSAIC) { tool = EditTool.MOSAIC }
+                ToolButton(LangManager.t("media.tool.rect", "框"), Icons.Default.CropSquare, tool == EditTool.RECT) { tool = EditTool.RECT }
+                ToolButton(LangManager.t("media.tool.arrow", "箭头"), Icons.Default.ArrowUpward, tool == EditTool.ARROW) { tool = EditTool.ARROW }
+                ToolButton(LangManager.t("media.tool.circle", "圆"), Icons.Default.Circle, tool == EditTool.CIRCLE) { tool = EditTool.CIRCLE }
+                ToolButton(LangManager.t("media.crop", "裁剪"), Icons.Default.Crop, tool == EditTool.CROP) {
                     tool = EditTool.CROP; cropRect = null; draftCrop = null
                 }
             }

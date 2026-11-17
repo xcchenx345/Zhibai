@@ -53,6 +53,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.zhibai.app.data.model.Annotation
 import com.zhibai.app.data.model.ChatMessage
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.ui.theme.MiMoColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -406,7 +407,7 @@ fun MessageBubble(
                                 // Center within the bubble's own width — fillMaxWidth would
                                 // stretch the Surface back to full row width.
                                 Text(
-                                    text = if (bubbleExpanded) "收起" else "展开全部",
+                                    text = if (bubbleExpanded) LangManager.t("chat.collapse", "收起") else LangManager.t("chat.expand", "展开全部"),
                                     fontSize = 12.sp,
                                     color = bubbleTextColor.copy(alpha = 0.7f),
                                     modifier = Modifier
@@ -466,13 +467,13 @@ fun MessageBubble(
                         leadingIcon = { Icon(if (isSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp, contentDescription = null) }
                     )
                     DropdownMenuItem(
-                        text = { Text("复制") },
+                        text = { Text(LangManager.t("common.copy", "复制")) },
                         onClick = { showContextMenu = false; onCopy?.invoke(message.content) },
                         leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
                     )
                     if (!isUser) {
                         DropdownMenuItem(
-                            text = { Text("选择文本") },
+                            text = { Text(LangManager.t("chat.selectText", "选择文本")) },
                             onClick = { showContextMenu = false; showRawTextDialog = true },
                             leadingIcon = { Icon(Icons.Default.TextFields, contentDescription = null) }
                         )
@@ -490,7 +491,7 @@ fun MessageBubble(
             ) {
                 if (isUser && onEdit != null) {
                     TextButton(onClick = { onEdit(message.content) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp), modifier = Modifier.height(28.dp)) {
-                        Icon(Icons.Default.Edit, contentDescription = "编辑", modifier = Modifier.size(14.dp), tint = actionColor)
+                        Icon(Icons.Default.Edit, contentDescription = LangManager.t("common.edit", "编辑"), modifier = Modifier.size(14.dp), tint = actionColor)
                     }
                 }
                 if (!isUser && onCopy != null && !HighRiskRejection.isReply(message.content)) {
@@ -517,7 +518,7 @@ fun MessageBubble(
                     ) {
                         Icon(
                             if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
-                            contentDescription = "复制",
+                            contentDescription = LangManager.t("common.copy", "复制"),
                             modifier = Modifier.size(14.dp),
                             tint = if (copied) MiMoColors.Success else actionColor
                         )
@@ -540,7 +541,7 @@ fun MessageBubble(
                     ) {
                         Icon(
                             Icons.Default.Refresh,
-                            contentDescription = "重新回答",
+                            contentDescription = LangManager.t("chat.reanswer", "重新回答"),
                             modifier = Modifier.size(14.dp),
                             tint = actionColor
                         )
@@ -555,10 +556,11 @@ fun MessageBubble(
         val url = pendingLeaveUrl!!
         AlertDialog(
             onDismissRequest = { pendingLeaveUrl = null },
-            title = { Text("即将跳转站外链接") },
+            title = { Text(LangManager.t("chat.leaveApp.title", "即将跳转站外链接")) },
             text = {
                 Text(
-                    "该链接将离开本应用，在外部浏览器打开：\n\n$url\n\n是否继续？",
+                    LangManager.t("chat.leaveApp.body", "该链接将离开本应用，在外部浏览器打开：\n\n{url}\n\n是否继续？")
+                        .replace("{url}", url),
                     fontSize = 13.sp,
                     lineHeight = 18.sp
                 )
@@ -572,12 +574,12 @@ fun MessageBubble(
                         )
                     } catch (_: Exception) {}
                 }) {
-                    Text("继续", fontWeight = FontWeight.SemiBold)
+                    Text(LangManager.t("common.continue", "继续"), fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingLeaveUrl = null }) {
-                    Text("取消")
+                    Text(LangManager.t("common.cancel", "取消"))
                 }
             }
         )
@@ -587,7 +589,7 @@ fun MessageBubble(
     if (showRawTextDialog) {
         AlertDialog(
             onDismissRequest = { showRawTextDialog = false },
-            title = { Text("原始文本") },
+            title = { Text(LangManager.t("chat.raw.title", "原始文本")) },
             text = {
                 androidx.compose.foundation.text.selection.SelectionContainer {
                     Text(
@@ -606,12 +608,12 @@ fun MessageBubble(
                     onCopy?.invoke(message.content)
                     showRawTextDialog = false
                 }) {
-                    Text("复制全部")
+                    Text(LangManager.t("chat.copyAll", "复制全部"))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showRawTextDialog = false }) {
-                    Text("关闭")
+                    Text(LangManager.t("common.close", "关闭"))
                 }
             }
         )
@@ -641,11 +643,7 @@ private fun ProcessStepRow(
     var detailFull by remember(message.id) { mutableStateOf(false) }
     val textColor = if (isDarkTheme) MiMoColors.ThinkingTextDark else MiMoColors.ThinkingText
     val secondaryColor = textColor.copy(alpha = 0.65f)
-    val icon = when {
-        message.content.contains("思考") -> Icons.Default.Lightbulb
-        message.content.startsWith("搜索") -> Icons.Default.Search
-        else -> Icons.Default.Description
-    }
+    val icon = com.zhibai.app.ui.components.stepRowIcon(message.content)
     val chevron by animateFloatAsState(if (open) 90f else 0f, label = "stepChevron")
     Column(modifier = Modifier.fillMaxWidth(0.92f)) {
         Row(
@@ -673,7 +671,7 @@ private fun ProcessStepRow(
             )
             Icon(
                 Icons.Default.KeyboardArrowRight,
-                contentDescription = if (open) "收起" else "展开",
+                contentDescription = if (open) LangManager.t("chat.collapse", "收起") else LangManager.t("common.expand", "展开"),
                 modifier = Modifier.size(15.dp).graphicsLayer { rotationZ = chevron },
                 tint = secondaryColor
             )
@@ -740,7 +738,7 @@ private fun ProcessStepRow(
             }
             if (detailLong) {
                 Text(
-                    text = if (detailFull) "收起" else "展开全部",
+                    text = if (detailFull) LangManager.t("chat.collapse", "收起") else LangManager.t("chat.expand", "展开全部"),
                     fontSize = (fontSize - 4).sp,
                     fontWeight = FontWeight.Medium,
                     color = secondaryColor,
@@ -753,7 +751,7 @@ private fun ProcessStepRow(
             }
         } else if (open) {
             Text(
-                if (message.isStreaming) "进行中…" else "无详情",
+                if (message.isStreaming) LangManager.t("step.running", "进行中…") else LangManager.t("step.noDetail", "无详情"),
                 fontSize = (fontSize - 4).sp,
                 color = secondaryColor,
                 modifier = Modifier.padding(start = 22.dp, bottom = 7.dp)
@@ -820,14 +818,14 @@ private fun SessionSummaryCard(
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-                text = "会话摘要",
+                text = LangManager.t("chat.summary.title", "会话摘要"),
                 fontSize = (fontSize - 3).sp,
                 fontWeight = FontWeight.SemiBold,
                 color = textColor,
                 modifier = Modifier.weight(1f)
             )
             Text(
-                text = if (open) "收起" else "展开",
+                text = if (open) LangManager.t("chat.collapse", "收起") else LangManager.t("common.expand", "展开"),
                 fontSize = (fontSize - 4).sp,
                 color = secondaryColor,
                 modifier = Modifier.padding(end = 4.dp)
@@ -892,7 +890,7 @@ private fun SessionSummaryCard(
             }
             if (bodyLong) {
                 Text(
-                    text = if (full) "收起全文" else "展开全文",
+                    text = if (full) LangManager.t("chat.collapseFull", "收起全文") else LangManager.t("chat.expandFull", "展开全文"),
                     fontSize = (fontSize - 4).sp,
                     fontWeight = FontWeight.Medium,
                     color = secondaryColor,
@@ -940,10 +938,12 @@ private fun ProcessFlowCard(
     val timerText = if (message.isStreaming) {
         val tenths = (liveMs % 1000) / 100
         if (secs >= 60) "%d:%02d.%d".format(secs / 60, secs % 60, tenths)
-        else "%d.%d秒".format(secs, tenths)
+        else LangManager.t("step.timer.deci", "{s}.{t}秒")
+            .replace("{s}", secs.toString()).replace("{t}", tenths.toString())
     } else {
-        if (secs >= 60) "%d:%02d秒".format(secs / 60, secs % 60)
-        else "${secs}秒"
+        if (secs >= 60) LangManager.t("step.timer.minsec", "{m}:{s}秒")
+            .replace("{m}", (secs / 60).toString()).replace("{s}", String.format("%02d", secs % 60))
+        else LangManager.t("step.timer.sec", "{n}秒").replace("{n}", secs.toString())
     }
 
     val bg = if (isDarkTheme) MiMoColors.ThinkingBgDark else MiMoColors.ThinkingBg
@@ -978,7 +978,7 @@ private fun ProcessFlowCard(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = if (message.isStreaming) "思考" else "思考",
+                    text = LangManager.t("step.think", "思考"),
                     fontSize = (fontSize - 3).sp,
                     fontWeight = FontWeight.SemiBold,
                     color = textColor,
@@ -992,7 +992,7 @@ private fun ProcessFlowCard(
                     modifier = Modifier.padding(end = 6.dp)
                 )
                 Text(
-                    text = if (thinkOpen) "收起" else "展开",
+                    text = if (thinkOpen) LangManager.t("chat.collapse", "收起") else LangManager.t("common.expand", "展开"),
                     fontSize = (fontSize - 4).sp,
                     color = secondaryColor,
                     modifier = Modifier.padding(end = 4.dp)
@@ -1078,7 +1078,7 @@ private fun ProcessFlowCard(
                     }
                     if (thinkLong) {
                         Text(
-                            text = if (thinkFull) "收起" else "展开全部",
+                            text = if (thinkFull) LangManager.t("chat.collapse", "收起") else LangManager.t("chat.expand", "展开全部"),
                             fontSize = (fontSize - 4).sp,
                             fontWeight = FontWeight.Medium,
                             color = secondaryColor,
@@ -1108,14 +1108,14 @@ private fun ProcessFlowCard(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "搜索",
+                    text = LangManager.t("step.searchTitle", "搜索"),
                     fontSize = (fontSize - 3).sp,
                     fontWeight = FontWeight.SemiBold,
                     color = textColor,
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    text = "${annotations.size} 条结果",
+                    text = LangManager.t("step.resultCount", "{n} 条结果").replace("{n}", annotations.size.toString()),
                     fontSize = (fontSize - 4).sp,
                     color = secondaryColor,
                     modifier = Modifier.padding(end = 6.dp)
@@ -1201,7 +1201,7 @@ private fun ProcessFlowCard(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "查看页面",
+                    text = LangManager.t("step.pageTitle", "查看页面"),
                     fontSize = (fontSize - 3).sp,
                     fontWeight = FontWeight.SemiBold,
                     color = textColor,
@@ -1276,7 +1276,7 @@ internal fun SearchCitations(annotations: List<Annotation>, isDarkTheme: Boolean
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp), tint = if (isDarkTheme) MiMoColors.TextSecondaryDark else MiMoColors.TextSecondary)
             Spacer(modifier = Modifier.width(6.dp))
-            Text("搜索结果（${annotations.size}）", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (isDarkTheme) MiMoColors.TextSecondaryDark else MiMoColors.TextSecondary, modifier = Modifier.weight(1f))
+            Text(LangManager.t("step.searchResults", "搜索结果（{n}）").replace("{n}", annotations.size.toString()), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (isDarkTheme) MiMoColors.TextSecondaryDark else MiMoColors.TextSecondary, modifier = Modifier.weight(1f))
             Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null, modifier = Modifier.size(18.dp), tint = if (isDarkTheme) MiMoColors.TextSecondaryDark else MiMoColors.TextSecondary)
         }
         if (expanded) {

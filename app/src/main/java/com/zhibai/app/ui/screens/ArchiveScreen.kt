@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhibai.app.data.model.ChatSession
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.viewmodel.ChatViewModel
 import java.text.SimpleDateFormat
 import java.util.*
@@ -70,9 +71,9 @@ fun ArchiveScreen(
             try {
                 val json = viewModel.exportArchivedSessions(exportEncrypt, exportPassword)
                 context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
-                toastMsg = "已导出 ${archivedSessions.size} 个对话"
+                toastMsg = LangManager.t("archive.exported", "已导出 {n} 个对话").replace("{n}", archivedSessions.size.toString())
             } catch (e: Exception) {
-                toastMsg = "导出失败: ${e.message}"
+                toastMsg = LangManager.t("archive.exportFailed", "导出失败: {error}").replace("{error}", e.message ?: "")
             }
             showExportDialog = false
         }
@@ -83,7 +84,7 @@ fun ArchiveScreen(
         if (uri != null) {
             try {
                 val json = context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() } ?: ""
-                if (json.isBlank()) { toastMsg = "文件为空"; return@rememberLauncherForActivityResult }
+                if (json.isBlank()) { toastMsg = LangManager.t("archive.fileEmpty", "文件为空"); return@rememberLauncherForActivityResult }
                 // Detect encryption: try parse as plain JSON first
                 val result = viewModel.importSessions(json, "")
                 if (result == "NEED_PASSWORD") {
@@ -95,7 +96,7 @@ fun ArchiveScreen(
                     showImportDialog = false
                 }
             } catch (e: Exception) {
-                toastMsg = "导入失败: ${e.message}"
+                toastMsg = LangManager.t("archive.importFailed", "导入失败: {error}").replace("{error}", e.message ?: "")
             }
         }
     }
@@ -123,8 +124,8 @@ fun ArchiveScreen(
             TopAppBar(
                 title = {
                     Text(
-                        if (selectMode) "已选 ${selectedIds.size} 项"
-                        else "档案 (${archivedSessions.size})",
+                        if (selectMode) LangManager.t("drawer.selectedCount", "已选 {n} 项").replace("{n}", selectedIds.size.toString())
+                        else LangManager.t("archive.title", "档案 ({n})").replace("{n}", archivedSessions.size.toString()),
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -159,7 +160,7 @@ fun ArchiveScreen(
                         IconButton(
                             onClick = {
                                 viewModel.restoreSessions(selectedIds)
-                                toastMsg = "已恢复 ${selectedIds.size} 个对话"
+                                toastMsg = LangManager.t("archive.restored", "已恢复 {n} 个对话").replace("{n}", selectedIds.size.toString())
                                 selectMode = false
                                 selectedIds = emptySet()
                             },
@@ -171,7 +172,7 @@ fun ArchiveScreen(
                         IconButton(
                             onClick = {
                                 viewModel.deleteSessions(selectedIds)
-                                toastMsg = "已删除 ${selectedIds.size} 个对话"
+                                toastMsg = LangManager.t("archive.deleted", "已删除 {n} 个对话").replace("{n}", selectedIds.size.toString())
                                 selectMode = false
                                 selectedIds = emptySet()
                             },
@@ -199,9 +200,9 @@ fun ArchiveScreen(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("暂无档案", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(LangManager.t("archive.empty", "暂无档案"), fontSize = 16.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(modifier = Modifier.height(6.dp))
-                Text("在对话列表长按对话可归档到这里", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                Text(LangManager.t("archive.emptyHint", "在对话列表长按对话可归档到这里"), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
             }
         } else {
             LazyColumn(
@@ -263,7 +264,20 @@ fun ArchiveScreen(
                                 Text(sess.title, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    "${df.format(Date(maxOf(sess.lastActiveAt, sess.createdAt, sess.messages.lastOrNull()?.timestamp ?: 0L)))} · ${sess.messages.size} 条消息",
+                                    LangManager.t("archive.sessionMeta", "{time} · {n} 条消息")
+                                        .replace(
+                                            "{time}",
+                                            df.format(
+                                                Date(
+                                                    maxOf(
+                                                        sess.lastActiveAt,
+                                                        sess.createdAt,
+                                                        sess.messages.lastOrNull()?.timestamp ?: 0L
+                                                    )
+                                                )
+                                            )
+                                        )
+                                        .replace("{n}", sess.messages.size.toString()),
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -284,14 +298,18 @@ fun ArchiveScreen(
     if (showExportDialog) {
         AlertDialog(
             onDismissRequest = { showExportDialog = false },
-            title = { Text("导出档案") },
+            title = { Text(LangManager.t("archive.exportTitle", "导出档案")) },
             text = {
                 Column {
-                    Text("将导出 ${archivedSessions.size} 个归档对话为 JSON 文件", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        LangManager.t("archive.exportDesc", "将导出 {n} 个归档对话为 JSON 文件").replace("{n}", archivedSessions.size.toString()),
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = exportEncrypt, onCheckedChange = { exportEncrypt = it })
-                        Text("加密导出", fontSize = 14.sp)
+                        Text(LangManager.t("archive.encryptExport", "加密导出"), fontSize = 14.sp)
                     }
                     if (exportEncrypt) {
                         OutlinedTextField(
@@ -299,8 +317,8 @@ fun ArchiveScreen(
                             onValueChange = { exportPassword = it },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
-                            label = { Text("密码") },
-                            placeholder = { Text("输入加密密码") }
+                            label = { Text(LangManager.t("common.password", "密码")) },
+                            placeholder = { Text(LangManager.t("archive.enterEncryptPassword", "输入加密密码")) }
                         )
                     }
                 }
@@ -309,16 +327,16 @@ fun ArchiveScreen(
                 TextButton(
                     onClick = {
                         if (exportEncrypt && exportPassword.length < 4) {
-                            toastMsg = "密码至少4位"
+                            toastMsg = LangManager.t("archive.passwordTooShort", "密码至少4位")
                         } else {
                             val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
                             exportLauncher.launch("zhibai_archive_$ts.json")
                         }
                     }
-                ) { Text("选择保存位置") }
+                ) { Text(LangManager.t("archive.chooseSaveLocation", "选择保存位置")) }
             },
             dismissButton = {
-                TextButton(onClick = { showExportDialog = false }) { Text("取消") }
+                TextButton(onClick = { showExportDialog = false }) { Text(LangManager.t("common.cancel", "取消")) }
             }
         )
     }
@@ -327,22 +345,27 @@ fun ArchiveScreen(
     if (showImportDialog) {
         AlertDialog(
             onDismissRequest = { showImportDialog = false },
-            title = { Text(if (needImportPassword) "输入密码" else "导入对话") },
+            title = {
+                Text(
+                    if (needImportPassword) LangManager.t("archive.enterPassword", "输入密码")
+                    else LangManager.t("archive.importTitle", "导入对话")
+                )
+            },
             text = {
                 if (needImportPassword) {
                     Column {
-                        Text("该文件已加密，请输入密码", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(LangManager.t("archive.encryptedFileHint", "该文件已加密，请输入密码"), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedTextField(
                             value = importPassword,
                             onValueChange = { importPassword = it },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
-                            label = { Text("密码") }
+                            label = { Text(LangManager.t("common.password", "密码")) }
                         )
                     }
                 } else {
-                    Text("导入后将合并到当前对话列表", fontSize = 13.sp)
+                    Text(LangManager.t("archive.importDesc", "导入后将合并到当前对话列表"), fontSize = 13.sp)
                 }
             },
             confirmButton = {
@@ -352,7 +375,7 @@ fun ArchiveScreen(
                             val json = pendingImportJson ?: return@TextButton
                             val result = viewModel.importSessions(json, importPassword)
                             if (result == "NEED_PASSWORD") {
-                                toastMsg = "密码错误"
+                                toastMsg = LangManager.t("archive.passwordWrong", "密码错误")
                             } else {
                                 toastMsg = result
                                 showImportDialog = false
@@ -364,10 +387,10 @@ fun ArchiveScreen(
                             showImportDialog = false
                         }
                     }
-                ) { Text("确认") }
+                ) { Text(LangManager.t("common.confirm", "确认")) }
             },
             dismissButton = {
-                TextButton(onClick = { showImportDialog = false; needImportPassword = false }) { Text("取消") }
+                TextButton(onClick = { showImportDialog = false; needImportPassword = false }) { Text(LangManager.t("common.cancel", "取消")) }
             }
         )
     }

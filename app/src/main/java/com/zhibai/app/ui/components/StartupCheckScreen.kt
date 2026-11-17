@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Canvas
 import androidx.core.content.ContextCompat
 import com.zhibai.app.R
+import com.zhibai.app.i18n.LangManager
 
 /**
  * Startup dependency check screen:
@@ -114,7 +115,9 @@ fun StartupCheckScreen(
             }
             Spacer(modifier = Modifier.height(20.dp))
             Text(
-                text = "正在检查$label（$pct%）",
+                text = LangManager.t("startup.checking", "正在检查{label}（{pct}%）")
+                    .replace("{label}", label)
+                    .replace("{pct}", pct.toString()),
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -156,8 +159,9 @@ private fun StartupPermissionChecklist(modifier: Modifier = Modifier) {
 
     Column(modifier = modifier) {
         StartupCheckItem(
-            title = "所有文件的访问权限",
-            detail = if (storageGranted) "已允许访问所有文件" else "未授权 · 点此跳转系统设置授权",
+            title = LangManager.t("startup.perm.storage.title", "所有文件的访问权限"),
+            detail = if (storageGranted) LangManager.t("startup.perm.storage.granted", "已允许访问所有文件")
+                else LangManager.t("startup.perm.storage.denied", "未授权 · 点此跳转系统设置授权"),
             granted = storageGranted
         ) {
             val intent = if (Build.VERSION.SDK_INT >= 30) {
@@ -179,11 +183,11 @@ private fun StartupPermissionChecklist(modifier: Modifier = Modifier) {
         }
         Spacer(modifier = Modifier.height(4.dp))
         StartupCheckItem(
-            title = "通知权限",
+            title = LangManager.t("startup.perm.notif.title", "通知权限"),
             detail = when {
-                notifGranted -> "已允许通知"
-                Build.VERSION.SDK_INT >= 33 -> "未授权 · 点此请求通知权限"
-                else -> "未开启 · 点此前往通知设置"
+                notifGranted -> LangManager.t("startup.perm.notif.granted", "已允许通知")
+                Build.VERSION.SDK_INT >= 33 -> LangManager.t("startup.perm.notif.denied", "未授权 · 点此请求通知权限")
+                else -> LangManager.t("startup.perm.notif.off", "未开启 · 点此前往通知设置")
             },
             granted = notifGranted
         ) {

@@ -12,6 +12,6 @@ open class AdbException : Exception {
     constructor()
 }
 
-class AdbInvalidPairingCodeException : AdbException("配对码错误")
+class AdbInvalidPairingCodeException : AdbException(com.zhibai.app.i18n.LangManager.t("adb.err.badCode", "配对码错误"))
 
 class AdbKeyException(cause: Throwable) : AdbException(cause)

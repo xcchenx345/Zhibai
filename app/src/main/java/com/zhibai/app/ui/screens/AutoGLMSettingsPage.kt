@@ -27,6 +27,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zhibai.app.adb.AdbManager
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.ui.theme.MiMoColors
 import kotlinx.coroutines.launch
 
@@ -76,14 +77,14 @@ fun AutoGLMSettingsPage(
             .verticalScroll(rememberScrollState())
     ) {
         Text(
-            "AutoGLM 手机助手",
+            LangManager.t("settings.autoglm.title", "AutoGLM 手机助手"),
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = MiMoColors.TextPrimary,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
         )
         Text(
-            "截屏、点击、滑动、输入全部走无线调试 ADB，不需要屏幕录制权限。执行时超级岛上可「终止」或「暂时接管」。",
+            LangManager.t("settings.autoglm.intro", "截屏、点击、滑动、输入全部走无线调试 ADB，不需要屏幕录制权限。执行时超级岛上可「终止」或「暂时接管」。"),
             fontSize = 13.sp,
             color = MiMoColors.TextSecondary,
             modifier = Modifier.padding(horizontal = 16.dp)
@@ -91,20 +92,28 @@ fun AutoGLMSettingsPage(
         Spacer(Modifier.height(12.dp))
 
         ListItem(
-            headlineContent = { Text("智谱 API Key") },
-            supportingContent = { Text(if (apiKey.isBlank()) "必填 — autoglm-phone 模型" else "已配置") },
+            headlineContent = { Text(LangManager.t("glm.apikey.title", "智谱 API Key")) },
+            supportingContent = {
+                Text(
+                    if (apiKey.isBlank()) LangManager.t("glm.apikey.required", "必填 — autoglm-phone 模型")
+                    else LangManager.t("glm.apikey.configured", "已配置")
+                )
+            },
             leadingContent = { Icon(Icons.Default.Key, null) }
         )
         OutlinedTextField(
             value = apiKey,
             onValueChange = { apiKey = it; persist() },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            placeholder = { Text("智谱开放平台 API Key") },
+            placeholder = { Text(LangManager.t("glm.apikey.placeholder", "智谱开放平台 API Key")) },
             singleLine = true,
             visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
                 TextButton(onClick = { showKey = !showKey }) {
-                    Text(if (showKey) "隐藏" else "显示", fontSize = 12.sp)
+                    Text(
+                        LangManager.t(if (showKey) "common.hide" else "common.show", if (showKey) "隐藏" else "显示"),
+                        fontSize = 12.sp
+                    )
                 }
             },
             shape = RoundedCornerShape(12.dp)
@@ -113,7 +122,7 @@ fun AutoGLMSettingsPage(
 
         ListItem(
             headlineContent = { Text("API Base URL") },
-            supportingContent = { Text("一般不用改") },
+            supportingContent = { Text(LangManager.t("glm.baseUrl.hint", "一般不用改")) },
             leadingContent = { Icon(Icons.Default.Link, null) }
         )
         OutlinedTextField(
@@ -127,8 +136,8 @@ fun AutoGLMSettingsPage(
         HorizontalDivider()
 
         ListItem(
-            headlineContent = { Text("最大步数") },
-            supportingContent = { Text("单次任务最多循环次数（1–50）") },
+            headlineContent = { Text(LangManager.t("glm.maxSteps.title", "最大步数")) },
+            supportingContent = { Text(LangManager.t("glm.maxSteps.desc", "单次任务最多循环次数（1–50）")) },
             leadingContent = { Icon(Icons.Default.Numbers, null) }
         )
         OutlinedTextField(
@@ -142,13 +151,13 @@ fun AutoGLMSettingsPage(
         HorizontalDivider()
 
         ListItem(
-            headlineContent = { Text("无线调试 ADB") },
+            headlineContent = { Text(LangManager.t("settings.adb.title", "无线调试 ADB")) },
             supportingContent = {
                 Text(
                     when (adbOk) {
-                        true -> "已连接 — 手机操作通过 ADB shell 执行"
-                        false -> "未连接 — 需配对后才能使用手机助手"
-                        null -> "点「测试」检查当前连接"
+                        true -> LangManager.t("glm.adb.connected", "已连接 — 手机操作通过 ADB shell 执行")
+                        false -> LangManager.t("glm.adb.disconnected", "未连接 — 需配对后才能使用手机助手")
+                        null -> LangManager.t("glm.adb.checkHint", "点「测试」检查当前连接")
                     }
                 )
             },
@@ -174,13 +183,13 @@ fun AutoGLMSettingsPage(
                         onClick = {
                             scope.launch {
                                 adbBusy = true
-                                adbStatus = "测试中..."
+                                adbStatus = LangManager.t("glm.adb.testing", "测试中...")
                                 adbOk = AdbManager.testConnection()
-                                adbStatus = if (adbOk == true) "连接正常" else "连接失败"
+                                adbStatus = if (adbOk == true) LangManager.t("glm.adb.ok", "连接正常") else LangManager.t("glm.adb.fail", "连接失败")
                                 adbBusy = false
                             }
                         }
-                    ) { Text("测试") }
+                    ) { Text(LangManager.t("glm.adb.test", "测试")) }
                 }
             }
         )
@@ -195,8 +204,8 @@ fun AutoGLMSettingsPage(
         HorizontalDivider()
 
         ListItem(
-            headlineContent = { Text("去配对 / 重新配对") },
-            supportingContent = { Text("开发者选项 → 无线调试 → 使用配对码配对设备") },
+            headlineContent = { Text(LangManager.t("glm.pair.title", "去配对 / 重新配对")) },
+            supportingContent = { Text(LangManager.t("glm.pair.desc", "开发者选项 → 无线调试 → 使用配对码配对设备")) },
             leadingContent = { Icon(Icons.Default.Cable, null) },
             trailingContent = { Icon(Icons.Default.ChevronRight, null) },
             modifier = Modifier.clickable { onNavigateToWirelessAdb() }

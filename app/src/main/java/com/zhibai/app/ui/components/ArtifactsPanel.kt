@@ -55,6 +55,7 @@ import com.zhibai.app.agent.CheckTaskStatus
 import com.zhibai.app.data.model.ArtifactEntry
 import com.zhibai.app.data.model.ChatMessage
 import com.zhibai.app.data.model.SessionArtifacts
+import com.zhibai.app.i18n.LangManager
 
 /**
  * 工作清单 panel (drawer, above the conversation list) — task-list accordion
@@ -94,28 +95,28 @@ fun WorkPanel(
     ) {
         // ---- 中间产物 ----
         WorkSection(
-            title = "中间产物",
+            title = LangManager.t("artifacts.intermediate", "中间产物"),
             count = hidden.size,
-            emptyHint = "暂无"
+            emptyHint = LangManager.t("artifacts.empty", "暂无")
         ) {
             FileRowList(items = hidden, onOpenFile = onOpenFile)
         }
         // ---- 产物 ----
         WorkSection(
-            title = "产物",
+            title = LangManager.t("artifacts.output", "产物"),
             count = mentioned.size,
-            emptyHint = "暂无"
+            emptyHint = LangManager.t("artifacts.empty", "暂无")
         ) {
             FileRowList(items = mentioned, onOpenFile = onOpenFile)
         }
         // ---- 参考 ----
         WorkSection(
-            title = "参考",
+            title = LangManager.t("artifacts.refs", "参考"),
             count = totalRefs,
-            emptyHint = "暂无"
+            emptyHint = LangManager.t("artifacts.empty", "暂无")
         ) {
             if (artifacts.searches.isNotEmpty()) {
-                SubGroupLabel("联网搜索", artifacts.searches.size, Icons.Default.Language)
+                SubGroupLabel(LangManager.t("artifacts.webSearch", "联网搜索"), artifacts.searches.size, Icons.Default.Language)
                 artifacts.searches.forEach { e ->
                     RefRow(
                         title = e.name,
@@ -126,7 +127,7 @@ fun WorkPanel(
                 }
             }
             if (artifacts.referenced.isNotEmpty()) {
-                SubGroupLabel("项目文件", artifacts.referenced.size, Icons.Default.Folder)
+                SubGroupLabel(LangManager.t("artifacts.projectFiles", "项目文件"), artifacts.referenced.size, Icons.Default.Folder)
                 artifacts.referenced.forEach { e ->
                     RefRow(
                         title = e.name,
@@ -139,9 +140,9 @@ fun WorkPanel(
         }
         // ---- 任务 ----
         WorkSection(
-            title = "任务",
+            title = LangManager.t("artifacts.tasks", "任务"),
             count = tasks.size,
-            emptyHint = "暂无"
+            emptyHint = LangManager.t("artifacts.empty", "暂无")
         ) {
             tasks.forEach { t ->
                 TaskRow(task = t)
@@ -202,7 +203,7 @@ private fun WorkSection(
             Spacer(modifier = Modifier.width(6.dp))
             Icon(
                 Icons.Default.KeyboardArrowDown,
-                contentDescription = if (expanded) "收起" else "展开",
+                contentDescription = if (expanded) LangManager.t("chat.collapse", "收起") else LangManager.t("common.expand", "展开"),
                 modifier = Modifier.size(18.dp).rotate(chevron),
                 tint = scheme.onSurfaceVariant
             )
@@ -265,7 +266,7 @@ private fun FileRowList(items: List<ArtifactEntry>, onOpenFile: (String) -> Unit
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                "更多",
+                LangManager.t("common.more", "更多"),
                 fontSize = 12.sp,
                 color = scheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f)

@@ -6,6 +6,7 @@ import android.util.Log
 import com.zhibai.app.adb.AdbManager
 import com.zhibai.app.data.api.AgentIslandBridge
 import com.zhibai.app.data.api.IslandNotificationService
+import com.zhibai.app.i18n.LangManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -114,11 +115,11 @@ class PhoneAgentEngine(
         loadConfig()
 
         if (!adb.isConnected()) {
-            state = state.copy(error = "无线 ADB 未连接 — 请先在设置 → AutoGLM → 无线调试 ADB 完成配对", isRunning = false)
+            state = state.copy(error = LangManager.t("phone.err.adbNotConnected", "无线 ADB 未连接 — 请先在设置 → AutoGLM → 无线调试 ADB 完成配对"), isRunning = false)
             return
         }
         if (!hasApiKey()) {
-            state = state.copy(error = "未配置智谱 API Key — 请在设置 → AutoGLM 中填写", isRunning = false)
+            state = state.copy(error = LangManager.t("phone.err.noApiKey", "未配置智谱 API Key — 请在设置 → AutoGLM 中填写"), isRunning = false)
             return
         }
 
@@ -153,7 +154,7 @@ class PhoneAgentEngine(
 
                 val screenshot = adb.captureScreen()
                 if (screenshot == null) {
-                    state = state.copy(error = "ADB 截屏失败 — 确认无线调试仍在线", isRunning = false)
+                    state = state.copy(error = LangManager.t("phone.err.captureFail", "ADB 截屏失败 — 确认无线调试仍在线"), isRunning = false)
                     return
                 }
 
@@ -176,15 +177,15 @@ class PhoneAgentEngine(
                 )
 
                 if (action == null) {
-                    state = state.copy(error = "AI 未返回有效操作", isRunning = false)
+                    state = state.copy(error = LangManager.t("phone.err.noAction", "AI 未返回有效操作"), isRunning = false)
                     return
                 }
 
                 when (action.type) {
                     "done" -> {
-                        val result = "任务完成，共执行 $round 步"
+                        val result = LangManager.t("phone.result.done", "任务完成，共执行 {n} 步").replace("{n}", round.toString())
                         onTaskComplete?.invoke(result)
-                        island.showAgentTaskComplete("手机助手", result)
+                        island.showAgentTaskComplete(LangManager.t("phone.assistant.name", "手机助手"), result)
                         state = state.copy(isRunning = false)
                         return
                     }
@@ -213,9 +214,9 @@ class PhoneAgentEngine(
             }
 
             if (round >= maxSteps) {
-                val result = "达到最大步数限制 ($maxSteps)"
+                val result = LangManager.t("phone.result.maxSteps", "达到最大步数限制 ({n})").replace("{n}", maxSteps.toString())
                 onTaskComplete?.invoke(result)
-                island.showAgentTaskComplete("手机助手", result)
+                island.showAgentTaskComplete(LangManager.t("phone.assistant.name", "手机助手"), result)
                 state = state.copy(error = result, isRunning = false)
             }
         } catch (e: Exception) {

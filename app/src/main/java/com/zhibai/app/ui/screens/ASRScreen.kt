@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.zhibai.app.data.api.TTSService
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.ui.theme.MiMoColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -65,18 +66,18 @@ fun ASRScreen(apiKey: String = "") {
                     val mimeType = resolver.getType(uri) ?: "audio/mpeg"
                     val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
                     if (bytes == null || bytes.isEmpty()) {
-                        error = "读取音频文件失败"
+                        error = LangManager.t("asr.readAudioFailed", "读取音频文件失败")
                         return@launch
                     }
                     // API limit: base64 <= 10MB (~7.5MB file), mp3/wav supported
                     if (bytes.size > 7_500_000) {
-                        error = "文件过大（上限约 7.5MB），请截取更短的音频"
+                        error = LangManager.t("asr.fileTooLarge", "文件过大（上限约 7.5MB），请截取更短的音频")
                         return@launch
                     }
                     val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
                     val text = ttsService.speechToText(base64, mimeType)
                     result = text ?: ""
-                    if (text == null) error = ttsService.lastAsrError ?: "识别失败，请检查 API Key 或网络"
+                    if (text == null) error = ttsService.lastAsrError ?: LangManager.t("asr.failedHint", "识别失败，请检查 API Key 或网络")
                 } catch (e: Exception) {
                     error = e.message
                 } finally {
@@ -91,7 +92,7 @@ fun ASRScreen(apiKey: String = "") {
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (!granted) {
-            error = "需要麦克风权限"
+            error = LangManager.t("voice.needMic", "需要麦克风权限")
         }
     }
 
@@ -142,7 +143,7 @@ fun ASRScreen(apiKey: String = "") {
                 val base64 = Base64.encodeToString(wavBytes, Base64.NO_WRAP)
                 val text = ttsService.speechToText(base64, "audio/wav")
                 result = text ?: ""
-                if (text == null) error = ttsService.lastAsrError ?: "识别失败，请检查 API Key 或网络"
+                if (text == null) error = ttsService.lastAsrError ?: LangManager.t("asr.failedHint", "识别失败，请检查 API Key 或网络")
             } catch (e: Exception) {
                 isRecording = false
                 error = e.message
@@ -158,7 +159,7 @@ fun ASRScreen(apiKey: String = "") {
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("语音识别 ASR") })
+            TopAppBar(title = { Text(LangManager.t("asr.title", "语音识别 ASR")) })
         }
     ) { paddingValues ->
         Column(
@@ -170,7 +171,7 @@ fun ASRScreen(apiKey: String = "") {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                "mimo-v2.5-asr · 支持中英双语与方言",
+                LangManager.t("asr.subtitle", "mimo-v2.5-asr · 支持中英双语与方言"),
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -197,10 +198,10 @@ fun ASRScreen(apiKey: String = "") {
 
             Text(
                 when {
-                    isRecording -> "正在录音... 点击停止"
-                    isProcessing && uploading -> "解析音频文件..."
-                    isProcessing -> "识别中..."
-                    else -> "点击开始录音"
+                    isRecording -> LangManager.t("asr.recording", "正在录音... 点击停止")
+                    isProcessing && uploading -> LangManager.t("asr.parsingFile", "解析音频文件...")
+                    isProcessing -> LangManager.t("asr.transcribing", "识别中...")
+                    else -> LangManager.t("asr.tapToRecord", "点击开始录音")
                 },
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -220,7 +221,7 @@ fun ASRScreen(apiKey: String = "") {
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("上传音频文件识别（mp3 / wav，≤7.5MB）", fontSize = 13.sp)
+                Text(LangManager.t("asr.upload", "上传音频文件识别（mp3 / wav，≤7.5MB）"), fontSize = 13.sp)
             }
 
             if (isProcessing) {
@@ -246,11 +247,11 @@ fun ASRScreen(apiKey: String = "") {
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("识别结果", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                            Text(LangManager.t("asr.result", "识别结果"), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                             TextButton(onClick = {
                                 com.zhibai.app.ui.components.ClipboardHelper.copyWithToast(context, result, label = "语音识别")
                             }) {
-                                Text("复制")
+                                Text(LangManager.t("common.copy", "复制"))
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))

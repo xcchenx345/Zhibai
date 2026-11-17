@@ -84,7 +84,7 @@ class MainActivity : ComponentActivity() {
                     // ── Startup dependency check ─────────────────────────────
                     // phases: checking → (oldapp | perms | age) → done
                     var startupPhase by remember { mutableStateOf("checking") }
-                    var checkLabel by remember { mutableStateOf("年龄验证") }
+                    var checkLabel by remember(com.zhibai.app.i18n.LangManager.currentCode) { mutableStateOf(com.zhibai.app.i18n.LangManager.t("startup.checkAge", "年龄验证")) }
                     var checkProgress by remember { mutableFloatStateOf(0f) }
                     var pendingOldApp by remember { mutableStateOf(false) }
                     var pendingAge by remember { mutableStateOf(false) }
@@ -130,23 +130,23 @@ class MainActivity : ComponentActivity() {
 
                     // Sequential checks with cosmetic progress (心理安慰)
                     LaunchedEffect(Unit) {
-                        checkLabel = "年龄验证"
+                        checkLabel = com.zhibai.app.i18n.LangManager.t("startup.checkAge", "年龄验证")
                         checkProgress = 0.22f
                         delay(450)
                         ageOk = chatViewModel.hasAgeSet
 
-                        checkLabel = "备份数据"
+                        checkLabel = com.zhibai.app.i18n.LangManager.t("startup.checkBackup", "备份数据")
                         checkProgress = 0.48f
                         delay(400)
                         // Detection only — restore already runs inside loadSessions()
                         com.zhibai.app.data.ChatBackupManager.hasBackup(appContext)
 
-                        checkLabel = "旧版应用"
+                        checkLabel = com.zhibai.app.i18n.LangManager.t("startup.checkLegacy", "旧版应用")
                         checkProgress = 0.74f
                         delay(400)
                         pendingOldApp = isPackageInstalled(LEGACY_PACKAGE)
 
-                        checkLabel = "基础权限"
+                        checkLabel = com.zhibai.app.i18n.LangManager.t("startup.checkPerms", "基础权限")
                         checkProgress = 0.96f
                         delay(400)
                         missingPerms = basicMissingPermissions()
@@ -206,11 +206,13 @@ class MainActivity : ComponentActivity() {
                         if (startupPhase == "oldapp") {
                             AlertDialog(
                                 onDismissRequest = { /* must choose */ },
-                                title = { Text("检测到旧版应用", fontWeight = FontWeight.SemiBold) },
+                                title = { Text(com.zhibai.app.i18n.LangManager.t("startup.oldAppTitle", "检测到旧版应用"), fontWeight = FontWeight.SemiBold) },
                                 text = {
                                     Text(
-                                        "检测到旧包名应用（$LEGACY_PACKAGE），可能与当前版本冲突。\n\n" +
-                                            "请先卸载旧版，再继续使用本应用。"
+                                        com.zhibai.app.i18n.LangManager.t(
+                                            "startup.oldAppBody",
+                                            "检测到旧包名应用（{pkg}），可能与当前版本冲突。\n\n请先卸载旧版，再继续使用本应用。"
+                                        ).replace("{pkg}", LEGACY_PACKAGE)
                                     )
                                 },
                                 confirmButton = {
@@ -223,11 +225,11 @@ class MainActivity : ComponentActivity() {
                                                 )
                                             )
                                         } catch (_: Exception) {}
-                                    }) { Text("去卸载", fontWeight = FontWeight.SemiBold) }
+                                    }) { Text(com.zhibai.app.i18n.LangManager.t("startup.oldAppUninstall", "去卸载"), fontWeight = FontWeight.SemiBold) }
                                 },
                                 dismissButton = {
                                     TextButton(onClick = { advanceAfterOldApp() }) {
-                                        Text("暂时跳过")
+                                        Text(com.zhibai.app.i18n.LangManager.t("startup.oldAppSkip", "暂时跳过"))
                                     }
                                 }
                             )
@@ -273,7 +275,7 @@ class MainActivity : ComponentActivity() {
                                 val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
                                 if (android.os.Build.VERSION.SDK_INT >= 26) {
                                     nm.createNotificationChannel(android.app.NotificationChannel(
-                                        channelId, "崩溃报告", android.app.NotificationManager.IMPORTANCE_HIGH
+                                        channelId, com.zhibai.app.i18n.LangManager.t("crash.channel", "崩溃报告"), android.app.NotificationManager.IMPORTANCE_HIGH
                                     ))
                                 }
                                 val pendingIntent = android.app.PendingIntent.getActivity(
@@ -287,7 +289,7 @@ class MainActivity : ComponentActivity() {
                                     @Suppress("DEPRECATION")
                                     android.app.Notification.Builder(this@MainActivity)
                                 }
-                                    .setContentTitle("上次运行发生崩溃")
+                                    .setContentTitle(com.zhibai.app.i18n.LangManager.t("crash.notifTitle", "上次运行发生崩溃"))
                                     .setContentText(currentCrashLog.take(100).replace('\n', ' '))
                                     .setSmallIcon(android.R.drawable.ic_dialog_alert)
                                     .setContentIntent(pendingIntent)

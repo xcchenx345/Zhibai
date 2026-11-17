@@ -25,6 +25,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.zhibai.app.i18n.LangManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.Inet4Address
@@ -49,8 +50,12 @@ fun TestWatermarkOverlay(modifier: Modifier = Modifier) {
     if (disabled) return
 
     // Rebuild bitmap only when IP arrives/changes (once), not on every recomposition.
-    val bitmap = remember(ip) {
-        buildWatermarkBitmap("测试版非正式产出结果${Build.MODEL}$ip")
+    val bitmap = remember(ip, LangManager.currentCode) {
+        buildWatermarkBitmap(
+            LangManager.t("debug.watermark", "测试版非正式产出结果{model}{ip}")
+                .replace("{model}", Build.MODEL)
+                .replace("{ip}", ip)
+        )
     }
 
     Box(

@@ -74,6 +74,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.zhibai.app.data.model.ChatSession
+import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.ui.components.MessageBubble
 import com.zhibai.app.ui.theme.MiMoColors
 import com.zhibai.app.viewmodel.ChatViewModel
@@ -258,7 +259,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) startAsrRecording()
-        else toast("需要麦克风权限")
+        else toast(LangManager.t("voice.needMic", "需要麦克风权限"))
     }
 
     fun requestAsrRecording() {
@@ -282,7 +283,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
             try {
                 if (pcm.isEmpty()) {
                     voicePhase = VoicePhase.Idle
-                    toast("没有录到声音")
+                    toast(LangManager.t("voice.noAudio", "没有录到声音"))
                     return@launch
                 }
                 val wav = buildChatWav(pcm, 16000)
@@ -292,11 +293,11 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                 if (!text.isNullOrBlank()) {
                     typewriterTarget = text
                 } else {
-                    toast(viewModel.lastAsrError ?: "识别失败，请检查 API Key 或网络")
+                    toast(viewModel.lastAsrError ?: LangManager.t("asr.failedHint", "识别失败，请检查 API Key 或网络"))
                 }
             } catch (e: Exception) {
                 voicePhase = VoicePhase.Idle
-                toast(e.message ?: "识别失败")
+                toast(e.message ?: LangManager.t("asr.failed", "识别失败"))
             }
         }
     }
@@ -405,16 +406,16 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
         val room = capacity - currentImages
         if (room <= 0) {
             toast(
-                if (selectedFiles.any { f -> f.isVideo || f.isAudio }) "已附加视频/音频，图片最多 2 张"
-                else "图片最多 $capacity 张"
+                if (selectedFiles.any { f -> f.isVideo || f.isAudio }) LangManager.t("chat.attach.imgCapAv", "已附加视频/音频，图片最多 2 张")
+                else LangManager.t("chat.attach.imgCap", "图片最多 {n} 张").replace("{n}", capacity.toString())
             )
             return@rememberLauncherForActivityResult
         }
         val accepted = uris.take(room)
         if (accepted.size < uris.size) {
             toast(
-                if (selectedFiles.any { f -> f.isVideo || f.isAudio }) "超出限制，已添加前 ${accepted.size} 张（视频/音频模式下图片最多 2 张）"
-                else "图片最多 $capacity 张，已添加前 ${accepted.size} 张"
+                if (selectedFiles.any { f -> f.isVideo || f.isAudio }) LangManager.t("chat.attach.truncatedAv", "超出限制，已添加前 {n} 张（视频/音频模式下图片最多 2 张）").replace("{n}", accepted.size.toString())
+                else LangManager.t("chat.attach.truncated", "图片最多 {max} 张，已添加前 {n} 张").replace("{max}", capacity.toString()).replace("{n}", accepted.size.toString())
             )
         }
         val added = accepted.map { uri ->
@@ -436,24 +437,24 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
 
             if (isVideo) {
                 if (!unlimitedAttach && selectedFiles.any { f -> f.isVideo }) {
-                    toast("仅支持一份视频"); return@let
+                    toast(LangManager.t("chat.attach.oneVideo", "仅支持一份视频")); return@let
                 }
                 val capMb = if (unlimitedAttach) 37 else 20   // 37MB = API base64 hard cap
                 if (size > capMb * 1024L * 1024L) {
-                    toast("视频需在 ${capMb}MB 以内"); return@let
+                    toast(LangManager.t("chat.attach.videoSize", "视频需在 {n}MB 以内").replace("{n}", capMb.toString())); return@let
                 }
             }
             if (isAudio) {
                 if (!unlimitedAttach && selectedFiles.any { f -> f.isAudio }) {
-                    toast("仅支持一份音频"); return@let
+                    toast(LangManager.t("chat.attach.oneAudio", "仅支持一份音频")); return@let
                 }
                 val capMb = if (unlimitedAttach) 37 else 10
                 if (size > capMb * 1024L * 1024L) {
-                    toast("音频需在 ${capMb}MB 以内"); return@let
+                    toast(LangManager.t("chat.attach.audioSize", "音频需在 {n}MB 以内").replace("{n}", capMb.toString())); return@let
                 }
             }
             if (isImage && selectedFiles.count { f -> f.isImage } >= imageCapacity()) {
-                toast("图片数量已达上限"); return@let
+                toast(LangManager.t("chat.attach.imgFull", "图片数量已达上限")); return@let
             }
             selectedFiles = selectedFiles + SelectedFile(uri = it, name = name, isImage = isImage, isAudio = isAudio, isVideo = isVideo)
         }
@@ -588,7 +589,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                 },
                 label = {
                     Text(
-                        text = "新对话",
+                        text = LangManager.t("drawer.newChat", "新对话"),
                         fontSize = 14.sp,
                         maxLines = 1
                     )
@@ -612,7 +613,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                 },
                 label = {
                     Text(
-                        text = "技能中心",
+                        text = LangManager.t("drawer.skillsCenter", "技能中心"),
                         fontSize = 14.sp,
                         maxLines = 1
                     )
@@ -636,7 +637,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                 },
                 label = {
                     Text(
-                        text = "档案",
+                        text = LangManager.t("drawer.archive", "档案"),
                         fontSize = 14.sp,
                         maxLines = 1
                     )
@@ -660,7 +661,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                 },
                 label = {
                     Text(
-                        text = "产物中心",
+                        text = LangManager.t("drawer.artifacts", "产物中心"),
                         fontSize = 14.sp,
                         maxLines = 1
                     )
@@ -682,7 +683,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("搜索对话...", fontSize = 14.sp) },
+                placeholder = { Text(LangManager.t("drawer.searchHint", "搜索对话..."), fontSize = 14.sp) },
                 leadingIcon = {
                     Icon(
                         Icons.Default.Search,
@@ -722,7 +723,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "对话列表",
+                    text = LangManager.t("drawer.chatList", "对话列表"),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -785,7 +786,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "已选 ${batchSelectedIds.size} 项",
+                        LangManager.t("drawer.selectedCount", "已选 {n} 项").replace("{n}", batchSelectedIds.size.toString()),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.weight(1f)
@@ -793,17 +794,17 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     TextButton(onClick = {
                         viewModel.restoreSessions(batchSelectedIds)
                         batchSelectMode = false; batchSelectedIds = emptySet()
-                    }) { Text("恢复", fontSize = 13.sp) }
+                    }) { Text(LangManager.t("archive.restore", "恢复"), fontSize = 13.sp) }
                     TextButton(onClick = {
                         viewModel.archiveSessions(batchSelectedIds)
                         batchSelectMode = false; batchSelectedIds = emptySet()
-                    }) { Text("归档", fontSize = 13.sp) }
+                    }) { Text(LangManager.t("archive.archive", "归档"), fontSize = 13.sp) }
                     TextButton(onClick = { showDeleteConfirm = true }) {
-                        Text("删除", fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+                        Text(LangManager.t("common.delete", "删除"), fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
                     }
                     TextButton(onClick = {
                         batchSelectMode = false; batchSelectedIds = emptySet()
-                    }) { Text("取消", fontSize = 13.sp) }
+                    }) { Text(LangManager.t("common.cancel", "取消"), fontSize = 13.sp) }
                 }
             }
 
@@ -953,7 +954,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                         ) {
                             if (!showRename) {
                                 DropdownMenuItem(
-                                    text = { Text("重命名") },
+                                    text = { Text(LangManager.t("drawer.rename", "重命名")) },
                                     leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp)) },
                                     onClick = {
                                         showRename = true
@@ -961,7 +962,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text(if (sess.archived) "取消归档" else "归档") },
+                                    text = { Text(LangManager.t(if (sess.archived) "archive.unarchive" else "archive.archive", if (sess.archived) "取消归档" else "归档")) },
                                     leadingIcon = { Icon(Icons.Default.Archive, contentDescription = null, modifier = Modifier.size(18.dp)) },
                                     onClick = {
                                         viewModel.toggleArchiveSession(sess.id)
@@ -969,7 +970,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("删除", color = MaterialTheme.colorScheme.error) },
+                                    text = { Text(LangManager.t("common.delete", "删除"), color = MaterialTheme.colorScheme.error) },
                                     leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) },
                                     onClick = {
                                         showMenu = false
@@ -985,11 +986,11 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                         .fillMaxWidth()
                                         .padding(horizontal = 8.dp),
                                     singleLine = true,
-                                    placeholder = { Text("输入新标题", fontSize = 13.sp) },
+                                    placeholder = { Text(LangManager.t("drawer.renameHint", "输入新标题"), fontSize = 13.sp) },
                                     textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("保存") },
+                                    text = { Text(LangManager.t("common.save", "保存")) },
                                     onClick = {
                                         if (editTitleText.isNotBlank()) {
                                             viewModel.renameSession(sess.id, editTitleText.trim())
@@ -999,7 +1000,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text("取消") },
+                                    text = { Text(LangManager.t("common.cancel", "取消")) },
                                     onClick = { showMenu = false; showRename = false }
                                 )
                             }
@@ -1021,7 +1022,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                 },
                 label = {
                     Text(
-                        text = "设置",
+                        text = LangManager.t("drawer.settings", "设置"),
                         fontSize = 14.sp,
                         maxLines = 1
                     )
@@ -1153,7 +1154,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                             modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
-                                Text("切换模型", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                Text(LangManager.t("model.switch", "切换模型"), fontSize = 18.sp, fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.height(12.dp))
                                 com.zhibai.app.ui.components.CapsuleModelBar(
                                     currentModel = currentModel,
@@ -1261,7 +1262,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                             editingMessageId = message.id
                                         },
                                         onCopy = { text ->
-                                            com.zhibai.app.ui.components.ClipboardHelper.copyWithToast(context, text, label = "消息")
+                                            com.zhibai.app.ui.components.ClipboardHelper.copyWithToast(context, text, label = LangManager.t("chat.copyLabel", "消息"))
                                         },
                                         onReadAloud = { text ->
                                             if (isSpeaking) {
@@ -1427,20 +1428,20 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     if (protocolWarning) {
                         AlertDialog(
                             onDismissRequest = { viewModel.dismissProtocolWarning() },
-                            title = { Text("安全警告") },
+                            title = { Text(LangManager.t("chat.safety.title", "安全警告")) },
                             text = {
                                 Text(
-                                    "您可能正在进行未经许可的破甲行为。\n\n" +
-                                    "此类行为可能触犯《中华人民共和国网络安全法》《中华人民共和国刑法》等相关法律法规，" +
-                                    "情节严重者将承担相应法律责任。\n\n" +
-                                    "我们极度反感这种毫无道德底线的行为！",
+                                    LangManager.t(
+                                        "chat.safety.body",
+                                        "您可能正在进行未经许可的破甲行为。\n\n此类行为可能触犯《中华人民共和国网络安全法》《中华人民共和国刑法》等相关法律法规，情节严重者将承担相应法律责任。\n\n我们极度反感这种毫无道德底线的行为！"
+                                    ),
                                     fontSize = 13.sp,
                                     lineHeight = 19.sp
                                 )
                             },
                             confirmButton = {
                                 TextButton(onClick = { viewModel.dismissProtocolWarning() }) {
-                                    Text("我知道了", fontWeight = FontWeight.SemiBold)
+                                    Text(LangManager.t("common.ack", "我知道了"), fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         )
@@ -1452,11 +1453,11 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                         var rememberChoice by remember { mutableStateOf(false) }
                         AlertDialog(
                             onDismissRequest = { viewModel.resolveImageSave(false, false) },
-                            title = { Text("保存到本地") },
+                            title = { Text(LangManager.t("chat.imageSave.title", "保存到本地")) },
                             text = {
                                 Column {
                                     Text(
-                                        "本次上传了 ${imageSaveReq!!.paths.size} 张图片。是否复制一份到本地工作目录（uploads 文件夹）？",
+                                        LangManager.t("chat.imageSave.body", "本次上传了 {n} 张图片。是否复制一份到本地工作目录（uploads 文件夹）？").replace("{n}", imageSaveReq!!.paths.size.toString()),
                                         fontSize = 13.sp,
                                         lineHeight = 19.sp
                                     )
@@ -1467,18 +1468,18 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                             onCheckedChange = { rememberChoice = it }
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("下次默认该选项，不再询问", fontSize = 12.sp)
+                                        Text(LangManager.t("chat.imageSave.remember", "下次默认该选项，不再询问"), fontSize = 12.sp)
                                     }
                                 }
                             },
                             confirmButton = {
                                 TextButton(onClick = { viewModel.resolveImageSave(true, rememberChoice) }) {
-                                    Text("保存", fontWeight = FontWeight.SemiBold)
+                                    Text(LangManager.t("common.save", "保存"), fontWeight = FontWeight.SemiBold)
                                 }
                             },
                             dismissButton = {
                                 TextButton(onClick = { viewModel.resolveImageSave(false, rememberChoice) }) {
-                                    Text("不保存")
+                                    Text(LangManager.t("chat.imageSave.dontSave", "不保存"))
                                 }
                             }
                         )
@@ -1526,7 +1527,13 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     val thinkingLevel = viewModel.thinkingLevel.collectAsState().value
-                                    val thinkingLabels = listOf("关闭", "低", "中", "高", "MAX")
+                                    val thinkingLabels = listOf(
+                                        LangManager.t("thinking.levelOff", "关闭"),
+                                        LangManager.t("thinking.levelLow", "低"),
+                                        LangManager.t("thinking.levelMid", "中"),
+                                        LangManager.t("thinking.levelHigh", "高"),
+                                        "MAX"
+                                    )
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1537,7 +1544,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                                 imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                                                 plusExpanded = false
                                             },
-                                            label = { Text("图片", fontSize = 11.sp) },
+                                            label = { Text(LangManager.t("chat.attach.image", "图片"), fontSize = 11.sp) },
                                             leadingIcon = { Icon(Icons.Default.Image, null, Modifier.size(14.dp)) },
                                             modifier = Modifier.height(32.dp)
                                         )
@@ -1547,7 +1554,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                                 filePicker.launch("*/*")
                                                 plusExpanded = false
                                             },
-                                            label = { Text("文件", fontSize = 11.sp) },
+                                            label = { Text(LangManager.t("chat.attach.file", "文件"), fontSize = 11.sp) },
                                             leadingIcon = { Icon(Icons.Default.AttachFile, null, Modifier.size(14.dp)) },
                                             modifier = Modifier.height(32.dp)
                                         )
@@ -1559,8 +1566,8 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                             },
                                             label = {
                                                 Text(
-                                                    if (thinkingLevel == 0) "思考"
-                                                    else "思考·${thinkingLabels[thinkingLevel]}",
+                                                    if (thinkingLevel == 0) LangManager.t("thinking.title", "思考")
+                                                    else LangManager.t("thinking.titleLevel", "思考·{level}").replace("{level}", thinkingLabels[thinkingLevel]),
                                                     fontSize = 11.sp
                                                 )
                                             },
@@ -1576,7 +1583,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                             selected = enableSearch,
                                             label = {
                                                 Text(
-                                                    if (enableSearch) "联网·开" else "联网",
+                                                    LangManager.t(if (enableSearch) "chat.searchOn" else "chat.searchOff", if (enableSearch) "联网·开" else "联网"),
                                                     fontSize = 11.sp
                                                 )
                                             },
@@ -1707,13 +1714,13 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "编辑消息",
+                                        text = LangManager.t("chat.editing", "编辑消息"),
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                     Spacer(modifier = Modifier.weight(1f))
                                     TextButton(onClick = { editingMessageId = null }) {
-                                        Text("取消", fontSize = 11.sp)
+                                        Text(LangManager.t("common.cancel", "取消"), fontSize = 11.sp)
                                     }
                                 }
                             }
@@ -1762,7 +1769,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
                                         strokeWidth = 2.dp,
                                         modifier = Modifier.size(22.dp),
-                                        contentDescription = "更多选项"
+                                        contentDescription = LangManager.t("chat.moreOptions", "更多选项")
                                     )
                                 }
 
@@ -1852,7 +1859,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                                 Box {
                                                     if (inputText.isEmpty()) {
                                                         Text(
-                                                            text = if (editingMessageId != null) "修改消息内容..." else "输入消息...",
+                                                            text = if (editingMessageId != null) LangManager.t("chat.input.editHint", "修改消息内容...") else LangManager.t("chat.input.hint", "输入消息..."),
                                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                             fontSize = fontSize.sp,
                                                             lineHeight = (fontSize + 5).sp
@@ -1933,7 +1940,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                                 )
                                             }
                                             Text(
-                                                text = "识别中...",
+                                                text = LangManager.t("asr.transcribing", "识别中..."),
                                                 fontSize = 11.sp,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 modifier = Modifier.align(Alignment.Center)
@@ -2021,7 +2028,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                                 else MaterialTheme.colorScheme.onSurfaceVariant,
                                                 strokeWidth = 2.dp,
                                                 modifier = Modifier.size(20.dp),
-                                                contentDescription = if (recording) "完成录音" else "语音输入"
+                                                contentDescription = LangManager.t(if (recording) "voice.finishRecording" else "voice.input", if (recording) "完成录音" else "语音输入")
                                             )
                                         }
                                     }
@@ -2165,7 +2172,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                             .background(MaterialTheme.colorScheme.background)
                     ) {
                         Text(
-                            text = "非小米官方APP，内容由AI生成仅供参考",
+                            text = LangManager.t("chat.disclaimer", "非小米官方APP，内容由AI生成仅供参考"),
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
                             textAlign = TextAlign.Center,
@@ -2233,7 +2240,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    "工具调用",
+                                    LangManager.t("chat.toolCall", "工具调用"),
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MiMoColors.Primary
@@ -2248,7 +2255,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                     }
                                 ) {
                                     Text(
-                                        "风险 $riskLevel",
+                                        LangManager.t("chat.toolCall.risk", "风险 {n}").replace("{n}", riskLevel.toString()),
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
@@ -2294,7 +2301,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                     modifier = Modifier.weight(1f),
                                     enabled = !toolExecuting
                                 ) {
-                                    Text("拒绝")
+                                    Text(LangManager.t("chat.toolCall.deny", "拒绝"))
                                 }
                                 Button(
                                     onClick = { viewModel.approveToolCall() },
@@ -2399,8 +2406,8 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     ) {
                         Text(
                             text = when {
-                                viewModel.isTTSMode -> "语音合成 TTS"
-                                viewModel.isASRMode -> "语音识别 ASR"
+                                viewModel.isTTSMode -> LangManager.t("tts.title", "语音合成 TTS")
+                                viewModel.isASRMode -> LangManager.t("asr.title", "语音识别 ASR")
                                 else -> session?.title ?: "MiMo"
                             },
                             style = MaterialTheme.typography.titleMedium,
@@ -2460,7 +2467,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                     }) {
                                         Icon(
                                             Icons.Default.Add,
-                                            contentDescription = "新建对话",
+                                            contentDescription = LangManager.t("chat.new", "新建对话"),
                                             modifier = Modifier.size(20.dp)
                                         )
                                     }
@@ -2468,7 +2475,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                         IconButton(onClick = { topMenuOpen = true }) {
                                             Icon(
                                                 Icons.Default.MoreVert,
-                                                contentDescription = "更多",
+                                                contentDescription = LangManager.t("common.more", "更多"),
                                                 modifier = Modifier.size(20.dp)
                                             )
                                         }
@@ -2509,7 +2516,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                             ) {
                                 if (showStudy) {
                                     DropdownMenuItem(
-                                        text = { Text("学习模式") },
+                                        text = { Text(LangManager.t("chat.studyMode", "学习模式")) },
                                         onClick = {
                                             studyMode = !studyMode
                                             topMenuOpen = false
@@ -2526,8 +2533,12 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                     DropdownMenuItem(
                                         text = {
                                             Text(
-                                                if (agentPhase == com.zhibai.app.viewmodel.ChatViewModel.AgentPhase.PLAN)
-                                                    "切换到 Build" else "切换到 Plan"
+                                                LangManager.t(
+                                                    if (agentPhase == com.zhibai.app.viewmodel.ChatViewModel.AgentPhase.PLAN)
+                                                        "agent.switchBuild" else "agent.switchPlan",
+                                                    if (agentPhase == com.zhibai.app.viewmodel.ChatViewModel.AgentPhase.PLAN)
+                                                        "切换到 Build" else "切换到 Plan"
+                                                )
                                             )
                                         },
                                         onClick = {
@@ -2550,7 +2561,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                 }
                                 // 工作清单 — per-conversation checklist + artifacts (all modes)
                                 DropdownMenuItem(
-                                    text = { Text("工作清单") },
+                                    text = { Text(LangManager.t("agent.workPanel", "工作清单")) },
                                     onClick = {
                                         showTaskPanel = !showTaskPanel
                                         topMenuOpen = false
@@ -2564,7 +2575,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                 )
                                 if (showAutoRead) {
                                     DropdownMenuItem(
-                                        text = { Text("自动朗读") },
+                                        text = { Text(LangManager.t("chat.autoRead", "自动朗读")) },
                                         onClick = {
                                             viewModel.toggleAutoReadAloud()
                                             topMenuOpen = false
@@ -2783,10 +2794,10 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
         val url = pendingLeaveUrl!!
         AlertDialog(
             onDismissRequest = { pendingLeaveUrl = null },
-            title = { Text("即将跳转站外链接") },
+            title = { Text(LangManager.t("chat.leaveApp.title", "即将跳转站外链接")) },
             text = {
                 Text(
-                    "该链接将离开本应用，在外部浏览器打开：\n\n$url\n\n是否继续？",
+                    LangManager.t("chat.leaveApp.body", "该链接将离开本应用，在外部浏览器打开：\n\n{url}\n\n是否继续？").replace("{url}", url),
                     fontSize = 13.sp,
                     lineHeight = 18.sp
                 )
@@ -2800,12 +2811,12 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                         )
                     } catch (_: Exception) {}
                 }) {
-                    Text("继续", fontWeight = FontWeight.SemiBold)
+                    Text(LangManager.t("common.continue", "继续"), fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingLeaveUrl = null }) {
-                    Text("取消")
+                    Text(LangManager.t("common.cancel", "取消"))
                 }
             }
         )
@@ -2816,11 +2827,11 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
     if (showThinkingSheet) {
         val thinkingLevel = viewModel.thinkingLevel.collectAsState().value
         val levels = listOf(
-            "关闭" to "不使用深度思考",
-            "低" to "1K tokens",
-            "中" to "4K tokens",
-            "高" to "8K tokens",
-            "MAX" to "32K tokens（显著增加费用）"
+            LangManager.t("thinking.levelOff", "关闭") to LangManager.t("thinking.descOff", "不使用深度思考"),
+            LangManager.t("thinking.levelLow", "低") to "1K tokens",
+            LangManager.t("thinking.levelMid", "中") to "4K tokens",
+            LangManager.t("thinking.levelHigh", "高") to "8K tokens",
+            "MAX" to LangManager.t("thinking.descMax", "32K tokens（显著增加费用）")
         )
         ModalBottomSheet(
             onDismissRequest = { showThinkingSheet = false },
@@ -2833,7 +2844,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     .padding(bottom = 32.dp)
             ) {
                 Text(
-                    text = "思考强度",
+                    text = LangManager.t("thinking.sheetTitle", "思考强度"),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
@@ -2889,11 +2900,13 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
     if (showMaxCostDialog) {
         AlertDialog(
             onDismissRequest = { showMaxCostDialog = false },
-            title = { Text("开启 MAX 思考？") },
+            title = { Text(LangManager.t("thinking.maxTitle", "开启 MAX 思考？")) },
             text = {
                 Text(
-                    "MAX 会把思考预算强制拉到 32K tokens，并显著提高单次回复的长度与费用。\n\n" +
-                        "确定要花这笔钱吗？"
+                    LangManager.t(
+                        "thinking.maxBody",
+                        "MAX 会把思考预算强制拉到 32K tokens，并显著提高单次回复的长度与费用。\n\n确定要花这笔钱吗？"
+                    )
                 )
             },
             confirmButton = {
@@ -2902,12 +2915,12 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     viewModel.setThinkingLevel(4)
                     showMaxCostDialog = false
                 }) {
-                    Text("确认开启", fontWeight = FontWeight.SemiBold)
+                    Text(LangManager.t("thinking.maxConfirm", "确认开启"), fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showMaxCostDialog = false }) {
-                    Text("取消")
+                    Text(LangManager.t("common.cancel", "取消"))
                 }
             }
         )
@@ -2924,7 +2937,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
         val maxM = maxTokens / 1_000_000.0
         AlertDialog(
             onDismissRequest = { showContextDetail = false },
-            title = { Text("上下文用量") },
+            title = { Text(LangManager.t("chat.context.title", "上下文用量")) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
@@ -2947,13 +2960,13 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     )
                     if (isCompressing) {
                         Text(
-                            "压缩中... ${(compressProgress * 100).toInt()}%",
+                            LangManager.t("chat.context.compressing", "压缩中... {n}%").replace("{n}", ((compressProgress * 100).toInt()).toString()),
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.primary
                         )
                     } else {
                         Text(
-                            "压缩会话会将历史消息总结成摘要，只保留摘要与最近几条消息。",
+                            LangManager.t("chat.context.compressDesc", "压缩会话会将历史消息总结成摘要，只保留摘要与最近几条消息。"),
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -2965,12 +2978,12 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     onClick = { viewModel.compressConversation() },
                     enabled = !isCompressing
                 ) {
-                    Text("压缩会话", fontWeight = FontWeight.SemiBold)
+                    Text(LangManager.t("chat.context.compress", "压缩会话"), fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showContextDetail = false }) {
-                    Text("关闭")
+                    Text(LangManager.t("common.close", "关闭"))
                 }
             }
         )
@@ -2981,9 +2994,9 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
         val perm = pendingPermission!!
         AlertDialog(
             onDismissRequest = { viewModel.dismissPermissionRequest() },
-            title = { Text("需要系统权限") },
+            title = { Text(LangManager.t("perm.needTitle", "需要系统权限")) },
             text = {
-                Text("Agent 需要「${viewModel.permissionLabel(perm.type)}」权限才能继续：\n\n${perm.reason}\n\n是否前往系统设置授权？授权后回来告诉 Agent 继续即可")
+                Text(LangManager.t("perm.needBody", "Agent 需要「{name}」权限才能继续：\n\n{reason}\n\n是否前往系统设置授权？授权后回来告诉 Agent 继续即可").replace("{name}", viewModel.permissionLabel(perm.type)).replace("{reason}", perm.reason))
             },
             confirmButton = {
                 Row {
@@ -2991,15 +3004,15 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                         viewModel.openPermissionSettings(perm.type)
                         viewModel.dismissPermissionRequest()
                     }) {
-                        Text("去授权", fontWeight = FontWeight.SemiBold)
+                        Text(LangManager.t("perm.goGrant", "去授权"), fontWeight = FontWeight.SemiBold)
                     }
                     TextButton(onClick = {
                         viewModel.resolvePermissionGranted()
                     }) {
-                        Text("我已授权", fontWeight = FontWeight.SemiBold)
+                        Text(LangManager.t("perm.granted", "我已授权"), fontWeight = FontWeight.SemiBold)
                     }
                     TextButton(onClick = { viewModel.dismissPermissionRequest() }) {
-                        Text("取消")
+                        Text(LangManager.t("common.cancel", "取消"))
                     }
                 }
             }
@@ -3030,13 +3043,13 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("确认删除") },
+            title = { Text(LangManager.t("common.confirmDelete", "确认删除")) },
             text = {
                 Text(
                     if (batchSelectMode && batchSelectedIds.isNotEmpty())
-                        "将删除选中 ${batchSelectedIds.size} 个对话，此操作不可撤销。"
+                        LangManager.t("chat.delete.batchBody", "将删除选中 {n} 个对话，此操作不可撤销。").replace("{n}", batchSelectedIds.size.toString())
                     else
-                        "将删除该对话，此操作不可撤销。"
+                        LangManager.t("chat.delete.body", "将删除该对话，此操作不可撤销。")
                 )
             },
             confirmButton = {
@@ -3053,10 +3066,10 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                         showDeleteConfirm = false
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) { Text("删除") }
+                ) { Text(LangManager.t("common.delete", "删除")) }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") }
+                TextButton(onClick = { showDeleteConfirm = false }) { Text(LangManager.t("common.cancel", "取消")) }
             }
         )
     }
@@ -3079,20 +3092,20 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                     Icon(Icons.Default.Warning, contentDescription = null,
                         tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Agent 配置文件损坏")
+                    Text(LangManager.t("agent.configBroken.title", "Agent 配置文件损坏"))
                 }
             },
             text = {
-                Text("config.json 无法解析且自动修复失败。\n\n原因：$agentConfigError\n\nAgent 已暂时禁用。你可以回到正常聊天，或重置配置文件。")
+                Text(LangManager.t("agent.configBroken.body", "config.json 无法解析且自动修复失败。\n\n原因：{error}\n\nAgent 已暂时禁用。你可以回到正常聊天，或重置配置文件。").replace("{error}", agentConfigError ?: ""))
             },
             confirmButton = {
                 TextButton(
                     onClick = { viewModel.repairAgentConfig() },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
-                ) { Text("修复配置文件") }
+                ) { Text(LangManager.t("agent.configBroken.repair", "修复配置文件")) }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissAgentConfigError() }) { Text("回到正常聊天") }
+                TextButton(onClick = { viewModel.dismissAgentConfigError() }) { Text(LangManager.t("agent.configBroken.back", "回到正常聊天")) }
             }
         )
     }
@@ -3125,13 +3138,13 @@ fun EmptyStateView(
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            "有什么可以帮你的？",
+            LangManager.t("chat.empty.title", "有什么可以帮你的？"),
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            "— Xiaomi MiMo 驱动",
+            LangManager.t("chat.empty.subtitle", "— Xiaomi MiMo 驱动"),
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -3195,7 +3208,7 @@ private fun SpeedPanel(
                 )
                 if (stats.firstTokenMs >= 0) {
                     Text(
-                        "首响 ${(stats.firstTokenMs / 1000f).format1()}s",
+                        LangManager.t("speed.firstToken", "首响 {t}s").replace("{t}", (stats.firstTokenMs / 1000f).format1()),
                         fontSize = 10.sp,
                         color = unitColor
                     )
@@ -3220,11 +3233,11 @@ private fun SpeedPanel(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    SpeedStatItem("瞬时", stats.currentTotal, stats.finished, answerColor, unitColor, fontSize)
-                    SpeedStatItem("均值", stats.avgTotal, true, answerColor, unitColor, fontSize)
-                    SpeedStatItem("峰值", stats.peakTotal, true, answerColor, unitColor, fontSize)
-                    SpeedStatItem("思考均值", stats.avgThink, true, thinkColor, unitColor, fontSize)
-                    SpeedStatItem("用时", stats.elapsedSec, true, textColor, null, fontSize, isTime = true)
+                    SpeedStatItem(LangManager.t("speed.instant", "瞬时"), stats.currentTotal, stats.finished, answerColor, unitColor, fontSize)
+                    SpeedStatItem(LangManager.t("speed.avg", "均值"), stats.avgTotal, true, answerColor, unitColor, fontSize)
+                    SpeedStatItem(LangManager.t("speed.peak", "峰值"), stats.peakTotal, true, answerColor, unitColor, fontSize)
+                    SpeedStatItem(LangManager.t("speed.avgThink", "思考均值"), stats.avgThink, true, thinkColor, unitColor, fontSize)
+                    SpeedStatItem(LangManager.t("speed.elapsed", "用时"), stats.elapsedSec, true, textColor, null, fontSize, isTime = true)
                 }
 
                 // Chart: think (black) then answer (orange) joined at thinkEndT
@@ -3282,8 +3295,8 @@ private fun SpeedPanel(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        LegendDot(thinkColor, "思考")
-                        LegendDot(answerColor, "回答")
+                        LegendDot(thinkColor, LangManager.t("speed.legendThink", "思考"))
+                        LegendDot(answerColor, LangManager.t("speed.legendAnswer", "回答"))
                     }
                 }
             }
@@ -3401,14 +3414,14 @@ private fun QuestionnaireCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    "问卷",
+                    LangManager.t("questionnaire.title", "问卷"),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MiMoColors.Primary
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
-                    "取消",
+                    LangManager.t("common.cancel", "取消"),
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
@@ -3421,7 +3434,7 @@ private fun QuestionnaireCard(
             // Step indicator
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "第 ${step + 1} / $total 项",
+                    LangManager.t("questionnaire.progress", "第 {n} / {m} 项").replace("{n}", (step + 1).toString()).replace("{m}", total.toString()),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -3522,7 +3535,7 @@ private fun QuestionnaireCard(
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Text(
-                            text = if (expanded) "收起" else "展开全部",
+                            text = if (expanded) LangManager.t("chat.collapse", "收起") else LangManager.t("chat.expand", "展开全部"),
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
@@ -3546,14 +3559,14 @@ private fun QuestionnaireCard(
                         onClick = { step--; errorText = "" },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("上一题")
+                        Text(LangManager.t("questionnaire.prev", "上一题"))
                     }
                 } else {
                     OutlinedButton(
                         onClick = onCancel,
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("不填了")
+                        Text(LangManager.t("questionnaire.quit", "不填了"))
                     }
                 }
                 if (!isLast) {
@@ -3566,7 +3579,7 @@ private fun QuestionnaireCard(
                         },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("跳过")
+                        Text(LangManager.t("questionnaire.skip", "跳过"))
                     }
                 }
                 Button(
@@ -3589,7 +3602,7 @@ private fun QuestionnaireCard(
                             else -> answers[cur.id] is Int
                         }
                         if (cur.required && !answered) {
-                            errorText = "这是必答题，或点「跳过」"
+                            errorText = LangManager.t("questionnaire.required", "这是必答题，或点「跳过」")
                             return@Button
                         }
                         errorText = ""
@@ -3618,7 +3631,7 @@ private fun QuestionnaireCard(
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
-                    Text(if (isLast) "提交" else "下一题")
+                    Text(LangManager.t(if (isLast) "questionnaire.submit" else "questionnaire.next", if (isLast) "提交" else "下一题"))
                 }
             }
         }
@@ -3678,7 +3691,7 @@ private fun QuestionContent(
                         selected = selectedOpt == "其它",
                         onClick = { answers[q.id] = "其它" }
                     )
-                    Text("其它", fontSize = 14.sp)
+                    Text(LangManager.t("questionnaire.other", "其它"), fontSize = 14.sp)
                 }
                 if (selectedOpt == "其它" || otherSelected) {
                     OutlinedTextField(
@@ -3687,7 +3700,7 @@ private fun QuestionContent(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(start = 36.dp),
-                        placeholder = { Text("输入自定义内容...", fontSize = 13.sp) },
+                        placeholder = { Text(LangManager.t("questionnaire.otherHint", "输入自定义内容..."), fontSize = 13.sp) },
                         singleLine = true,
                         shape = RoundedCornerShape(10.dp)
                     )
@@ -3729,7 +3742,7 @@ private fun QuestionContent(
                             answers[q.id] = if (otherChecked) selected - "其它" else selected + "其它"
                         }
                     )
-                    Text("其它", fontSize = 14.sp)
+                    Text(LangManager.t("questionnaire.other", "其它"), fontSize = 14.sp)
                 }
                 if (otherChecked) {
                     OutlinedTextField(
@@ -3738,7 +3751,7 @@ private fun QuestionContent(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(start = 36.dp),
-                        placeholder = { Text("输入自定义内容...", fontSize = 13.sp) },
+                        placeholder = { Text(LangManager.t("questionnaire.otherHint", "输入自定义内容..."), fontSize = 13.sp) },
                         singleLine = true,
                         shape = RoundedCornerShape(10.dp)
                     )
@@ -3771,7 +3784,7 @@ private fun QuestionContent(
                     value = answers[q.id] as? String ?: "",
                     onValueChange = { answers[q.id] = it },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("输入回答...", fontSize = 13.sp) },
+                    placeholder = { Text(LangManager.t("questionnaire.answerHint", "输入回答..."), fontSize = 13.sp) },
                     singleLine = true,
                     shape = RoundedCornerShape(10.dp)
                 )
