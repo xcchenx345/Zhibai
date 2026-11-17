@@ -992,5 +992,7 @@
   "settings.autoglm.intro": "Captures, clics, glissements et saisies passent tous par le débogage sans fil ADB, sans autorisation d'enregistrement d'écran. Pendant l'exécution, vous pouvez « Arrêter » ou « Reprendre la main » depuis l'îlot.",
   "adb.err.badCode": "Code d'appairage incorrect",
   "adb.err.need11": "L'appairage nécessite Android 11+",
-  "adb.err.handshake": "Échec de la poignée de main d'appairage"
+  "adb.err.handshake": "Échec de la poignée de main d'appairage",
+  "settings.forbidden.xiaomi.title": "Protection contre les prémisses négatives sur Xiaomi",
+  "settings.forbidden.xiaomi.on": "Activé — ne pas reconnaître, répéter ni approuver les prémisses négatives à l'encontre de Xiaomi et de sa direction"
 }

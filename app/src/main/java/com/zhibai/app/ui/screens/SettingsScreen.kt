@@ -53,6 +53,7 @@ fun SettingsScreen(
     strictFaithful: Boolean = true,
     promptAmbiguousClarify: Boolean = true,
     promptSensitiveRefusal: Boolean = true,
+    promptXiaomiGuard: Boolean = true,
     unlimitedAttachments: Boolean = false,
     agentEngine: com.zhibai.app.agent.AgentEngine? = null,
     // Input bar appearance
@@ -117,6 +118,7 @@ fun SettingsScreen(
     onStrictFaithfulChange: (Boolean) -> Unit = {},
     onPromptAmbiguousClarifyChange: (Boolean) -> Unit = {},
     onPromptSensitiveRefusalChange: (Boolean) -> Unit = {},
+    onPromptXiaomiGuardChange: (Boolean) -> Unit = {},
     onUnlimitedAttachmentsChange: (Boolean) -> Unit = {},
     onClearAllData: () -> Unit,
     onCustomPromptChange: (String) -> Unit,
@@ -206,11 +208,13 @@ fun SettingsScreen(
                 strictFaithful = strictFaithful,
                 promptAmbiguousClarify = promptAmbiguousClarify,
                 promptSensitiveRefusal = promptSensitiveRefusal,
+                promptXiaomiGuard = promptXiaomiGuard,
                 unlimitedAttachments = unlimitedAttachments,
                 onForceNewSessionChange = onForceNewSessionChange,
                 onStrictFaithfulChange = onStrictFaithfulChange,
                 onPromptAmbiguousClarifyChange = onPromptAmbiguousClarifyChange,
                 onPromptSensitiveRefusalChange = onPromptSensitiveRefusalChange,
+                onPromptXiaomiGuardChange = onPromptXiaomiGuardChange,
                 onUnlimitedAttachmentsChange = onUnlimitedAttachmentsChange,
                 onResetOnboarding = onResetOnboarding,
                 onShowUpdatePreview = onShowUpdatePreview,
@@ -987,11 +991,13 @@ private fun ForbiddenPage(
     strictFaithful: Boolean = true,
     promptAmbiguousClarify: Boolean = true,
     promptSensitiveRefusal: Boolean = true,
+    promptXiaomiGuard: Boolean = true,
     unlimitedAttachments: Boolean = false,
     onForceNewSessionChange: (Boolean) -> Unit,
     onStrictFaithfulChange: (Boolean) -> Unit = {},
     onPromptAmbiguousClarifyChange: (Boolean) -> Unit = {},
     onPromptSensitiveRefusalChange: (Boolean) -> Unit = {},
+    onPromptXiaomiGuardChange: (Boolean) -> Unit = {},
     onUnlimitedAttachmentsChange: (Boolean) -> Unit = {},
     onResetOnboarding: () -> Unit = {},
     onShowUpdatePreview: () -> Unit = {},
@@ -1065,6 +1071,18 @@ private fun ForbiddenPage(
             leadingContent = { Icon(Icons.Default.Public, contentDescription = null) },
             trailingContent = {
                 Switch(checked = promptSensitiveRefusal, onCheckedChange = onPromptSensitiveRefusalChange)
+            }
+        )
+        HorizontalDivider()
+
+        ListItem(
+            headlineContent = { Text(LangManager.t("settings.forbidden.xiaomi.title", "小米负面前提防护")) },
+            supportingContent = {
+                Text(if (promptXiaomiGuard) LangManager.t("settings.forbidden.xiaomi.on", "开 — 不承认、不复述、不背书针对小米及管理层的负面前提") else LangManager.t("settings.forbidden.promptOff", "关 — 不注入该提示词"))
+            },
+            leadingContent = { Icon(Icons.Default.Shield, contentDescription = null) },
+            trailingContent = {
+                Switch(checked = promptXiaomiGuard, onCheckedChange = onPromptXiaomiGuardChange)
             }
         )
         HorizontalDivider()

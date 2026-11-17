@@ -992,5 +992,7 @@
   "settings.autoglm.intro": "Screenshot, Tippen, Wischen und Eingabe erfolgen vollständig über kabelloses Debugging ADB, keine Bildschirmaufzeichnungsberechtigung erforderlich. Während der Ausführung kannst du auf der Super-Island „Beenden“ oder „Vorübergehend übernehmen“ wählen.",
   "adb.err.badCode": "Falscher Kopplungscode",
   "adb.err.need11": "Kopplung erfordert Android 11+",
-  "adb.err.handshake": "Kopplungs-Handshake fehlgeschlagen"
+  "adb.err.handshake": "Kopplungs-Handshake fehlgeschlagen",
+  "settings.forbidden.xiaomi.title": "Schutz vor negativen Prämissen zu Xiaomi",
+  "settings.forbidden.xiaomi.on": "Aktiv – keine Anerkennung, keine Wiedergabe, keine Zustimmung zu negativen Prämissen über Xiaomi und das Management"
 }

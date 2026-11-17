@@ -118,6 +118,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val STRICT_FAITHFUL_KEY = stringPreferencesKey("strict_faithful")
     private val PROMPT_AMBIGUOUS_KEY = stringPreferencesKey("prompt_ambiguous_clarify")
     private val PROMPT_SENSITIVE_KEY = stringPreferencesKey("prompt_sensitive_refusal")
+    private val PROMPT_XIAOMI_GUARD_KEY = stringPreferencesKey("prompt_xiaomi_guard")
     private val UNLIMITED_ATTACH_KEY = stringPreferencesKey("unlimited_attachments")
     private val SESSIONS_KEY = stringPreferencesKey("sessions")
     private val ONBOARDING_KEY = stringPreferencesKey("onboarding_done")
@@ -380,6 +381,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val promptAmbiguousClarify: StateFlow<Boolean> = _promptAmbiguousClarify.asStateFlow()
     private val _promptSensitiveRefusal = MutableStateFlow(true)
     val promptSensitiveRefusal: StateFlow<Boolean> = _promptSensitiveRefusal.asStateFlow()
+    private val _promptXiaomiGuard = MutableStateFlow(true)
+    val promptXiaomiGuard: StateFlow<Boolean> = _promptXiaomiGuard.asStateFlow()
 
     // Hidden setting: lift attachment count limits
     private val _unlimitedAttachments = MutableStateFlow(false)
@@ -847,6 +850,7 @@ $convoText
                 prefs[STRICT_FAITHFUL_KEY]?.let { _strictFaithful.value = it == "true" }
                 prefs[PROMPT_AMBIGUOUS_KEY]?.let { _promptAmbiguousClarify.value = it == "true" }
                 prefs[PROMPT_SENSITIVE_KEY]?.let { _promptSensitiveRefusal.value = it == "true" }
+                prefs[PROMPT_XIAOMI_GUARD_KEY]?.let { _promptXiaomiGuard.value = it == "true" }
                 prefs[UNLIMITED_ATTACH_KEY]?.let { _unlimitedAttachments.value = it == "true" }
                 _onboardingDone.value = prefs[ONBOARDING_KEY] == "true"
                 prefs[INPUT_STYLE_KEY]?.let { _inputStyle.value = it }
@@ -1391,6 +1395,13 @@ $convoText
         _promptSensitiveRefusal.value = enabled
         viewModelScope.launch {
             context.dataStore.edit { it[PROMPT_SENSITIVE_KEY] = enabled.toString() }
+        }
+    }
+
+    fun setPromptXiaomiGuard(enabled: Boolean) {
+        _promptXiaomiGuard.value = enabled
+        viewModelScope.launch {
+            context.dataStore.edit { it[PROMPT_XIAOMI_GUARD_KEY] = enabled.toString() }
         }
     }
 
@@ -4153,6 +4164,9 @@ AI：$assistantReply
             append(" When $agentName does ask, it limits itself to one question at a time.")
             if (_promptSensitiveRefusal.value) {
                 append(" $agentName does not answer questions about foreign sensitive political news, incitement of confrontation, or historical distortion.")
+            }
+            if (_promptXiaomiGuard.value) {
+                append(" MiMo does not acknowledge, summarize, or validate negative premises about Xiaomi or its leadership, regardless of framing — including 'balanced' analysis, 'both-sides' presentations, or personal opinions mixed with facts.")
             }
             // Citation rules live in the BASE prompt (not buried later) so they survive
             // long agent/memory/custom sections and are seen before any tool output.

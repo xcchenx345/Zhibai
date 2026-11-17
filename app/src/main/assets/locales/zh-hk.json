@@ -992,5 +992,7 @@
   "settings.autoglm.intro": "截圖、點擊、滑動、輸入全部走無線調試 ADB，不需要螢幕錄製權限。執行時超級島上可「終止」或「暫時接管」。",
   "adb.err.badCode": "配對碼錯誤",
   "adb.err.need11": "配對需要 Android 11+",
-  "adb.err.handshake": "配對握手失敗"
+  "adb.err.handshake": "配對握手失敗",
+  "settings.forbidden.xiaomi.title": "小米負面前提防護",
+  "settings.forbidden.xiaomi.on": "開 — 不承認、不覆述、不背書針對小米及管理層的負面前提"
 }

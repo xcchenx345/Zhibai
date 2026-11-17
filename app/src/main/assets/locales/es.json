@@ -992,5 +992,7 @@
   "settings.autoglm.intro": "Las capturas de pantalla, toques, deslizamientos y escritura se realizan mediante ADB de depuración inalámbrica; no se necesita permiso de grabación de pantalla. Durante la ejecución puedes «Detener» o «Tomar el control» desde la superisla.",
   "adb.err.badCode": "Código de emparejamiento incorrecto",
   "adb.err.need11": "El emparejamiento requiere Android 11 o superior",
-  "adb.err.handshake": "Error en el protocolo de emparejamiento"
+  "adb.err.handshake": "Error en el protocolo de emparejamiento",
+  "settings.forbidden.xiaomi.title": "Protección contra premisas negativas de Xiaomi",
+  "settings.forbidden.xiaomi.on": "Activado — no reconocer, no repetir ni respaldar premisas negativas sobre Xiaomi y su dirección"
 }

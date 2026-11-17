@@ -992,5 +992,7 @@
   "settings.autoglm.intro": "Screenshots, taps, swipes and typing all run over wireless debugging ADB — no screen recording permission needed. While running, you can Stop or Take over from the island.",
   "adb.err.badCode": "Incorrect pairing code",
   "adb.err.need11": "Pairing requires Android 11+",
-  "adb.err.handshake": "Pairing handshake failed"
+  "adb.err.handshake": "Pairing handshake failed",
+  "settings.forbidden.xiaomi.title": "Xiaomi Negative Premise Protection",
+  "settings.forbidden.xiaomi.on": "On — do not acknowledge, repeat, or endorse negative premises about Xiaomi and its management"
 }

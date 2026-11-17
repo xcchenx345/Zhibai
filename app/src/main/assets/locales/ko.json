@@ -992,5 +992,7 @@
   "adb.err.badCode": "페어링 코드 오류",
   "adb.err.need11": "페어링에는 Android 11 이상 필요",
   "adb.err.handshake": "페어링 핸드셰이크 실패",
-  "adb.pairPortFound": "페어링 포트 발견: {port}"
+  "adb.pairPortFound": "페어링 포트 발견: {port}",
+  "settings.forbidden.xiaomi.title": "Xiaomi 부정 전제 보호",
+  "settings.forbidden.xiaomi.on": "켜기 — Xiaomi 및 경영진에 대한 부정 전제를 인정하지 않고, 반복하지 않으며, 지지하지 않음"
 }
