@@ -2715,7 +2715,6 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
             onClearAllData = { viewModel.clearAllData() },
             onCustomPromptChange = { viewModel.setCustomPrompt(it) },
             onResetOnboarding = { viewModel.resetOnboarding() },
-            onShowUpdatePreview = { viewModel.showUpdatePreview() },
             onDismiss = { viewModel.toggleSettings() }
         )
     }

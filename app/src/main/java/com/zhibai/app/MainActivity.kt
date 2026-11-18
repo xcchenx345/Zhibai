@@ -78,7 +78,6 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val navController = rememberNavController()
                     val onboardingDone by chatViewModel.onboardingDone.collectAsState()
-                    val showUpdatePreview by chatViewModel.showUpdatePreview.collectAsState()
                     val appContext = LocalContext.current.applicationContext
 
                     // ── Startup dependency check ─────────────────────────────
@@ -250,12 +249,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Update preview overlay (post-startup only)
-                    if (!inStartup && showUpdatePreview) {
-                        com.zhibai.app.ui.screens.UpdatePreviewScreen(
-                            onDismiss = { chatViewModel.dismissUpdatePreview() }
-                        )
-                    }
 
                     // Youth wellbeing — only after startup checks finished
                     if (!inStartup) {

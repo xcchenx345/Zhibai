@@ -229,8 +229,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val onboardingDone: StateFlow<Boolean?> = _onboardingDone.asStateFlow()
 
     // Update preview mode — shows v2.6 changelog as a mini onboarding
-    private val _showUpdatePreview = MutableStateFlow(false)
-    val showUpdatePreview: StateFlow<Boolean> = _showUpdatePreview.asStateFlow()
 
     private val _apiKey = MutableStateFlow("")
     val apiKey: StateFlow<String> = _apiKey.asStateFlow()
@@ -1004,14 +1002,6 @@ $convoText
                 prefs.remove(ONBOARDING_KEY)
             }
         }
-    }
-
-    fun showUpdatePreview() {
-        _showUpdatePreview.value = true
-    }
-
-    fun dismissUpdatePreview() {
-        _showUpdatePreview.value = false
     }
 
     /**

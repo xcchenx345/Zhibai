@@ -123,7 +123,6 @@ fun SettingsScreen(
     onClearAllData: () -> Unit,
     onCustomPromptChange: (String) -> Unit,
     onResetOnboarding: () -> Unit = {},
-    onShowUpdatePreview: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     var currentPage by remember { mutableStateOf(SettingsPage.MAIN) }
@@ -217,7 +216,6 @@ fun SettingsScreen(
                 onPromptXiaomiGuardChange = onPromptXiaomiGuardChange,
                 onUnlimitedAttachmentsChange = onUnlimitedAttachmentsChange,
                 onResetOnboarding = onResetOnboarding,
-                onShowUpdatePreview = onShowUpdatePreview,
                 onClearAllData = onClearAllData,
                 onCustomPromptChange = onCustomPromptChange,
                 customFontColor = customFontColor,
@@ -1000,7 +998,6 @@ private fun ForbiddenPage(
     onPromptXiaomiGuardChange: (Boolean) -> Unit = {},
     onUnlimitedAttachmentsChange: (Boolean) -> Unit = {},
     onResetOnboarding: () -> Unit = {},
-    onShowUpdatePreview: () -> Unit = {},
     onClearAllData: () -> Unit,
     onCustomPromptChange: (String) -> Unit,
     customFontColor: String = "",
@@ -1179,14 +1176,6 @@ private fun ForbiddenPage(
             )
         }
 
-        // View update preview
-        ListItem(
-            headlineContent = { Text(LangManager.t("settings.forbidden.updatePreview.title", "查看更新内容")) },
-            supportingContent = { Text(LangManager.t("settings.forbidden.updatePreview.desc", "重看 v2.6 新功能介绍，不改任何设置")) },
-            leadingContent = { Icon(Icons.Default.NewReleases, contentDescription = null) },
-            modifier = Modifier.clickable { onShowUpdatePreview() }
-        )
-        HorizontalDivider()
 
         ListItem(
             headlineContent = { Text(LangManager.t("settings.forbidden.exportLog.title", "导出日志")) },
