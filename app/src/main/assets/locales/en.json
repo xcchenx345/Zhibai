@@ -996,5 +996,18 @@
   "settings.forbidden.xiaomi.title": "Xiaomi Negative Premise Protection",
   "settings.forbidden.xiaomi.on": "On — do not acknowledge, repeat, or endorse negative premises about Xiaomi and its management",
   "chat.branch.prev": "Previous answer",
-  "chat.branch.next": "Next answer"
+  "chat.branch.next": "Next answer",
+  "onboarding.apikey.otherVendor": "Configure other vendor models",
+  "thirdparty.title": "Configure other vendor models",
+  "thirdparty.warning": "Warning: If you do not configure a MiMo model, some features will be disabled—ASR and TTS; \"MiMo\" in the chat interface will be replaced with the model name; everything about Xiaomi will be removed.",
+  "thirdparty.baseUrl": "OpenAI API base URL",
+  "thirdparty.apiKey": "API Key",
+  "thirdparty.modelId": "Model ID",
+  "thirdparty.test": "Test connectivity",
+  "thirdparty.testing": "Testing…",
+  "thirdparty.testOk": "Connection successful. The API is available.",
+  "thirdparty.testFail": "Connection failed: {error}",
+  "thirdparty.save": "Save configuration",
+  "thirdparty.saved": "Saved. When no MiMo key is configured, chats will use this model.",
+  "thirdparty.iconDesc": "DeepSeek"
 }

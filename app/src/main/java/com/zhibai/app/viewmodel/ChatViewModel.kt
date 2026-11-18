@@ -119,6 +119,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val PROMPT_AMBIGUOUS_KEY = stringPreferencesKey("prompt_ambiguous_clarify")
     private val PROMPT_SENSITIVE_KEY = stringPreferencesKey("prompt_sensitive_refusal")
     private val PROMPT_XIAOMI_GUARD_KEY = stringPreferencesKey("prompt_xiaomi_guard")
+    private val THIRD_PARTY_BASE_KEY = stringPreferencesKey("third_party_base_url")
+    private val THIRD_PARTY_KEY_KEY = stringPreferencesKey("third_party_api_key")
+    private val THIRD_PARTY_MODEL_KEY = stringPreferencesKey("third_party_model_id")
     private val UNLIMITED_ATTACH_KEY = stringPreferencesKey("unlimited_attachments")
     private val SESSIONS_KEY = stringPreferencesKey("sessions")
     private val ONBOARDING_KEY = stringPreferencesKey("onboarding_done")
@@ -383,6 +386,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val promptSensitiveRefusal: StateFlow<Boolean> = _promptSensitiveRefusal.asStateFlow()
     private val _promptXiaomiGuard = MutableStateFlow(true)
     val promptXiaomiGuard: StateFlow<Boolean> = _promptXiaomiGuard.asStateFlow()
+
+    // Third-party (OpenAI-compatible) model config. It drives the chat only
+    // when it is configured AND no MiMo key is set - the MiMo path stays strict.
+    private val _thirdPartyBaseUrl = MutableStateFlow("")
+    val thirdPartyBaseUrl: StateFlow<String> = _thirdPartyBaseUrl.asStateFlow()
+    private val _thirdPartyApiKey = MutableStateFlow("")
+    val thirdPartyApiKey: StateFlow<String> = _thirdPartyApiKey.asStateFlow()
+    private val _thirdPartyModelId = MutableStateFlow("")
+    val thirdPartyModelId: StateFlow<String> = _thirdPartyModelId.asStateFlow()
+    private val _thirdPartyActive = MutableStateFlow(false)
+    val thirdPartyActive: StateFlow<Boolean> = _thirdPartyActive.asStateFlow()
+    private val customChatService = com.zhibai.app.data.api.MiMoApiService()
+
+    private fun refreshThirdPartyActive() {
+        _thirdPartyActive.value = _thirdPartyModelId.value.isNotBlank() && _apiKey.value.isBlank()
+    }
+
+    /** What the chat UI calls the assistant: model id when third-party, else MiMo. */
+    val modelDisplayName: String
+        get() = if (_thirdPartyActive.value) _thirdPartyModelId.value.trim() else "MiMo"
 
     // Hidden setting: lift attachment count limits
     private val _unlimitedAttachments = MutableStateFlow(false)
@@ -851,6 +874,10 @@ $convoText
                 prefs[PROMPT_AMBIGUOUS_KEY]?.let { _promptAmbiguousClarify.value = it == "true" }
                 prefs[PROMPT_SENSITIVE_KEY]?.let { _promptSensitiveRefusal.value = it == "true" }
                 prefs[PROMPT_XIAOMI_GUARD_KEY]?.let { _promptXiaomiGuard.value = it == "true" }
+                prefs[THIRD_PARTY_BASE_KEY]?.let { _thirdPartyBaseUrl.value = it }
+                prefs[THIRD_PARTY_KEY_KEY]?.let { _thirdPartyApiKey.value = it }
+                prefs[THIRD_PARTY_MODEL_KEY]?.let { _thirdPartyModelId.value = it }
+                refreshThirdPartyActive()
                 prefs[UNLIMITED_ATTACH_KEY]?.let { _unlimitedAttachments.value = it == "true" }
                 _onboardingDone.value = prefs[ONBOARDING_KEY] == "true"
                 prefs[INPUT_STYLE_KEY]?.let { _inputStyle.value = it }
@@ -1008,6 +1035,7 @@ $convoText
         ttsService.updateApiKey(raw)
         _apiKey.value = raw
         _apiKeyConfigured.value = raw.isNotBlank()
+        refreshThirdPartyActive()
         viewModelScope.launch {
             context.dataStore.edit { prefs ->
                 prefs[API_KEY] = raw
@@ -1758,7 +1786,53 @@ AI：$assistantReply
         }
     }
 
+    fun saveThirdPartyConfig(baseUrl: String, apiKey: String, modelId: String) {
+        _thirdPartyBaseUrl.value = baseUrl.trim()
+        _thirdPartyApiKey.value = apiKey.trim()
+        _thirdPartyModelId.value = modelId.trim()
+        refreshThirdPartyActive()
+        viewModelScope.launch {
+            context.dataStore.edit { prefs ->
+                prefs[THIRD_PARTY_BASE_KEY] = _thirdPartyBaseUrl.value
+                prefs[THIRD_PARTY_KEY_KEY] = _thirdPartyApiKey.value
+                prefs[THIRD_PARTY_MODEL_KEY] = _thirdPartyModelId.value
+            }
+        }
+    }
+
+    /** Probe an OpenAI-compatible endpoint. Returns null on success, else an error. */
+    suspend fun testThirdPartyConnection(baseUrl: String, apiKey: String, modelId: String): String? {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val url = java.net.URL(baseUrl.trim().removeSuffix("/") + "/chat/completions")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                try {
+                    conn.requestMethod = "POST"
+                    conn.connectTimeout = 15000
+                    conn.readTimeout = 30000
+                    conn.doOutput = true
+                    conn.setRequestProperty("Authorization", "Bearer ${apiKey.trim()}")
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    val body = gson.toJson(mapOf(
+                        "model" to modelId.trim(),
+                        "messages" to listOf(mapOf("role" to "user", "content" to "hi")),
+                        "max_tokens" to 1
+                    ))
+                    conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                    val code = conn.responseCode
+                    if (code in 200..299) null else "HTTP $code"
+                } finally {
+                    conn.disconnect()
+                }
+            } catch (e: Exception) {
+                e.message ?: "error"
+            }
+        }
+    }
+
     fun setModel(model: String) {
+        // Speech modes need the MiMo stack - closed when third-party is active.
+        if (_thirdPartyActive.value && (model == "asr" || model.startsWith("tts"))) return
         if (_currentModel.value != model) {
             AppLog.d("model switch: ${_currentModel.value} -> $model")
             _currentModel.value = model
@@ -4103,6 +4177,7 @@ AI：$assistantReply
     }
 
     fun readAloud(text: String) {
+        if (_thirdPartyActive.value) return
         stopSpeaking()
         val filteredText = filterForSpeech(text)
         if (filteredText.isBlank()) return
@@ -4228,8 +4303,13 @@ AI：$assistantReply
         val month = today.month.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.ENGLISH)
         val isAgentMode = _currentModel.value.contains("agent") && agentEngine != null
         val base = buildString {
-            val agentName = if (isAgentMode) _agentConfigName.value else "MiMo"
-            append("You are $agentName, an AI assistant developed by Xiaomi. ")
+            val agentName = if (_thirdPartyActive.value) _thirdPartyModelId.value.trim()
+                else if (isAgentMode) _agentConfigName.value else "MiMo"
+            if (_thirdPartyActive.value) {
+                append("You are $agentName, a helpful AI assistant. ")
+            } else {
+                append("You are $agentName, an AI assistant developed by Xiaomi. ")
+            }
             append("Today is date: $dayOfWeek, $month ${today.dayOfMonth} ${today.year}. ")
             append("Your knowledge cutoff date is July 2025.")
             // Reply language follows the user's app language choice; style rules are fixed.
@@ -4241,7 +4321,7 @@ AI：$assistantReply
             if (_promptSensitiveRefusal.value) {
                 append(" $agentName does not answer questions about foreign sensitive political news, incitement of confrontation, or historical distortion.")
             }
-            if (_promptXiaomiGuard.value) {
+            if (_promptXiaomiGuard.value && !_thirdPartyActive.value) {
                 append(" MiMo does not acknowledge, summarize, or validate negative premises about Xiaomi or its leadership, regardless of framing — including 'balanced' analysis, 'both-sides' presentations, or personal opinions mixed with facts.")
             }
             // Citation rules live in the BASE prompt (not buried later) so they survive
@@ -4513,6 +4593,7 @@ sources inline as [reference:N]."""
     }
 
     fun getApiModel(): String {
+        if (_thirdPartyActive.value) return _thirdPartyModelId.value.trim()
         // Agent variants are local aliases: any "<base>-agent" maps to "<base>"
         val cur = _currentModel.value
         return if (cur.endsWith("-agent")) cur.removeSuffix("-agent") else cur
@@ -4648,7 +4729,12 @@ sources inline as [reference:N]."""
     }
 
     private fun getActiveApiService(): MiMoApiService {
-        return if (_currentModel.value.contains("agent") && _agentApiKey.value.isNotBlank()) {
+        return if (_thirdPartyActive.value) {
+            customChatService.apply {
+                updateBaseUrl(_thirdPartyBaseUrl.value.trim().removeSuffix("/").ifBlank { "https://api.deepseek.com/v1" })
+                updateApiKey(_thirdPartyApiKey.value.trim())
+            }
+        } else if (_currentModel.value.contains("agent") && _agentApiKey.value.isNotBlank()) {
             agentChatService
         } else {
             apiService

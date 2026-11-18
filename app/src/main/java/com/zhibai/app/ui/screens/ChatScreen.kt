@@ -563,13 +563,13 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
             ) {
                 Column {
                     Text(
-                        text = "MiMo",
+                        text = viewModel.modelDisplayName,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = MiMoColors.Primary
                     )
                     Text(
-                        text = "Xiaomi AI Assistant",
+                        text = if (viewModel.thirdPartyActive.value) "AI Assistant" else "Xiaomi AI Assistant",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1253,6 +1253,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                 Column {
                                     MessageBubble(
                                         message = message,
+                                        assistantName = viewModel.modelDisplayName,
                                         isDarkTheme = isDarkTheme,
                                         fontSize = fontSize,
                                         isAgent = isAgent,
@@ -1264,7 +1265,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                         onCopy = { text ->
                                             com.zhibai.app.ui.components.ClipboardHelper.copyWithToast(context, text, label = LangManager.t("chat.copyLabel", "消息"))
                                         },
-                                        onReadAloud = { text ->
+                                        onReadAloud = if (viewModel.thirdPartyActive.value) null else { text ->
                                             if (isSpeaking) {
                                                 viewModel.stopSpeaking()
                                             } else {
@@ -2413,7 +2414,7 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                             text = when {
                                 viewModel.isTTSMode -> LangManager.t("tts.title", "语音合成 TTS")
                                 viewModel.isASRMode -> LangManager.t("asr.title", "语音识别 ASR")
-                                else -> session?.title ?: "MiMo"
+                                else -> session?.title ?: viewModel.modelDisplayName
                             },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,

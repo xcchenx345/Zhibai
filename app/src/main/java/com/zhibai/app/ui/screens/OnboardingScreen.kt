@@ -592,6 +592,12 @@ private fun ApiKeyStep(
     var input by rememberSaveable { mutableStateOf(savedKey) }
     var visible by rememberSaveable { mutableStateOf(false) }
     var hint by remember { mutableStateOf(false) }
+    var showThirdParty by remember { mutableStateOf(false) }
+
+    if (showThirdParty) {
+        ThirdPartyModelPage(viewModel = viewModel, onBack = { showThirdParty = false })
+        return
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         ObStepColumn(modifier = Modifier.weight(1f)) {
@@ -620,6 +626,22 @@ private fun ApiKeyStep(
                 shape = RoundedCornerShape(12.dp),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
             )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                onClick = { showThirdParty = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    LangManager.t("onboarding.apikey.otherVendor", "配置其它厂商模型"),
+                    modifier = Modifier.padding(14.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 

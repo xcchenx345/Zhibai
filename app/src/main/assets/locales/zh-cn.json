@@ -996,5 +996,18 @@
   "settings.forbidden.xiaomi.title": "小米负面前提防护",
   "settings.forbidden.xiaomi.on": "开 — 不承认、不复述、不背书针对小米及管理层的负面前提",
   "chat.branch.prev": "上一条回答",
-  "chat.branch.next": "下一条回答"
+  "chat.branch.next": "下一条回答",
+  "onboarding.apikey.otherVendor": "配置其它厂商模型",
+  "thirdparty.title": "配置其它厂商模型",
+  "thirdparty.warning": "警告：如果你未配置 MiMo 模型，将会强制关闭一些功能——ASR、TTS；对话界面的「MiMo」会改成模型名；关于小米的一切会被抹去。",
+  "thirdparty.baseUrl": "OpenAI 接口地址",
+  "thirdparty.apiKey": "API Key",
+  "thirdparty.modelId": "模型 ID",
+  "thirdparty.test": "连通性测试",
+  "thirdparty.testing": "测试中…",
+  "thirdparty.testOk": "连接成功，接口可用。",
+  "thirdparty.testFail": "连接失败：{error}",
+  "thirdparty.save": "保存配置",
+  "thirdparty.saved": "已保存。未配置 MiMo Key 时，对话将使用该模型。",
+  "thirdparty.iconDesc": "DeepSeek"
 }

@@ -996,5 +996,18 @@
   "settings.forbidden.xiaomi.title": "小米否定的前提防护",
   "settings.forbidden.xiaomi.on": "オン — 小米および経営陣に関する否定的な前提を認めない、復唱しない、支持しない",
   "chat.branch.prev": "前の回答",
-  "chat.branch.next": "次の回答"
+  "chat.branch.next": "次の回答",
+  "onboarding.apikey.otherVendor": "その他のベンダーのモデルを設定",
+  "thirdparty.title": "その他のベンダーのモデルを設定",
+  "thirdparty.warning": "警告：MiMo モデルを設定していない場合、一部の機能が強制的に無効になります——ASR、TTS。会話画面の「MiMo」はモデル名に変更されます。Xiaomi に関する情報はすべて削除されます。",
+  "thirdparty.baseUrl": "OpenAI エンドポイント",
+  "thirdparty.apiKey": "API Key",
+  "thirdparty.modelId": "モデル ID",
+  "thirdparty.test": "接続テスト",
+  "thirdparty.testing": "テスト中…",
+  "thirdparty.testOk": "接続成功、API は利用可能です。",
+  "thirdparty.testFail": "接続失敗：{error}",
+  "thirdparty.save": "設定を保存",
+  "thirdparty.saved": "保存しました。MiMo Key が未設定の場合、会話にはこのモデルが使用されます。",
+  "thirdparty.iconDesc": "DeepSeek"
 }

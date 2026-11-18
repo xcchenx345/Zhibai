@@ -76,6 +76,7 @@ fun MessageBubble(
     modifier: Modifier = Modifier,
     studyMode: Boolean = false,
     isAgent: Boolean = false,
+    assistantName: String = "MiMo",
     onEdit: ((String) -> Unit)? = null,
     onCopy: ((String) -> Unit)? = null,
     onReadAloud: ((String) -> Unit)? = null,
@@ -269,7 +270,7 @@ fun MessageBubble(
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
     ) {
         Text(
-            text = if (isUser) "You" else "MiMo",
+            text = if (isUser) "You" else assistantName,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(vertical = 2.dp)
@@ -465,11 +466,13 @@ fun MessageBubble(
                 }
 
                 DropdownMenu(expanded = showContextMenu, onDismissRequest = { showContextMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text(if (isSpeaking) "Stop" else "Read Aloud") },
-                        onClick = { showContextMenu = false; onReadAloud?.invoke(message.content) },
-                        leadingIcon = { Icon(if (isSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp, contentDescription = null) }
-                    )
+                    if (onReadAloud != null) {
+                        DropdownMenuItem(
+                            text = { Text(if (isSpeaking) "Stop" else "Read Aloud") },
+                            onClick = { showContextMenu = false; onReadAloud.invoke(message.content) },
+                            leadingIcon = { Icon(if (isSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp, contentDescription = null) }
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text(LangManager.t("common.copy", "复制")) },
                         onClick = { showContextMenu = false; onCopy?.invoke(message.content) },
