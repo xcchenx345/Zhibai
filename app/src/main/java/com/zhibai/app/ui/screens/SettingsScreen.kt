@@ -813,7 +813,7 @@ private fun AboutPage(
         Spacer(modifier = Modifier.height(8.dp))
         // Long-press version number → hidden settings
         Text(
-            "debug2.6.999",
+            "V2.6.0",
             fontSize = 16.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.combinedClickable(
