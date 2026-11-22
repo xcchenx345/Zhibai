@@ -231,9 +231,14 @@ private fun GroupRow(
     textColor: androidx.compose.ui.graphics.Color,
     secondaryColor: androidx.compose.ui.graphics.Color
 ) {
-    var open by remember(row.title) { mutableStateOf(false) }
+    // 0 = collapsed, 1 = half-open (live preview), 2 = fully open; tap cycles.
+    // A thinking row starts half-open so the growing reasoning is visible at a
+    // glance, and one tap either widens it or folds it away.
+    var expand by remember(row.title) {
+        mutableStateOf(if (row.running && row.icon == Icons.Default.Lightbulb) 1 else 0)
+    }
     val chevron by animateFloatAsState(
-        targetValue = if (open) 90f else 0f,
+        targetValue = if (expand == 2) 90f else if (expand == 1) 45f else 0f,
         animationSpec = tween(180),
         label = "rowChevron"
     )
@@ -242,7 +247,7 @@ private fun GroupRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { open = !open }
+                .clickable { expand = (expand + 1) % 3 }
                 .padding(vertical = 8.dp)
         ) {
             Icon(
@@ -262,14 +267,14 @@ private fun GroupRow(
             )
             Icon(
                 Icons.Default.KeyboardArrowRight,
-                contentDescription = if (open) LangManager.t("chat.collapse", "收起") else LangManager.t("common.expand", "展开"),
+                contentDescription = if (expand == 2) LangManager.t("chat.collapse", "收起") else LangManager.t("common.expand", "展开"),
                 modifier = Modifier
                     .size(13.dp)
                     .rotate(chevron),
                 tint = secondaryColor
             )
         }
-        if (open) {
+        if (expand > 0) {
             // 表内自动下拉: follow the growing detail while it streams
             val detail = row.detail
             val scrollState = rememberScrollState()
@@ -279,7 +284,7 @@ private fun GroupRow(
             Box(
                 modifier = Modifier
                     .padding(start = 21.dp, end = 8.dp, bottom = 8.dp)
-                    .heightIn(max = 240.dp)
+                    .heightIn(max = if (expand == 2) 240.dp else 112.dp)
                     .verticalScroll(scrollState)
             ) {
                 if (detail.isBlank()) {
