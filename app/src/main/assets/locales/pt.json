@@ -910,5 +910,11 @@
   "thirdparty.save": "Salvar configuração",
   "thirdparty.saved": "Salvo. Sem uma MiMo Key configurada, a conversa usará este modelo.",
   "thirdparty.iconDesc": "DeepSeek",
-  "notif.generating": "A gerar…"
+  "notif.generating": "A gerar…",
+  "settings.apikey.saved": "Salvo",
+  "settings.apikey.savedMm": "Salvo · camada externa mm-",
+  "settings.apikey.copyMm": "Copiar (mm-)",
+  "settings.apikey.clear": "Limpar",
+  "settings.apikey.mmInvalid": "Falha na validação mm-, não salvo",
+  "settings.apikey.privacyNote": "Após salvar, a chave não é mais exibida aqui; a cópia é sempre feita no formato mm- e pode ser limpa ou substituída por um novo valor a qualquer momento"
 }

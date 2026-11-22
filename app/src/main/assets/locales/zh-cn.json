@@ -910,5 +910,11 @@
   "thirdparty.save": "保存配置",
   "thirdparty.saved": "已保存。未配置 MiMo Key 时，对话将使用该模型。",
   "thirdparty.iconDesc": "DeepSeek",
-  "notif.generating": "生成中…"
+  "notif.generating": "生成中…",
+  "settings.apikey.saved": "已保存",
+  "settings.apikey.savedMm": "已保存 · mm- 外层",
+  "settings.apikey.copyMm": "复制 (mm-)",
+  "settings.apikey.clear": "清空",
+  "settings.apikey.mmInvalid": "mm- 校验失败，未保存",
+  "settings.apikey.privacyNote": "保存后此处不再显示密钥；复制走的永远是 mm- 形式，可随时清空或填入新值修改"
 }

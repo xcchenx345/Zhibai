@@ -910,5 +910,11 @@
   "thirdparty.save": "Guardar configuración",
   "thirdparty.saved": "Guardado. Si no hay una clave MiMo configurada, el chat usará este modelo.",
   "thirdparty.iconDesc": "DeepSeek",
-  "notif.generating": "Generando…"
+  "notif.generating": "Generando…",
+  "settings.apikey.saved": "Guardado",
+  "settings.apikey.savedMm": "Guardado · exterior mm-",
+  "settings.apikey.copyMm": "Copiar (mm-)",
+  "settings.apikey.clear": "Borrar",
+  "settings.apikey.mmInvalid": "Validación mm- fallida, no guardado",
+  "settings.apikey.privacyNote": "Tras guardar, la clave no se muestra aquí; la copia siempre usa el formato mm-; puedes borrarlo o introducir un nuevo valor en cualquier momento"
 }

@@ -105,7 +105,10 @@ fun SettingsScreen(
     onPrefIslandEnabledChange: (Boolean) -> Unit = {},
     prefIslandStreaming: Boolean = true,
     onPrefIslandStreamingChange: (Boolean) -> Unit = {},
-    onApiKeyChange: (String) -> Unit,
+    onApiKeyChange: (String) -> Boolean,
+    mmWrapped: Boolean = false,
+    onApiKeyCopy: () -> Unit = {},
+    onApiKeyClear: () -> Unit = {},
     localAiSection: @Composable () -> Unit = {},
     onTtsVoiceChange: (String) -> Unit,
     onFontSizeChange: (Int) -> Unit,
@@ -168,7 +171,10 @@ fun SettingsScreen(
             )
             SettingsPage.API_KEY -> ApiKeyPage(
                 apiKey = apiKey,
+                mmWrapped = mmWrapped,
                 onSave = onApiKeyChange,
+                onCopy = onApiKeyCopy,
+                onClear = onApiKeyClear,
                 localAiSection = localAiSection,
                 modifier = Modifier.padding(paddingValues)
             )
@@ -548,14 +554,17 @@ private fun IslandSettingsPage(
 @Composable
 private fun ApiKeyPage(
     apiKey: String,
-    onSave: (String) -> Unit,
+    mmWrapped: Boolean = false,
+    onSave: (String) -> Boolean = { true },
+    onCopy: () -> Unit = {},
+    onClear: () -> Unit = {},
     localAiSection: @Composable () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showApiKey by rememberSaveable { mutableStateOf(false) }
-    var apiKeyInput by rememberSaveable { mutableStateOf(apiKey) }
-
-    LaunchedEffect(apiKey) { apiKeyInput = apiKey }
+    // Never prefill the saved key - after saving it cannot be viewed again.
+    var apiKeyInput by rememberSaveable { mutableStateOf("") }
+    var mmError by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -568,7 +577,7 @@ private fun ApiKeyPage(
             onValueChange = { apiKeyInput = it },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("MiMo API Key") },
-            placeholder = { Text("sk-xxxxx") },
+            placeholder = { Text("sk-xxxxx / mm-xxxxx") },
             singleLine = true,
             visualTransformation = if (showApiKey) VisualTransformation.None
             else PasswordVisualTransformation(),
@@ -583,13 +592,53 @@ private fun ApiKeyPage(
             shape = RoundedCornerShape(12.dp)
         )
 
+        if (mmError) {
+            Text(
+                LangManager.t("settings.apikey.mmInvalid", "mm- 校验失败，未保存"),
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 13.sp
+            )
+        }
+
         Button(
-            onClick = { onSave(apiKeyInput.trim()) },
+            onClick = {
+                val ok = onSave(apiKeyInput.trim())
+                mmError = !ok
+                if (ok) apiKeyInput = ""
+            },
             modifier = Modifier.fillMaxWidth(),
             enabled = apiKeyInput.isNotBlank(),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
         ) {
             Text(LangManager.t("common.save", "保存"))
+        }
+
+        if (apiKey.isNotBlank()) {
+            Text(
+                if (mmWrapped) LangManager.t("settings.apikey.savedMm", "已保存 · mm- 外层")
+                else LangManager.t("settings.apikey.saved", "已保存"),
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = onCopy, shape = RoundedCornerShape(12.dp)) {
+                    Text(LangManager.t("settings.apikey.copyMm", "复制 (mm-)"))
+                }
+                OutlinedButton(
+                    onClick = { onClear(); apiKeyInput = "" },
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(LangManager.t("settings.apikey.clear", "清空"))
+                }
+            }
+            Text(
+                LangManager.t(
+                    "settings.apikey.privacyNote",
+                    "保存后此处不再显示密钥；复制走的永远是 mm- 形式，可随时清空或填入新值修改"
+                ),
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
         localAiSection()

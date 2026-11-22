@@ -2660,6 +2660,13 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
             unlimitedAttachments = viewModel.unlimitedAttachments.collectAsState().value,
             agentEngine = viewModel.agentEngine,
             onApiKeyChange = { viewModel.setApiKey(it) },
+            mmWrapped = viewModel.mmWrapped.collectAsState().value,
+            onApiKeyCopy = {
+                com.zhibai.app.ui.components.ClipboardHelper.copyWithToast(
+                    context, viewModel.copyableApiKey(), label = "API Key"
+                )
+            },
+            onApiKeyClear = { viewModel.setApiKey("") },
             localAiSection = { com.zhibai.app.ui.components.LocalAiSettingsSection(viewModel) },
             onTtsVoiceChange = { viewModel.setTtsVoice(it) },
             onFontSizeChange = { viewModel.setFontSize(it) },

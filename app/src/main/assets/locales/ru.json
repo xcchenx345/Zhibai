@@ -910,5 +910,11 @@
   "thirdparty.save": "Сохранить настройки",
   "thirdparty.saved": "Сохранено. Если ключ MiMo не настроен, в чатах будет использоваться эта модель.",
   "thirdparty.iconDesc": "DeepSeek",
-  "notif.generating": "Создание…"
+  "notif.generating": "Создание…",
+  "settings.apikey.saved": "Сохранено",
+  "settings.apikey.savedMm": "Сохранено · мм- внешний слой",
+  "settings.apikey.copyMm": "Копировать (мм-)",
+  "settings.apikey.clear": "Очистить",
+  "settings.apikey.mmInvalid": "Проверка мм- не пройдена, не сохранено",
+  "settings.apikey.privacyNote": "После сохранения ключ здесь больше не отображается; копирование всегда выполняется в форме мм-, значение можно очистить или заменить новым"
 }

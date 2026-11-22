@@ -910,5 +910,11 @@
   "thirdparty.save": "Enregistrer la configuration",
   "thirdparty.saved": "Enregistré. Si aucune clé MiMo n'est configurée, la conversation utilisera ce modèle.",
   "thirdparty.iconDesc": "DeepSeek",
-  "notif.generating": "Génération en cours…"
+  "notif.generating": "Génération en cours…",
+  "settings.apikey.saved": "Enregistré",
+  "settings.apikey.savedMm": "Enregistré · extérieur mm-",
+  "settings.apikey.copyMm": "Copier (mm-)",
+  "settings.apikey.clear": "Effacer",
+  "settings.apikey.mmInvalid": "Échec de la validation mm-, non enregistré",
+  "settings.apikey.privacyNote": "Une fois enregistré, la clé n'apparaît plus ici ; la copie utilise toujours la forme mm-, vous pouvez l'effacer ou saisir une nouvelle valeur à tout moment"
 }

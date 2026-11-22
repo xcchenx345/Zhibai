@@ -910,5 +910,11 @@
   "thirdparty.save": "設定を保存",
   "thirdparty.saved": "保存しました。MiMo Key が未設定の場合、会話にはこのモデルが使用されます。",
   "thirdparty.iconDesc": "DeepSeek",
-  "notif.generating": "生成中…"
+  "notif.generating": "生成中…",
+  "settings.apikey.saved": "保存しました",
+  "settings.apikey.savedMm": "保存しました · mm- 外層",
+  "settings.apikey.copyMm": "コピー (mm-)",
+  "settings.apikey.clear": "クリア",
+  "settings.apikey.mmInvalid": "mm- 検証に失敗しました。保存されませんでした",
+  "settings.apikey.privacyNote": "保存後はここにキーが表示されません。コピーは常に mm- 形式で行われ、いつでもクリアするか新しい値を入力して変更できます"
 }

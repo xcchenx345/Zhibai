@@ -910,5 +910,11 @@
   "thirdparty.save": "Save configuration",
   "thirdparty.saved": "Saved. When no MiMo key is configured, chats will use this model.",
   "thirdparty.iconDesc": "DeepSeek",
-  "notif.generating": "Generating…"
+  "notif.generating": "Generating…",
+  "settings.apikey.saved": "Saved",
+  "settings.apikey.savedMm": "Saved · mm- outer layer",
+  "settings.apikey.copyMm": "Copy (mm-)",
+  "settings.apikey.clear": "Clear",
+  "settings.apikey.mmInvalid": "mm- validation failed, not saved",
+  "settings.apikey.privacyNote": "After saving, the key is no longer shown here; copying always uses the mm- form. You can clear it or enter a new value at any time."
 }

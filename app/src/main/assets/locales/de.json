@@ -910,5 +910,11 @@
   "thirdparty.save": "Konfiguration speichern",
   "thirdparty.saved": "Gespeichert. Ohne MiMo Key wird das Modell für Chats verwendet.",
   "thirdparty.iconDesc": "DeepSeek",
-  "notif.generating": "Wird generiert…"
+  "notif.generating": "Wird generiert…",
+  "settings.apikey.saved": "Gespeichert",
+  "settings.apikey.savedMm": "Gespeichert · mm- außen",
+  "settings.apikey.copyMm": "Kopieren (mm-)",
+  "settings.apikey.clear": "Leeren",
+  "settings.apikey.mmInvalid": "mm- Überprüfung fehlgeschlagen, nicht gespeichert",
+  "settings.apikey.privacyNote": "Nach dem Speichern wird der Schlüssel hier nicht mehr angezeigt; Kopieren erfolgt immer im mm- Format, jederzeit leeren oder einen neuen Wert eingeben"
 }

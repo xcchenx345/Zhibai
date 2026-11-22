@@ -104,6 +104,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val context = application
 
     private val API_KEY = stringPreferencesKey("api_key")
+    private val MM_WRAPPED_KEY = stringPreferencesKey("mm_wrapped")
     private val TTS_VOICE_KEY = stringPreferencesKey("tts_voice")
     private val FONT_SIZE_KEY = stringPreferencesKey("font_size")
     private val FORCE_NEW_SESSION_KEY = stringPreferencesKey("force_new_session")
@@ -384,6 +385,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // Third-party (OpenAI-compatible) model config. It drives the chat only
     // when it is configured AND no MiMo key is set - the MiMo path stays strict.
+    // mm- outer layer: true when the stored key arrived as an mm- wrap. The
+    // stored value itself is always the plaintext sk-/tp- key.
+    private val _mmWrapped = MutableStateFlow(false)
+    val mmWrapped: StateFlow<Boolean> = _mmWrapped.asStateFlow()
+
     private val _thirdPartyBaseUrl = MutableStateFlow("")
     val thirdPartyBaseUrl: StateFlow<String> = _thirdPartyBaseUrl.asStateFlow()
     private val _thirdPartyApiKey = MutableStateFlow("")
@@ -888,6 +894,7 @@ $convoText
                 prefs[PROMPT_AMBIGUOUS_KEY]?.let { _promptAmbiguousClarify.value = it == "true" }
                 prefs[PROMPT_SENSITIVE_KEY]?.let { _promptSensitiveRefusal.value = it == "true" }
                 prefs[PROMPT_XIAOMI_GUARD_KEY]?.let { _promptXiaomiGuard.value = it == "true" }
+                prefs[MM_WRAPPED_KEY]?.let { _mmWrapped.value = it == "true" }
                 prefs[THIRD_PARTY_BASE_KEY]?.let { _thirdPartyBaseUrl.value = it }
                 prefs[THIRD_PARTY_KEY_KEY]?.let { _thirdPartyApiKey.value = it }
                 prefs[THIRD_PARTY_MODEL_KEY]?.let { _thirdPartyModelId.value = it }
@@ -1039,19 +1046,37 @@ $convoText
         }
     }
 
-    fun setApiKey(key: String) {
-        val raw = key.trim()
+    /** Persist a key. Accepts a raw sk-/tp- key or an mm- wrap (unwrapped here);
+     *  the stored value is always the plaintext key. An mm- input sets the outer
+     *  marker, an sk-/tp- input clears it. Returns false when an mm- value fails
+     *  its integrity check - nothing is saved then. */
+    fun setApiKey(key: String): Boolean {
+        var raw = key.trim()
+        var wrapped = false
+        if (raw.startsWith("mm-")) {
+            raw = com.zhibai.app.security.MmKeyCodec.decode(raw) ?: return false
+            wrapped = true
+        }
         apiService.updateApiKey(raw)
         cloudListService.updateApiKey(raw)
         ttsService.updateApiKey(raw)
         _apiKey.value = raw
         _apiKeyConfigured.value = raw.isNotBlank()
+        _mmWrapped.value = wrapped && raw.isNotBlank()
         refreshThirdPartyActive()
         viewModelScope.launch {
             context.dataStore.edit { prefs ->
                 prefs[API_KEY] = raw
+                prefs[MM_WRAPPED_KEY] = _mmWrapped.value.toString()
             }
         }
+        return true
+    }
+
+    /** Clipboard copy always yields the mm- outer form of the stored key. */
+    fun copyableApiKey(): String {
+        val raw = _apiKey.value.trim()
+        return if (raw.isEmpty()) "" else com.zhibai.app.security.MmKeyCodec.encode(raw)
     }
 
     // ------------------------------------------------------------------ local AI
