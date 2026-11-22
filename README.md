@@ -1,3 +1,9 @@
+
+<p align="center">
+  <img src="img/file_000000006af881f5bb3736c935c60f60.png" width="820">
+</p>
+
+
 # 知白 ZhiBai
 
 > 所见，皆可问。  
