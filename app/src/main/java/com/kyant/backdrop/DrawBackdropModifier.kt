@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asComposeRenderEffect
@@ -359,6 +360,9 @@ private class DrawBackdropNode(
 
     private fun updateEffects() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // onAttach() runs this through observeReads before the first draw has
+            // fed effectScope a real size - effects would read Size.Unspecified.
+            if (!effectScope.size.isSpecified) return
             effectScope.apply(effects)
             graphicsLayer?.renderEffect = effectScope.renderEffect?.asComposeRenderEffect()
             padding = effectScope.padding

@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.annotation.FloatRange
 import androidx.compose.foundation.shape.AbsoluteRoundedCornerShape
 import androidx.compose.foundation.shape.CornerBasedShape
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.util.fastCoerceAtLeast
 import androidx.compose.ui.util.fastCoerceAtMost
@@ -19,6 +20,9 @@ fun BackdropEffectScope.lens(
     depthEffect: Boolean = false,
     chromaticAberration: Boolean = false
 ) {
+    // Effects can be requested (observeReads at attach) before the first draw
+    // feeds a real size - never dereference Size.Unspecified.
+    if (!size.isSpecified) return
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
     if (refractionHeight <= 0f || refractionAmount <= 0f) return
 
