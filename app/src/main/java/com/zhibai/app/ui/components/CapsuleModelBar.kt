@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -51,6 +52,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
@@ -159,7 +161,27 @@ fun CapsuleModelBar(
                         blur(2f.dp.toPx())
                         lens(12f.dp.toPx(), 24f.dp.toPx())
                     },
-                    onDrawSurface = { drawRect(trackColor) }
+                    highlight = { Highlight(width = 0.5f.dp, alpha = 0.5f) },
+                    innerShadow = {
+                        InnerShadow(
+                            radius = 8f.dp,
+                            offset = DpOffset(0f.dp, 2f.dp),
+                            color = Color.Black.copy(alpha = 0.22f)
+                        )
+                    },
+                    onDrawSurface = {
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                colors = if (isDark) listOf(
+                                    Color.White.copy(alpha = 0.10f),
+                                    Color.White.copy(alpha = 0.05f)
+                                ) else listOf(
+                                    Color.Black.copy(alpha = 0.10f),
+                                    Color.Black.copy(alpha = 0.05f)
+                                )
+                            )
+                        )
+                    }
                 )
         )
 
@@ -185,13 +207,32 @@ fun CapsuleModelBar(
                         blur(3f.dp.toPx())
                         lens(16f.dp.toPx(), 28f.dp.toPx())
                     },
-                    highlight = { Highlight.Default },
-                    shadow = { Shadow(alpha = 0.35f) },
-                    innerShadow = { InnerShadow(radius = 6f.dp, alpha = 0.25f) },
+                    highlight = { Highlight(width = 1f.dp, alpha = 0.9f) },
+                    shadow = {
+                        Shadow(
+                            radius = 12f.dp,
+                            offset = DpOffset(0f.dp, 4f.dp),
+                            color = Color.Black.copy(alpha = 0.45f)
+                        )
+                    },
+                    innerShadow = {
+                        InnerShadow(
+                            radius = 10f.dp,
+                            offset = DpOffset(0f.dp, 3f.dp),
+                            color = Color.Black.copy(alpha = 0.35f)
+                        )
+                    },
                     onDrawSurface = {
                         drawRect(
-                            if (isDark) Color.White.copy(alpha = 0.16f)
-                            else thumbColor
+                            brush = Brush.verticalGradient(
+                                colors = if (isDark) listOf(
+                                    Color.White.copy(alpha = 0.24f),
+                                    Color.White.copy(alpha = 0.10f)
+                                ) else listOf(
+                                    Color.White.copy(alpha = 0.98f),
+                                    Color.White.copy(alpha = 0.86f)
+                                )
+                            )
                         )
                     }
                 )
@@ -305,29 +346,59 @@ fun CapsuleModelBar(
                 Column(
                     modifier = Modifier
                         .padding(top = 72.dp)
-                        .width(240.dp)
+                        .width(264.dp)
                         .drawBackdrop(
                             backdrop = backdrop,
-                            shape = { RoundedCornerShape(22.dp) },
+                            shape = { RoundedCornerShape(26.dp) },
                             effects = {
-                                blur(6f.dp.toPx())
-                                lens(18f.dp.toPx(), 26f.dp.toPx())
+                                blur(8f.dp.toPx())
+                                lens(22f.dp.toPx(), 32f.dp.toPx())
+                            },
+                            highlight = { Highlight(width = 1f.dp, alpha = 0.85f) },
+                            shadow = {
+                                Shadow(
+                                    radius = 28f.dp,
+                                    offset = DpOffset(0f.dp, 10f.dp),
+                                    color = Color.Black.copy(alpha = 0.55f)
+                                )
+                            },
+                            innerShadow = {
+                                InnerShadow(
+                                    radius = 12f.dp,
+                                    offset = DpOffset(0f.dp, 4f.dp),
+                                    color = Color.Black.copy(alpha = 0.28f)
+                                )
                             },
                             onDrawSurface = {
                                 drawRect(
-                                    if (isDark) Color(0xFF1C1C1E).copy(alpha = 0.62f)
-                                    else Color.White.copy(alpha = 0.62f)
+                                    brush = Brush.verticalGradient(
+                                        colors = if (isDark) listOf(
+                                            Color.White.copy(alpha = 0.18f),
+                                            Color.White.copy(alpha = 0.07f)
+                                        ) else listOf(
+                                            Color.White.copy(alpha = 0.92f),
+                                            Color.White.copy(alpha = 0.72f)
+                                        )
+                                    )
                                 )
                             }
                         )
-                        .padding(vertical = 6.dp)
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
                 ) {
+                    Text(
+                        text = if (menuFor == 1) LangManager.t("model.agent", "Agent")
+                        else LangManager.t("model.chat", "Chat"),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                        modifier = Modifier.padding(start = 12.dp, top = 2.dp, bottom = 6.dp)
+                    )
                     if (models.isEmpty()) {
                         Text(
                             if (menuFor == 1) LangManager.t("model.agentDisabled", "未启用 Agent")
                             else LangManager.t("model.none", "无可用模型"),
                             fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                         )
                     }
@@ -337,12 +408,20 @@ fun CapsuleModelBar(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(
+                                    if (selected) {
+                                        if (isDark) Color.White.copy(alpha = 0.14f)
+                                        else Color.Black.copy(alpha = 0.08f)
+                                    } else Color.Transparent
+                                )
                                 .clickable { onSelectModel(id); menuFor = -1 }
-                                .padding(horizontal = 16.dp, vertical = 11.dp)
+                                .padding(horizontal = 12.dp, vertical = 11.dp)
                         ) {
                             Text(
                                 text = modelLabel(id),
-                                fontSize = 13.sp,
+                                fontSize = 14.sp,
                                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.weight(1f)
@@ -351,7 +430,7 @@ fun CapsuleModelBar(
                                 Icon(
                                     Icons.Default.Check,
                                     contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
+                                    modifier = Modifier.size(16.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
