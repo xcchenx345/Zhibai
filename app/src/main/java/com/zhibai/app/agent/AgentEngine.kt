@@ -127,9 +127,36 @@ class AgentEngine(
             val custom = if (raw.startsWith("/")) File(raw) else File(external, raw)
             if (tryMakeWritable(custom)) return custom
         }
+        val docs = try {
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+        } catch (_: Exception) { null }
+        val preferred = docs?.let { File(it, "ZhiBai") }
+        if (preferred != null && tryMakeWritable(preferred)) {
+            // One-time move of the legacy workspaces into Documents/ZhiBai.
+            migrateWorkspace(File(external, "知白"), preferred)
+            migrateWorkspace(File(context.filesDir, "mimo_agent"), preferred)
+            return preferred
+        }
         val default = File(external, "知白")
         if (tryMakeWritable(default)) return default
         return File(context.filesDir, "mimo_agent").apply { mkdirs() }
+    }
+
+    /** Move a legacy workspace's entries into [dest]; entries already present are kept. */
+    private fun migrateWorkspace(from: File, to: File) {
+        try {
+            if (!from.isDirectory) return
+            val entries = from.listFiles() ?: return
+            for (e in entries) {
+                val target = File(to, e.name)
+                if (target.exists()) continue
+                if (!e.renameTo(target)) {
+                    e.copyTo(target, overwrite = false)
+                    e.deleteRecursively()
+                }
+            }
+            from.listFiles()?.takeIf { it.isEmpty() }?.let { from.delete() }
+        } catch (_: Exception) {}
     }
 
     /**
@@ -143,31 +170,12 @@ class AgentEngine(
         try {
             File(dir, ".nomedia").apply { if (!exists()) createNewFile() }
         } catch (_: Exception) {}
-        try {
-            val root = dir.canonicalPath
-            val resolver = context.contentResolver
-            val projection = arrayOf(android.provider.MediaStore.MediaColumns._ID)
-            // Purge any MediaStore rows pointing INSIDE the workspace — the app owns
-            // those files, their gallery presence is the leak being fixed.
-            val selection = android.provider.MediaStore.MediaColumns.DATA + " LIKE ?"
-            val args = arrayOf("$root/%")
-            listOf(
-                android.provider.MediaStore.Files.getContentUri("external")
-            ).forEach { uri ->
-                resolver.query(uri, projection, selection, args, null)?.use { c ->
-                    while (c.moveToNext()) {
-                        val id = c.getLong(0)
-                        try {
-                            resolver.delete(
-                                android.content.ContentUris.withAppendedId(uri, id),
-                                null, null
-                            )
-                        } catch (_: Exception) {}
-                    }
-                }
-            }
-        } catch (_: Exception) {}
+        // NEVER purge MediaStore rows here: ContentResolver.delete() removes the
+        // underlying FILE from disk, so the old "gallery cleanup" physically
+        // deleted every image/video in the workspace on each engine start.
+        // .nomedia alone keeps future scans away.
     }
+
     private val skillsDir = File(workspaceDir, "skills").apply { mkdirs() }
     private val outputDir = File(workspaceDir, "output").apply { mkdirs() }
 
@@ -2198,16 +2206,20 @@ Reply with EXACTLY one word: APPROVE or DENY."""
         val stdout = StringBuilder()
         val stderr = StringBuilder()
         val outThread = Thread {
-            process.inputStream.bufferedReader().use { r -> r.forEachLine {
-                stdout.appendLine(it)
-                emitOutput(it)
-            } }
+            try {
+                process.inputStream.bufferedReader().use { r -> r.forEachLine {
+                    stdout.appendLine(it)
+                    emitOutput(it)
+                } }
+            } catch (_: Exception) { } // stream closed by destroyForcibly on timeout
         }
         val errThread = Thread {
-            process.errorStream.bufferedReader().use { r -> r.forEachLine {
-                stderr.appendLine(it)
-                emitOutput(it)
-            } }
+            try {
+                process.errorStream.bufferedReader().use { r -> r.forEachLine {
+                    stderr.appendLine(it)
+                    emitOutput(it)
+                } }
+            } catch (_: Exception) { }
         }
         outThread.start(); errThread.start()
         val finished = try {
@@ -2215,6 +2227,7 @@ Reply with EXACTLY one word: APPROVE or DENY."""
         } catch (_: Exception) { false }
         if (!finished) {
             process.destroyForcibly()
+            outThread.join(1000); errThread.join(1000)
             return "Error: timeout after ${timeoutSec}s"
         }
         outThread.join(2000); errThread.join(2000)

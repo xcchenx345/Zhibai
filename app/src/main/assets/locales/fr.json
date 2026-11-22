@@ -909,5 +909,6 @@
   "thirdparty.testFail": "Échec de la connexion : {error}",
   "thirdparty.save": "Enregistrer la configuration",
   "thirdparty.saved": "Enregistré. Si aucune clé MiMo n'est configurée, la conversation utilisera ce modèle.",
-  "thirdparty.iconDesc": "DeepSeek"
+  "thirdparty.iconDesc": "DeepSeek",
+  "notif.generating": "Génération en cours…"
 }

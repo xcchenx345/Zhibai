@@ -909,5 +909,6 @@
   "thirdparty.testFail": "Connection failed: {error}",
   "thirdparty.save": "Save configuration",
   "thirdparty.saved": "Saved. When no MiMo key is configured, chats will use this model.",
-  "thirdparty.iconDesc": "DeepSeek"
+  "thirdparty.iconDesc": "DeepSeek",
+  "notif.generating": "Generating…"
 }

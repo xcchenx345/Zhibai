@@ -791,6 +791,10 @@ $convoText
     private fun markGenerating(sessionId: String) {
         _generatingSessionIds.value = _generatingSessionIds.value + sessionId
         _isGenerating.value = true
+        // Foreground keep-alive: without it the process is cached-collectable and
+        // Android kills it mid-run when the user leaves (island re-entry then
+        // cold-restarts the app and the run/terminal state is gone).
+        com.zhibai.app.data.api.KeepAliveService.start(context)
     }
 
     /** End-of-run bookkeeping (finish/error/stop) for one session. */
@@ -801,6 +805,7 @@ $convoText
         if (rest.isEmpty()) {
             _isGenerating.value = false
             streamingJob = null
+            com.zhibai.app.data.api.KeepAliveService.stop(context)
         }
     }
     /** Model route change that arrived mid-generation; applied when the run ends. */

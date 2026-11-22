@@ -909,5 +909,6 @@
   "thirdparty.testFail": "Error de conexión: {error}",
   "thirdparty.save": "Guardar configuración",
   "thirdparty.saved": "Guardado. Si no hay una clave MiMo configurada, el chat usará este modelo.",
-  "thirdparty.iconDesc": "DeepSeek"
+  "thirdparty.iconDesc": "DeepSeek",
+  "notif.generating": "Generando…"
 }

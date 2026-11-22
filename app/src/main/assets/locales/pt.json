@@ -909,5 +909,6 @@
   "thirdparty.testFail": "Falha na conexão: {error}",
   "thirdparty.save": "Salvar configuração",
   "thirdparty.saved": "Salvo. Sem uma MiMo Key configurada, a conversa usará este modelo.",
-  "thirdparty.iconDesc": "DeepSeek"
+  "thirdparty.iconDesc": "DeepSeek",
+  "notif.generating": "A gerar…"
 }

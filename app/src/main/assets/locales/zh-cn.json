@@ -909,5 +909,6 @@
   "thirdparty.testFail": "连接失败：{error}",
   "thirdparty.save": "保存配置",
   "thirdparty.saved": "已保存。未配置 MiMo Key 时，对话将使用该模型。",
-  "thirdparty.iconDesc": "DeepSeek"
+  "thirdparty.iconDesc": "DeepSeek",
+  "notif.generating": "生成中…"
 }

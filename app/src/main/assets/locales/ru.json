@@ -909,5 +909,6 @@
   "thirdparty.testFail": "Ошибка подключения: {error}",
   "thirdparty.save": "Сохранить настройки",
   "thirdparty.saved": "Сохранено. Если ключ MiMo не настроен, в чатах будет использоваться эта модель.",
-  "thirdparty.iconDesc": "DeepSeek"
+  "thirdparty.iconDesc": "DeepSeek",
+  "notif.generating": "Создание…"
 }

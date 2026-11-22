@@ -909,5 +909,6 @@
   "thirdparty.testFail": "Verbindung fehlgeschlagen: {error}",
   "thirdparty.save": "Konfiguration speichern",
   "thirdparty.saved": "Gespeichert. Ohne MiMo Key wird das Modell für Chats verwendet.",
-  "thirdparty.iconDesc": "DeepSeek"
+  "thirdparty.iconDesc": "DeepSeek",
+  "notif.generating": "Wird generiert…"
 }
