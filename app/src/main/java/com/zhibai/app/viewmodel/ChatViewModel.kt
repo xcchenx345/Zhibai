@@ -2249,13 +2249,16 @@ AI：$assistantReply
             children.getOrPut(t) { mutableListOf() }.add(m)
         }
         val visibleIds = LinkedHashSet<String>()
-        val root = messages.filter { it.threadOf == null }
-        root.forEach { visibleIds.add(it.id) }
-        var cur = root.lastOrNull()
-        while (cur != null) {
-            val kids = children[branchKey(cur)] ?: break
-            kids.forEach { visibleIds.add(it.id) }
-            cur = kids.lastOrNull()
+        val queue = java.util.ArrayDeque<ChatMessage>()
+        for (m in messages) {
+            if (m.threadOf == null && visibleIds.add(m.id)) queue.add(m)
+        }
+        while (queue.isNotEmpty()) {
+            val cur = queue.removeFirst()
+            val kids = children[branchKey(cur)] ?: continue
+            for (k in kids) {
+                if (visibleIds.add(k.id)) queue.add(k)
+            }
         }
         // Render in original list order so process rows stay above their answer.
         return messages.filter { it.id in visibleIds }
@@ -2750,7 +2753,8 @@ AI：$assistantReply
             val id = java.util.UUID.randomUUID().toString()
             updateSessionById(session.id) { ss ->
                 ss.copy(messages = ss.messages + ChatMessage(
-                    id = id, role = "assistant", content = "", isStreaming = true, flatProcess = true
+                    id = id, role = "assistant", content = "", isStreaming = true, flatProcess = true,
+                    threadOf = ss.messages.lastOrNull()?.let { "${it.id}#${it.branchIndex}" }
                 ))
             }
             return id
@@ -2871,7 +2875,8 @@ AI：$assistantReply
                                 val phIdx = msgs.indexOfLast { it.isStreaming && it.role == "assistant" }
                                 val row = ChatMessage(
                                     id = tid, role = "step", content = LangManager.t("step.thinking", "正在思考"),
-                                    isStreaming = true, reasoningContent = thinkOut
+                                    isStreaming = true, reasoningContent = thinkOut,
+                                    threadOf = if (phIdx >= 0) "${msgs[phIdx].id}#${msgs[phIdx].branchIndex}" else null
                                 )
                                 if (phIdx >= 0) msgs.add(phIdx, row) else msgs.add(row)
                             }
@@ -3037,6 +3042,11 @@ AI：$assistantReply
                                 reasoningContent = rawText,
                                 isStreaming = false
                             )
+                        } else {
+                            msgs.add(ChatMessage(
+                                role = "assistant", content = sanitizeHighRisk(salvaged),
+                                reasoningContent = rawText, isStreaming = false
+                            ))
                         }
                         s.copy(messages = msgs)
                     }
@@ -3056,6 +3066,8 @@ AI：$assistantReply
                     val i = msgs.indexOfFirst { it.id == placeholderId }
                     if (i >= 0) {
                         msgs[i] = msgs[i].copy(content = shown, isStreaming = false)
+                    } else {
+                        msgs.add(ChatMessage(role = "assistant", content = shown, isStreaming = false))
                     }
                     s.copy(messages = msgs)
                 }
@@ -3111,7 +3123,8 @@ AI：$assistantReply
                             role = "assistant",
                             content = finalContent,
                             annotations = anns,
-                            isStreaming = false
+                            isStreaming = false,
+                            threadOf = msgs.lastOrNull()?.let { "${it.id}#${it.branchIndex}" }
                         ))
                     }
                 }
@@ -3536,7 +3549,9 @@ AI：$assistantReply
             // Collapse against the LIVE session inside the transform — capturing
             // `current` first and ignoring the fresh `s` wiped concurrent updates.
             val collapsed = collapseRunMessages(s, toolSteps, runStartIdx)
-            s.copy(messages = collapsed + streamingMsg)
+            s.copy(messages = collapsed + streamingMsg.copy(
+                threadOf = collapsed.lastOrNull()?.let { "${it.id}#${it.branchIndex}" }
+            ))
         }
 
         streamResponse(activeApi, finalRequest, isFirstMessage, session.id, text, searchAnnotations.toList(), expectSchemaLeak = true)
