@@ -51,6 +51,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
 import com.zhibai.app.i18n.LangManager
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -69,6 +73,7 @@ fun CapsuleModelBar(
     modelIds: List<String>,
     agentEnabled: Boolean,
     onSelectModel: (String) -> Unit,
+    backdrop: Backdrop,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -134,13 +139,21 @@ fun CapsuleModelBar(
                 }
             }
     ) {
-        // ---- shell: translucent gray capsule track ----
+        // ---- shell: liquid-glass capsule track (Kyant0/AndroidLiquidGlass) ----
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(64.dp)
                 .clip(RoundedCornerShape(percent = 50))
-                .background(trackColor)
+                .drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { RoundedCornerShape(percent = 50) },
+                    effects = {
+                        blur(2f.dp.toPx())
+                        lens(12f.dp.toPx(), 24f.dp.toPx())
+                    },
+                    onDrawSurface = { drawRect(trackColor) }
+                )
         )
 
         // ---- selection thumb: elevated white capsule (concentric with the track) ----
@@ -157,7 +170,15 @@ fun CapsuleModelBar(
                 }
                 .width(with(density) { slabWidthPx().toDp() })
                 .fillMaxHeight(0.84f)
-                .background(thumbColor)
+                .drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { RoundedCornerShape(percent = 50) },
+                    effects = {
+                        blur(3f.dp.toPx())
+                        lens(16f.dp.toPx(), 28f.dp.toPx())
+                    },
+                    onDrawSurface = { drawRect(thumbColor.copy(alpha = 0.92f)) }
+                )
         ) {
             // Liquid-Glass style specular: a faint bright line on the thumb's top edge
             Box(

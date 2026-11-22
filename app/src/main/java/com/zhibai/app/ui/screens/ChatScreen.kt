@@ -74,6 +74,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.zhibai.app.data.model.ChatSession
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.zhibai.app.i18n.LangManager
 import com.zhibai.app.ui.components.MessageBubble
 import com.zhibai.app.ui.theme.MiMoColors
@@ -1153,9 +1155,15 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                             color = MaterialTheme.colorScheme.surface,
                             modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(LangManager.t("model.switch", "切换模型"), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(12.dp))
+                            val backdrop = rememberLayerBackdrop()
+                            Box(modifier = Modifier.padding(16.dp)) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().layerBackdrop(backdrop)
+                                ) {
+                                    Text(LangManager.t("model.switch", "切换模型"), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Spacer(modifier = Modifier.height(64.dp))
+                                }
                                 com.zhibai.app.ui.components.CapsuleModelBar(
                                     currentModel = currentModel,
                                     modelIds = modelIds,
@@ -1163,7 +1171,9 @@ fun ChatScreen(viewModel: ChatViewModel, onNavigateToPhoneAgent: () -> Unit = {}
                                     onSelectModel = { model ->
                                         viewModel.setModel(model)
                                         showModelSelector = false
-                                    }
+                                    },
+                                    backdrop = backdrop,
+                                    modifier = Modifier.align(Alignment.BottomCenter)
                                 )
                             }
                         }
@@ -3132,30 +3142,41 @@ fun EmptyStateView(
     localAiModel: String = "",
     onSelectModel: (String) -> Unit = {}
 ) {
-    Column(
+    val backdrop = rememberLayerBackdrop()
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 48.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        contentAlignment = Alignment.Center
     ) {
-        Image(
-            painter = painterResource(id = com.zhibai.app.R.drawable.mimo_logo_foreground),
-            contentDescription = null,
-            modifier = Modifier.size(140.dp)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            LangManager.t("chat.empty.title", "有什么可以帮你的？"),
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            LangManager.t("chat.empty.subtitle", "— Xiaomi MiMo 驱动"),
-            fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(modifier = Modifier.height(20.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .layerBackdrop(backdrop),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Image(
+                painter = painterResource(id = com.zhibai.app.R.drawable.mimo_logo_foreground),
+                contentDescription = null,
+                modifier = Modifier.size(140.dp)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                LangManager.t("chat.empty.title", "有什么可以帮你的？"),
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                LangManager.t("chat.empty.subtitle", "— Xiaomi MiMo 驱动"),
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(20.dp))
+            // Reserve the bar's slot — the bar samples this column as its glass
+            // backdrop, so it must stay outside the recorded layer.
+            Spacer(modifier = Modifier.height(64.dp))
+        }
 
         // Model switcher — capsule segmented bar (Chat / Agent / ASR / TTS).
         // Sliding to Chat/Agent pops the model list; ASR/TTS switch directly.
@@ -3163,7 +3184,9 @@ fun EmptyStateView(
             currentModel = currentModel,
             modelIds = modelIds,
             agentEnabled = agentEnabled,
-            onSelectModel = onSelectModel
+            onSelectModel = onSelectModel,
+            backdrop = backdrop,
+            modifier = Modifier.align(Alignment.BottomCenter)
         )
     }
 }
