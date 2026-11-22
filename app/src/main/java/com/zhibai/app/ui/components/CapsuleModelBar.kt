@@ -59,6 +59,9 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
 import com.zhibai.app.i18n.LangManager
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -160,7 +163,11 @@ fun CapsuleModelBar(
                 )
         )
 
-        // ---- selection thumb: elevated white capsule (concentric with the track) ----
+        // ---- selection thumb: floating liquid-glass capsule ----
+        // The outer graphicsLayer carries the drag transform only: adding clip/
+        // shadowElevation there swallowed the glass surface (the slab collapsed
+        // into its 1dp specular line). Clip/shadow/highlight now come from the
+        // backdrop itself.
         Box(
             modifier = Modifier
                 .align(Alignment.CenterStart)
@@ -168,9 +175,6 @@ fun CapsuleModelBar(
                     translationX = slabX.value - slabWidthPx() / 2f
                     scaleX = slabScaleX
                     scaleY = slabScaleY
-                    shadowElevation = 6f
-                    shape = RoundedCornerShape(percent = 50)
-                    clip = true
                 }
                 .width(with(density) { slabWidthPx().toDp() })
                 .fillMaxHeight(0.84f)
@@ -181,7 +185,15 @@ fun CapsuleModelBar(
                         blur(3f.dp.toPx())
                         lens(16f.dp.toPx(), 28f.dp.toPx())
                     },
-                    onDrawSurface = { drawRect(thumbColor.copy(alpha = 0.92f)) }
+                    highlight = { Highlight.Default },
+                    shadow = { Shadow(alpha = 0.35f) },
+                    innerShadow = { InnerShadow(radius = 6f.dp, alpha = 0.25f) },
+                    onDrawSurface = {
+                        drawRect(
+                            if (isDark) Color.White.copy(alpha = 0.16f)
+                            else thumbColor
+                        )
+                    }
                 )
         ) {
             // Liquid-Glass style specular: a faint bright line on the thumb's top edge

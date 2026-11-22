@@ -47,6 +47,11 @@ import kotlinx.coroutines.delay
 /** Old package name that must be uninstalled before this build works cleanly. */
 private const val LEGACY_PACKAGE = "com.mimo.app"
 
+// Process-wide: the startup checks run once per process. Android 15/16 destroys
+// cached Activities aggressively (process survives), and without this flag every
+// return from the Super Island replayed the whole "checking..." splash.
+@Volatile private var startupChecksDone = false
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -82,7 +87,9 @@ class MainActivity : ComponentActivity() {
 
                     // ── Startup dependency check ─────────────────────────────
                     // phases: checking → (oldapp | perms | age) → done
-                    var startupPhase by remember { mutableStateOf("checking") }
+                    var startupPhase by remember {
+                        mutableStateOf(if (startupChecksDone) "done" else "checking")
+                    }
                     var checkLabel by remember(com.zhibai.app.i18n.LangManager.currentCode) { mutableStateOf(com.zhibai.app.i18n.LangManager.t("startup.checkAge", "年龄验证")) }
                     var checkProgress by remember { mutableFloatStateOf(0f) }
                     var pendingOldApp by remember { mutableStateOf(false) }
@@ -128,7 +135,12 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // Sequential checks with cosmetic progress (心理安慰)
+                    LaunchedEffect(startupPhase) {
+                        if (startupPhase == "done") startupChecksDone = true
+                    }
+
                     LaunchedEffect(Unit) {
+                        if (startupChecksDone) return@LaunchedEffect
                         checkLabel = com.zhibai.app.i18n.LangManager.t("startup.checkAge", "年龄验证")
                         checkProgress = 0.22f
                         delay(450)
