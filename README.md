@@ -94,7 +94,7 @@ app/src/main/java/com/zhibai/app/
 
 - 非小米官方产品，与小米公司无隶属关系
 - 接入的 MiMo API 按官方定价计费，与本应用无关
-- MIT License
+- GPL-3.0 License
 
 ## 版本
 

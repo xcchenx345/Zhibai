@@ -30,4 +30,4 @@
 
 - 非小米官方产品，与小米公司无隶属关系
 - MiMo API 按官方定价计费
-- MIT License
+- GPL-3.0 License
