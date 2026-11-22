@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.VolumeUp
@@ -51,6 +53,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -278,40 +282,69 @@ fun CapsuleModelBar(
                 }
         )
 
-        // ---- model list popup for Chat / Agent ----
+        // ---- model list popup for Chat / Agent (AndroidLiquidGlass card) ----
         if (menuFor in 0..1) {
             val models = if (menuFor == 0) chatModels else agentModels
-            DropdownMenu(
-                expanded = true,
+            Popup(
+                alignment = Alignment.TopCenter,
                 onDismissRequest = { menuFor = -1 },
-                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                properties = PopupProperties(focusable = true)
             ) {
-                if (models.isEmpty()) {
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                if (menuFor == 1) LangManager.t("model.agentDisabled", "未启用 Agent")
-                                else LangManager.t("model.none", "无可用模型"),
-                                fontSize = 13.sp
-                            )
-                        },
-                        onClick = { menuFor = -1 }
-                    )
-                }
-                models.forEach { id ->
-                    DropdownMenuItem(
-                        text = {
+                Column(
+                    modifier = Modifier
+                        .padding(top = 72.dp)
+                        .width(240.dp)
+                        .drawBackdrop(
+                            backdrop = backdrop,
+                            shape = { RoundedCornerShape(22.dp) },
+                            effects = {
+                                blur(6f.dp.toPx())
+                                lens(18f.dp.toPx(), 26f.dp.toPx())
+                            },
+                            onDrawSurface = {
+                                drawRect(
+                                    if (isDark) Color(0xFF1C1C1E).copy(alpha = 0.62f)
+                                    else Color.White.copy(alpha = 0.62f)
+                                )
+                            }
+                        )
+                        .padding(vertical = 6.dp)
+                ) {
+                    if (models.isEmpty()) {
+                        Text(
+                            if (menuFor == 1) LangManager.t("model.agentDisabled", "未启用 Agent")
+                            else LangManager.t("model.none", "无可用模型"),
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                        )
+                    }
+                    models.forEach { id ->
+                        val selected = id == currentModel
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectModel(id); menuFor = -1 }
+                                .padding(horizontal = 16.dp, vertical = 11.dp)
+                        ) {
                             Text(
                                 text = modelLabel(id),
                                 fontSize = 13.sp,
-                                fontWeight = if (id == currentModel) FontWeight.SemiBold else FontWeight.Normal
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
                             )
-                        },
-                        onClick = {
-                            onSelectModel(id)
-                            menuFor = -1
+                            if (selected) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
-                    )
+                    }
                 }
             }
         }

@@ -165,13 +165,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         .setPrettyPrinting()
         .create()
 
-    private val _sessions = MutableStateFlow<List<ChatSession>>(emptyList())
     val sessions: StateFlow<List<ChatSession>> = _sessions.asStateFlow()
 
-    private val _currentSession = MutableStateFlow<ChatSession?>(null)
     val currentSession: StateFlow<ChatSession?> = _currentSession.asStateFlow()
 
-    private val _isGenerating = MutableStateFlow(false)
     val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
 
     private val _error = MutableStateFlow<String?>(null)
@@ -483,6 +480,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         const val MAX_CONTEXT_TOKENS = 900_000
         const val COMPRESSION_KEEP_LAST = 10
+
+        // Process-wide generation runtime. Jobs and the session state must
+        // survive Activity/ViewModel death: re-entering from the Super Island
+        // recreates MainActivity, and viewModelScope would cancel every
+        // in-flight run - the 'come back to a dead app' bug.
+        val runtimeScope: kotlinx.coroutines.CoroutineScope =
+            kotlinx.coroutines.CoroutineScope(
+                kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO
+            )
+        @Volatile var runtimeStarted = false
+        private val _sessions = MutableStateFlow<List<ChatSession>>(emptyList())
+        private val _currentSession = MutableStateFlow<ChatSession?>(null)
+        private val _isGenerating = MutableStateFlow(false)
+        private val _generatingSessionIds = MutableStateFlow<Set<String>>(emptySet())
+        private val streamingJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
+        @Volatile private var streamingJob: Job? = null
+        @Volatile private var saveSessionsPending = false
     }
     private val _estimatedTokens = MutableStateFlow(0)
     val estimatedTokens: StateFlow<Int> = _estimatedTokens.asStateFlow()
@@ -779,12 +793,9 @@ $convoText
         java.io.File(context.filesDir, "agent_tasks.json")
     )
 
-    private var streamingJob: Job? = null
     /** Per-session run slots — the send/stop button and stopGeneration key off the
      *  CURRENT session, so a new chat shows send (not a stale stop), stopping never
      *  touches another conversation's run, and each chat generates independently. */
-    private val streamingJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
-    private val _generatingSessionIds = MutableStateFlow<Set<String>>(emptySet())
     val generatingSessionIds: StateFlow<Set<String>> = _generatingSessionIds.asStateFlow()
 
     /** Start-of-run bookkeeping (synchronous, before the job launches). */
@@ -939,10 +950,15 @@ $convoText
                     // Create / auto-repair config.json at workspace root
                     loadAgentConfig()
                 }
-                // Load saved sessions into the drawer, but always start on a fresh chat
-                val savedSessions = loadSessions()
-                if (!savedSessions.isNullOrEmpty()) {
-                    _sessions.value = savedSessions
+                // Load saved sessions once per process: a recreated Activity must
+                // adopt the live runtime state, not overwrite it with stale disk
+                // copies (that froze in-flight streams at isStreaming=false).
+                if (!runtimeStarted) {
+                    runtimeStarted = true
+                    val savedSessions = loadSessions()
+                    if (!savedSessions.isNullOrEmpty()) {
+                        _sessions.value = savedSessions
+                    }
                 }
             }
             // Every model selection re-points ALL endpoints (cloud ↔ local MNN),
@@ -1362,8 +1378,8 @@ $convoText
 
     override fun onCleared() {
         super.onCleared()
-        com.zhibai.app.data.api.AgentIslandBridge.approve = null
-        com.zhibai.app.data.api.AgentIslandBridge.deny = null
+        // Island bridge callbacks intentionally NOT cleared: they operate on
+        // process-wide runtime state and must keep working after this VM dies.
         // viewModelScope is gone by now — the debounced writer would lose the last
         // edits, so flush on a plain thread.
         Thread { writeSessionsNow() }.start()
@@ -2109,7 +2125,7 @@ AI：$assistantReply
         // Now trigger the API call
         markGenerating(session.id)
         _error.value = null
-        val editJob = viewModelScope.launch(Dispatchers.IO) {
+        val editJob = runtimeScope.launch {
             try {
                 val apiMessages = mutableListOf<Message>(
                     Message(role = "system", content = getSystemPrompt())
@@ -2321,7 +2337,7 @@ AI：$assistantReply
                 ) else it
             })
         }
-        val regenJob = viewModelScope.launch(Dispatchers.IO) {
+        val regenJob = runtimeScope.launch {
             try {
                 val apiMessages = mutableListOf<Message>(
                     Message(role = "system", content = getSystemPrompt())
@@ -2425,7 +2441,7 @@ AI：$assistantReply
         markGenerating(session.id)
         _error.value = null
         lastStreamCompleted = false
-        val sendJob = viewModelScope.launch(Dispatchers.IO) {
+        val sendJob = runtimeScope.launch {
             try {
                 // Persist picker URIs first — content:// dies after process kill.
                 val persistedImages = imageUris.mapNotNull { persistImage(it) }
@@ -4751,16 +4767,13 @@ sources inline as [reference:N]."""
         }
     }
 
-    @Volatile
-    private var saveSessionsPending = false
-
     private fun saveSessions() {
         // Called on every streaming chunk — coalesce bursts into one write. The old
         // launch-per-call fired concurrent writeText calls that tore the JSON file,
         // and a torn file made loadSessions drop ALL history on the next cold start.
         if (saveSessionsPending) return
         saveSessionsPending = true
-        viewModelScope.launch(Dispatchers.IO) {
+        runtimeScope.launch {
             kotlinx.coroutines.delay(400)
             saveSessionsPending = false
             writeSessionsNow()
